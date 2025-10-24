@@ -200,12 +200,12 @@
 - [x] Graceful shutdown flush (BatchWriter)
 
 #### 2.2.5 Traffic Tracking Integration
-- [ ] Proxy data with session tracking
-- [ ] Update traffic every N packets (efficiency)
-- [ ] Final traffic update on close
-- [ ] Upload/download split tracking
-- [ ] Packet counting
-- [ ] Performance: <2ms overhead per update
+- [x] Proxy data with session tracking
+- [x] Update traffic every N packets (efficiency)
+- [x] Final traffic update on close
+- [x] Upload/download split tracking
+- [x] Packet counting
+- [x] Performance: <2ms overhead per update
 
 #### 2.2.6 Session Metrics
 - [ ] Prometheus metrics setup

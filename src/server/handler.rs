@@ -1,7 +1,7 @@
 use crate::acl::{AclDecision, AclEngine, AclStats, Protocol};
 use crate::auth::AuthManager;
 use crate::protocol::*;
-use crate::server::proxy::proxy_data;
+use crate::server::proxy::{proxy_data, TrafficUpdateConfig};
 use crate::session::{ConnectionInfo, SessionManager, SessionProtocol, SessionStatus};
 use crate::utils::error::{Result, RustSocksError};
 use std::sync::Arc;
@@ -15,6 +15,7 @@ pub async fn handle_client(
     acl_stats: Arc<AclStats>,
     anonymous_user: Arc<String>,
     session_manager: Arc<SessionManager>,
+    traffic_config: TrafficUpdateConfig,
     client_addr: std::net::SocketAddr,
 ) -> Result<()> {
     // Step 1: Method selection
@@ -151,6 +152,7 @@ pub async fn handle_client(
                 acl_decision,
                 acl_rule_match,
                 session_protocol,
+                traffic_config,
             )
             .await?;
         }
@@ -191,6 +193,7 @@ async fn handle_connect(
     acl_decision: String,
     acl_rule_match: Option<String>,
     session_protocol: SessionProtocol,
+    traffic_config: TrafficUpdateConfig,
 ) -> Result<()> {
     let (connect_addr, dest_host) = match dest_addr {
         Address::IPv4(octets) => {
@@ -259,7 +262,15 @@ async fn handle_connect(
     info!("Connected to {}, proxying data", connect_addr);
 
     // Proxy data between client and upstream
-    match proxy_data(client_stream, upstream_stream).await {
+    match proxy_data(
+        client_stream,
+        upstream_stream,
+        session_manager.clone(),
+        session_id,
+        traffic_config,
+    )
+    .await
+    {
         Ok(_) => {
             session_manager
                 .close_session(

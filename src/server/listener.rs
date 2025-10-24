@@ -2,6 +2,7 @@ use crate::acl::{load_acl_config_sync, AclEngine, AclStats};
 use crate::auth::AuthManager;
 use crate::config::Config;
 use crate::server::handler::handle_client;
+use crate::server::proxy::TrafficUpdateConfig;
 use crate::session::SessionManager;
 #[cfg(feature = "database")]
 use crate::session::{BatchConfig, SessionStore};
@@ -17,6 +18,7 @@ pub struct SocksServer {
     acl_stats: Arc<AclStats>,
     anonymous_user: Arc<String>,
     session_manager: Arc<SessionManager>,
+    traffic_config: TrafficUpdateConfig,
 }
 
 impl SocksServer {
@@ -89,6 +91,9 @@ impl SocksServer {
 
         let session_manager = Arc::new(session_manager_inner);
 
+        let traffic_config =
+            TrafficUpdateConfig::new(config.sessions.traffic_update_packet_interval);
+
         Ok(Self {
             config,
             auth_manager,
@@ -96,6 +101,7 @@ impl SocksServer {
             acl_stats: Arc::new(AclStats::default()),
             anonymous_user,
             session_manager,
+            traffic_config,
         })
     }
 
@@ -128,6 +134,7 @@ impl SocksServer {
                     let acl_stats = self.acl_stats.clone();
                     let anonymous_user = self.anonymous_user.clone();
                     let session_manager = self.session_manager.clone();
+                    let traffic_config = self.traffic_config;
 
                     tokio::spawn(async move {
                         if let Err(e) = handle_client(
@@ -137,6 +144,7 @@ impl SocksServer {
                             acl_stats,
                             anonymous_user,
                             session_manager,
+                            traffic_config,
                             addr,
                         )
                         .await

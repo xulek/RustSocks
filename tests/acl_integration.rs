@@ -4,6 +4,7 @@ use rustsocks::auth::AuthManager;
 use rustsocks::config::AuthConfig;
 use rustsocks::protocol::ReplyCode;
 use rustsocks::server::handler::handle_client;
+use rustsocks::server::proxy::TrafficUpdateConfig;
 use rustsocks::session::SessionManager;
 use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -57,6 +58,7 @@ async fn acl_blocks_connection_and_tracks_stats() {
         let acl_stats = acl_stats.clone();
         let anonymous_user = anonymous_user.clone();
         let session_manager = session_manager.clone();
+        let traffic_config = TrafficUpdateConfig::default();
 
         tokio::spawn(async move {
             let (stream, client_addr) = listener.accept().await.expect("accept test client");
@@ -67,6 +69,7 @@ async fn acl_blocks_connection_and_tracks_stats() {
                 acl_stats,
                 anonymous_user,
                 session_manager,
+                traffic_config,
                 client_addr,
             )
             .await

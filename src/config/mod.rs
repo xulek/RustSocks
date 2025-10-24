@@ -74,6 +74,8 @@ pub struct SessionSettings {
     pub retention_days: u64,
     #[serde(default = "default_session_cleanup_interval_hours")]
     pub cleanup_interval_hours: u64,
+    #[serde(default = "default_session_traffic_update_packet_interval")]
+    pub traffic_update_packet_interval: u64,
 }
 
 // Default values
@@ -137,6 +139,10 @@ fn default_session_cleanup_interval_hours() -> u64 {
     24
 }
 
+fn default_session_traffic_update_packet_interval() -> u64 {
+    10
+}
+
 impl Default for ServerConfig {
     fn default() -> Self {
         Self {
@@ -186,6 +192,7 @@ impl Default for SessionSettings {
             batch_interval_ms: default_session_batch_interval_ms(),
             retention_days: default_session_retention_days(),
             cleanup_interval_hours: default_session_cleanup_interval_hours(),
+            traffic_update_packet_interval: default_session_traffic_update_packet_interval(),
         }
     }
 }
@@ -268,6 +275,12 @@ impl Config {
             ));
         }
 
+        if self.sessions.traffic_update_packet_interval == 0 {
+            return Err(RustSocksError::Config(
+                "sessions.traffic_update_packet_interval must be greater than 0".to_string(),
+            ));
+        }
+
         Ok(())
     }
 
@@ -304,6 +317,7 @@ batch_size = 100
 batch_interval_ms = 1000
 retention_days = 90
 cleanup_interval_hours = 24
+traffic_update_packet_interval = 10
 "#;
 
         std::fs::write(path.as_ref(), example).map_err(|e| {
@@ -331,6 +345,7 @@ mod tests {
         assert_eq!(config.sessions.cleanup_interval_hours, 24);
         assert_eq!(config.sessions.storage, "memory");
         assert_eq!(config.sessions.batch_size, 100);
+        assert_eq!(config.sessions.traffic_update_packet_interval, 10);
     }
 
     #[test]

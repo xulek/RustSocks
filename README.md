@@ -111,7 +111,12 @@
   - Backpressure poprzez `Notify` (zero busy-loop)
   - Integracja z `SessionManager::new_session/update_traffic/close_session/track_rejected_session`
   - Cleanup task (`SessionStore::spawn_cleanup`) usuwa stare rekordy wg `retention_days`
-- 🔜 2.2.5 Traffic Tracking
+- ✅ **2.2.5 Traffic Tracking**
+  - Proxy loop emituje aktualizacje ruchu do `SessionManager` (upload/download + pakiety)
+  - Konfigurowalny próg `traffic_update_packet_interval` ogranicza częstotliwość aktualizacji
+  - Finałowy flush na zamknięciu kanałów zapewnia brak utraty danych metrycznych
+  - Integracja dwukierunkowa: liczniki `bytes_sent/received` i `packets_sent/received`
+  - Nowy test integracyjny (`tests/session_tracking.rs`) weryfikuje flush przy zamknięciu
 
 ## 🎯 Weryfikacja Działania
 
@@ -192,6 +197,16 @@ password = "secret123"
 [logging]
 level = "info"
 format = "pretty"
+
+[sessions]
+enabled = false
+storage = "memory"  # Opcje: "memory", "sqlite"
+# database_url = "sqlite://var/lib/rustsocks/sessions.db"
+batch_size = 100
+batch_interval_ms = 1000
+retention_days = 90
+cleanup_interval_hours = 24
+traffic_update_packet_interval = 10
 ```
 
 ### ACL Configuration (Nowe! ✨)
