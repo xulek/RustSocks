@@ -21,6 +21,23 @@ impl fmt::Display for Protocol {
     }
 }
 
+impl Protocol {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Protocol::Tcp => "tcp",
+            Protocol::Udp => "udp",
+        }
+    }
+
+    pub fn from_str(value: &str) -> Option<Self> {
+        match value {
+            "tcp" | "TCP" => Some(Protocol::Tcp),
+            "udp" | "UDP" => Some(Protocol::Udp),
+            _ => None,
+        }
+    }
+}
+
 /// Lifecycle state of a session.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -29,6 +46,27 @@ pub enum SessionStatus {
     Closed,
     Failed,
     RejectedByAcl,
+}
+
+impl SessionStatus {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            SessionStatus::Active => "active",
+            SessionStatus::Closed => "closed",
+            SessionStatus::Failed => "failed",
+            SessionStatus::RejectedByAcl => "rejected_by_acl",
+        }
+    }
+
+    pub fn from_str(value: &str) -> Option<Self> {
+        match value {
+            "active" | "ACTIVE" => Some(SessionStatus::Active),
+            "closed" | "CLOSED" => Some(SessionStatus::Closed),
+            "failed" | "FAILED" => Some(SessionStatus::Failed),
+            "rejected_by_acl" | "REJECTED_BY_ACL" => Some(SessionStatus::RejectedByAcl),
+            _ => None,
+        }
+    }
 }
 
 /// Core representation of a SOCKS session.

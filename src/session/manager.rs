@@ -1,3 +1,7 @@
+#[cfg(feature = "database")]
+use super::batch::{BatchConfig, BatchWriter};
+#[cfg(feature = "database")]
+use super::store::SessionStore;
 use super::types::{ConnectionInfo, Protocol, Session, SessionStatus};
 use dashmap::DashMap;
 use std::net::IpAddr;
@@ -11,6 +15,10 @@ pub struct SessionManager {
     active_sessions: DashMap<Uuid, Arc<RwLock<Session>>>,
     closed_sessions: Mutex<Vec<Session>>,
     rejected_sessions: Mutex<Vec<Session>>,
+    #[cfg(feature = "database")]
+    store: Option<Arc<SessionStore>>,
+    #[cfg(feature = "database")]
+    batch_writer: Option<Arc<BatchWriter>>,
 }
 
 impl SessionManager {
@@ -20,7 +28,27 @@ impl SessionManager {
             active_sessions: DashMap::new(),
             closed_sessions: Mutex::new(Vec::new()),
             rejected_sessions: Mutex::new(Vec::new()),
+            #[cfg(feature = "database")]
+            store: None,
+            #[cfg(feature = "database")]
+            batch_writer: None,
         }
+    }
+
+    #[cfg(feature = "database")]
+    pub fn with_store(store: Arc<SessionStore>, batch_config: BatchConfig) -> Self {
+        let mut manager = Self::new();
+        manager.set_store(store, batch_config);
+        manager
+    }
+
+    #[cfg(feature = "database")]
+    pub fn set_store(&mut self, store: Arc<SessionStore>, batch_config: BatchConfig) {
+        let writer = BatchWriter::new(store.clone(), batch_config);
+        writer.start();
+
+        self.store = Some(store);
+        self.batch_writer = Some(writer);
     }
 
     /// Start tracking a freshly accepted session.
@@ -36,10 +64,23 @@ impl SessionManager {
         session.status = SessionStatus::Active;
 
         let session_id = session.session_id;
+
+        #[cfg(feature = "database")]
+        if let Some(writer) = &self.batch_writer {
+            writer.enqueue(session.clone()).await;
+        }
+
         self.active_sessions
             .insert(session_id, Arc::new(RwLock::new(session)));
 
         session_id
+    }
+
+    #[cfg(feature = "database")]
+    pub async fn shutdown(&self) {
+        if let Some(writer) = &self.batch_writer {
+            writer.shutdown().await;
+        }
     }
 
     /// Retrieve the active session handle if it exists.
@@ -75,6 +116,17 @@ impl SessionManager {
             session_guard.packets_received = session_guard
                 .packets_received
                 .saturating_add(packets_received);
+
+            #[cfg(feature = "database")]
+            if let Some(writer) = &self.batch_writer {
+                let snapshot = session_guard.clone();
+                drop(session_guard);
+                writer.enqueue(snapshot).await;
+                return;
+            }
+
+            #[cfg(not(feature = "database"))]
+            drop(session_guard);
         }
     }
 
@@ -91,12 +143,17 @@ impl SessionManager {
             let snapshot = session.clone();
             drop(session);
 
-            self.closed_sessions.lock().unwrap().push(snapshot);
+            self.closed_sessions.lock().unwrap().push(snapshot.clone());
+
+            #[cfg(feature = "database")]
+            if let Some(writer) = &self.batch_writer {
+                writer.enqueue(snapshot).await;
+            }
         }
     }
 
     /// Record a connection rejected before session creation (e.g., ACL block).
-    pub fn track_rejected_session(
+    pub async fn track_rejected_session(
         &self,
         user: &str,
         source_ip: IpAddr,
@@ -125,6 +182,11 @@ impl SessionManager {
         );
 
         let session_id = session.session_id;
+
+        #[cfg(feature = "database")]
+        if let Some(writer) = &self.batch_writer {
+            writer.enqueue(session.clone()).await;
+        }
 
         self.rejected_sessions.lock().unwrap().push(session);
 
@@ -195,15 +257,17 @@ mod tests {
     #[tokio::test]
     async fn track_rejected_session() {
         let manager = SessionManager::new();
-        let session_id = manager.track_rejected_session(
-            "bob",
-            IpAddr::V4(Ipv4Addr::LOCALHOST),
-            40000,
-            "blocked.example.com".into(),
-            80,
-            Protocol::Tcp,
-            Some("Block admin".into()),
-        );
+        let session_id = manager
+            .track_rejected_session(
+                "bob",
+                IpAddr::V4(Ipv4Addr::LOCALHOST),
+                40000,
+                "blocked.example.com".into(),
+                80,
+                Protocol::Tcp,
+                Some("Block admin".into()),
+            )
+            .await;
 
         assert_ne!(session_id, Uuid::nil());
         assert_eq!(manager.active_session_count(), 0);

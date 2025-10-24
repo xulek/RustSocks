@@ -39,7 +39,7 @@ chrono = { version = "0.4", features = ["serde"] }
 regex = "1.10"          # For wildcard domain matching
 
 # Database (SQLite for session history)
-sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "sqlite", "chrono", "uuid"], optional = true }
+sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "sqlite", "chrono", "uuid", "macros", "migrate"], optional = true }
 
 # Metrics
 prometheus = { version = "0.13", optional = true }

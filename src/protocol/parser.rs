@@ -204,14 +204,28 @@ pub async fn send_socks5_response(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{parse_client_greeting, AuthMethod};
+    use tokio::io::AsyncWriteExt;
+    use tokio::net::{TcpListener, TcpStream};
 
     #[tokio::test]
     async fn test_client_greeting_parsing() {
         // Simulate client greeting: version 5, 2 methods (no auth, userpass)
-        let data = vec![0x05, 0x02, 0x00, 0x02];
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
 
-        // This test would need a mock TcpStream - simplified for now
-        // In practice, use tokio-test or similar for testing async IO
+        let server = tokio::spawn(async move {
+            let (mut server_stream, _) = listener.accept().await.unwrap();
+            parse_client_greeting(&mut server_stream).await.unwrap()
+        });
+
+        let mut client = TcpStream::connect(addr).await.unwrap();
+        client.write_all(&[0x05, 0x02, 0x00, 0x02]).await.unwrap();
+
+        let greeting = server.await.unwrap();
+        assert_eq!(
+            greeting.methods,
+            vec![AuthMethod::NoAuth, AuthMethod::UserPass]
+        );
     }
 }

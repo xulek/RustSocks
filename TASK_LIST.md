@@ -1,6 +1,6 @@
 # RustSocks - Kompletna Lista Zadań do Implementacji
 
-**Status:** 🟢 Sprint 1 MVP + Sprint 2.1 ACL + Sprint 2.1.5 Hot Reload Ukończone | 🔄 Sprint 2.2 Session Manager Następny
+**Status:** 🟢 Sprint 1 MVP + Sprint 2.1 ACL + Sprint 2.1.5 Hot Reload Ukończone | 🔄 Sprint 2.2 Session Manager (w trakcie)
 
 ---
 
@@ -174,30 +174,30 @@
 - [x] Rejected sessions tracking
 
 #### 2.2.3 Database Persistence
-- [ ] SQLite schema design
-  - [ ] sessions table
-  - [ ] indexes (user, start_time, dest_ip, status)
-- [ ] Database migrations (sqlx)
-  - [ ] 001_create_sessions_table.sql
-- [ ] Session persistence
-  - [ ] Async writes
-  - [ ] Batch insert optimization
-- [ ] Query API
-  - [ ] Filter by user
-  - [ ] Filter by date range
-  - [ ] Filter by destination IP
-  - [ ] Filter by status
-- [ ] Database cleanup task (old sessions)
-- [ ] Integration testy z DB
+- [x] SQLite schema design
+  - [x] sessions table
+  - [x] indexes (user, start_time, dest_ip, status)
+- [x] Database migrations (sqlx)
+  - [x] 001_create_sessions_table.sql
+- [x] Session persistence
+  - [x] Async writes
+  - [x] Batch insert optimization
+- [x] Query API
+  - [x] Filter by user
+  - [x] Filter by date range
+  - [x] Filter by destination IP
+  - [x] Filter by status
+- [x] Database cleanup task (old sessions)
+- [x] Integration testy z DB
 
 #### 2.2.4 Batch Writer for Performance
-- [ ] BatchWriter struct
-- [ ] Queue mechanism
-- [ ] Batch size configuration (default: 100)
-- [ ] Batch interval configuration (default: 1s)
-- [ ] Auto-flush on queue full
-- [ ] Periodic flush task
-- [ ] Graceful shutdown flush
+- [x] BatchWriter struct
+- [x] Queue mechanism
+- [x] Batch size configuration (default: 100)
+- [x] Batch interval configuration (default: 1s)
+- [x] Auto-flush on queue full
+- [x] Periodic flush task
+- [x] Graceful shutdown flush (BatchWriter)
 
 #### 2.2.5 Traffic Tracking Integration
 - [ ] Proxy data with session tracking
@@ -504,7 +504,7 @@
 
 ### Testy
 - [x] Unit tests >80% coverage ✅
-- [ ] Integration tests dla wszystkich komponentów
+- [ ] Integration tests dla wszystkich komponentów (w toku: ACL + SessionStore pokryte)
 - [ ] E2E tests
   - [ ] basic_connect
   - [ ] authentication (all methods)
@@ -594,16 +594,17 @@
 - **Sprint 1 (MVP):** ✅ 100% (Ukończony!)
 - **Sprint 2.1 (ACL Core):** ✅ 100% (Ukończony!)
 - **Sprint 2.1.5 (Hot Reload):** ✅ 100% (Ukończony!)
-- **Sprint 2.2-2.4 (Sessions + Integration):** ⏳ 0% (Następny)
+- **Sprint 2.2 (Session Manager):** 🔄 ~60% (Data structures, in-memory, DB, batch writer ukończone)
+- **Sprint 2.3-2.4 (Integration & Metrics):** ⏳ 0% (Następny)
 - **Sprint 3 (Production + API):** ⏳ 0% (Planowanie)
 - **Sprint 4 (Advanced):** ⏳ 0% (Przyszłość)
 
 ### Statystyki Kodu (Obecne)
-- **Linii kodu:** ~2,600 (+300 Hot Reload)
-- **Plików .rs:** 18 (+1 watcher.rs)
-- **Testy:** 28 passed (20 ACL + 8 core)
+- **Linii kodu:** ~3,200 (+~600 Session Manager)
+- **Plików .rs:** 22 (w tym batch/store dla sesji)
+- **Testy:** 37/37 (domyślnie) · 38/38 (`--features database`)
 - **Coverage:** ~85% (ACL >90%)
-- **Binary size:** 3.4 MB (release)
+- **Binary size:** ~3.6 MB (release)
 
 ### Statystyki Docelowe (v1.0)
 - **Linii kodu:** ~8,000-10,000 (oszacowanie)
@@ -624,6 +625,6 @@
 
 ---
 
-**Ostatnia aktualizacja:** 2025-10-24 (22:00)
-**Wersja:** 0.2.1 (MVP + ACL Core + Hot Reload)
-**Next Target:** 0.3.0 (+ Session Manager) → 0.5.0 (Beta + Full Integration)
+**Ostatnia aktualizacja:** 2025-10-25 (12:00)
+**Wersja:** 0.2.2 (Session Manager – core & persistence)
+**Next Target:** 0.3.0 (+ Traffic Tracking & Metrics) → 0.5.0 (Beta + Full Integration)

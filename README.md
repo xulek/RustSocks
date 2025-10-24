@@ -99,8 +99,19 @@
   - Życie sesji: `new_session`, `update_traffic`, `close_session`, `get_session`
   - Liczniki ruchu i snapshoty zamkniętych/odrzuconych sesji
   - Integracja z ACL: odrzucenia logowane jako `RejectedByAcl`
-- 🔜 2.2.3 Persistence (SQLite/sqlx)
-- 🔜 2.2.4 Batch Writer & 2.2.5 Traffic Tracking
+- ✅ **2.2.3 Persistence (SQLite/sqlx)**
+  - `SessionStore` z migracjami (`migrations/001_create_sessions_table.sql`)
+  - Upsert sesji (nowe, ruch, zamknięcie, odrzucenia ACL)
+  - Dynamiczne filtrowanie (`SessionFilter`) po user/time/dest/status/min_bytes
+  - Konfiguracja `[sessions]` (storage, database_url, batch_* oraz retention/cleanup)
+  - Test integracyjny `session::store` na `sqlite::memory:` (`cargo test --features database`)
+- ✅ **2.2.4 Batch Writer**
+  - `BatchWriter` z kolejką `Mutex<Vec<Session>>`
+  - Auto-flush przy osiągnięciu `batch_size` oraz okresowe flush (`batch_interval_ms`)
+  - Backpressure poprzez `Notify` (zero busy-loop)
+  - Integracja z `SessionManager::new_session/update_traffic/close_session/track_rejected_session`
+  - Cleanup task (`SessionStore::spawn_cleanup`) usuwa stare rekordy wg `retention_days`
+- 🔜 2.2.5 Traffic Tracking
 
 ## 🎯 Weryfikacja Działania
 
@@ -290,6 +301,7 @@ rustsocks/
 │   │   └── mod.rs        # Config loading
 │   └── utils/            # Utilities
 │       └── error.rs      # Error types
+├── migrations/           # sqlx migrations (sessions)
 ├── tests/                # Integration tests
 ├── config/               # Config examples
 ├── Cargo.toml           # Dependencies
@@ -299,37 +311,32 @@ rustsocks/
 ## 🧪 Testy
 
 ```bash
-# Uruchom wszystkie testy
+# Uruchom wszystkie testy (domyślna konfiguracja)
 cargo test
 
-# Testy z outputem
-cargo test -- --nocapture
+# Testy z rozszerzeniem bazy danych (sqlx + SQLite)
+cargo test --features database
 
-# Konkretny test
-cargo test test_no_auth
+# Testy z wyświetlaniem logów
+cargo test -- --nocapture
 ```
 
-**Status testów:** ✅ 28/28 passed (20 ACL + 8 core)
+**Status testów:** ✅ 37/37 (default) · ✅ 38/38 (`--features database`)
 
-**Test breakdown:**
-- Protocol tests: 5/5 ✅
-- Auth tests: 2/2 ✅
-- Config tests: 2/2 ✅
-- ACL types: 3/3 ✅
-- ACL matcher: 7/7 ✅
-- ACL engine: 6/6 ✅
-- ACL hot reload: 3/3 ✅ (+ 1 integration ignored)
+**Zakres pokrycia:**
+- Protocol/Auth/Config – testy jednostkowe ✅
+- ACL Engine (matcher, loader, engine, watcher) – 17+ przypadków ✅
+- Session Manager & Store – cykl życia, batch writer, odrzucenia ACL ✅
+- Integracje: `tests/acl_integration.rs`, `session::store` (SQLite in-memory) ✅
 
 ## 🎯 Roadmap
 
 ### Sprint 2 - ACL & Sessions (W TRAKCIE ⏳)
-- [x] ACL Engine - per-user rules, CIDR, wildcards ✅
-- [x] ACL matching logic (IP, Domain, Port) ✅
-- [x] ACL evaluation engine with priorities ✅
-- [x] Hot reload ACL (zero-downtime) ✅
-- [ ] Session Manager - in-memory + database - NEXT
+- [x] ACL Engine (rules, matching, priorities, hot reload) ✅
+- [x] Session Manager (in-memory) ✅
+- [x] Session persistence (SQLite + batch writer + cleanup) ✅
 - [ ] Traffic tracking (bytes sent/received)
-- [ ] ACL integration z server handler
+- [ ] ACL enforcement telemetry integration z Session Manager (rozszerzenie metryk)
 - [ ] BIND command
 - [ ] UDP ASSOCIATE command
 
@@ -383,5 +390,5 @@ MIT License
 
 **Status:** 🟢 Sprint 1 MVP + Sprint 2.1 ACL + Sprint 2.1.5 Hot Reload UKOŃCZONE!
 **Wersja:** 0.2.1 (MVP + ACL Engine + Hot Reload)
-**Testy:** 37/37 passed ✅
+**Testy:** 37/37 passed (default) ✅ · `cargo test --features database` → 38/38 ✅
 **Data:** 2025-10-24

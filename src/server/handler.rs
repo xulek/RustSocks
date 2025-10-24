@@ -92,15 +92,17 @@ pub async fn handle_client(
                     "ACL blocked connection"
                 );
 
-                session_manager.track_rejected_session(
-                    &acl_user,
-                    client_addr.ip(),
-                    client_addr.port(),
-                    dest_string.clone(),
-                    request.port,
-                    session_protocol,
-                    matched_rule.clone(),
-                );
+                session_manager
+                    .track_rejected_session(
+                        &acl_user,
+                        client_addr.ip(),
+                        client_addr.port(),
+                        dest_string.clone(),
+                        request.port,
+                        session_protocol,
+                        matched_rule.clone(),
+                    )
+                    .await;
 
                 send_socks5_response(
                     &mut client_stream,

@@ -20,3 +20,10 @@ enabled = false
 config_file = "config/acl.toml"
 watch = false
 anonymous_user = "anonymous"
+
+[sessions]
+enabled = false
+storage = "memory"  # Options: "memory", "sqlite"
+# database_url = "sqlite://var/lib/rustsocks/sessions.db"
+batch_size = 100
+batch_interval_ms = 1000

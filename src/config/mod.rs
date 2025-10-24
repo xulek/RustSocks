@@ -10,6 +10,8 @@ pub struct Config {
     pub logging: LoggingConfig,
     #[serde(default)]
     pub acl: AclSettings,
+    #[serde(default)]
+    pub sessions: SessionSettings,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -56,6 +58,24 @@ pub struct AclSettings {
     pub anonymous_user: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionSettings {
+    #[serde(default = "default_sessions_enabled")]
+    pub enabled: bool,
+    #[serde(default = "default_session_storage")]
+    pub storage: String,
+    #[serde(default)]
+    pub database_url: Option<String>,
+    #[serde(default = "default_session_batch_size")]
+    pub batch_size: usize,
+    #[serde(default = "default_session_batch_interval_ms")]
+    pub batch_interval_ms: u64,
+    #[serde(default = "default_session_retention_days")]
+    pub retention_days: u64,
+    #[serde(default = "default_session_cleanup_interval_hours")]
+    pub cleanup_interval_hours: u64,
+}
+
 // Default values
 fn default_bind_address() -> String {
     "127.0.0.1".to_string()
@@ -91,6 +111,30 @@ fn default_acl_watch() -> bool {
 
 fn default_acl_anonymous_user() -> String {
     "anonymous".to_string()
+}
+
+fn default_sessions_enabled() -> bool {
+    false
+}
+
+fn default_session_storage() -> String {
+    "memory".to_string()
+}
+
+fn default_session_batch_size() -> usize {
+    100
+}
+
+fn default_session_batch_interval_ms() -> u64 {
+    1000
+}
+
+fn default_session_retention_days() -> u64 {
+    90
+}
+
+fn default_session_cleanup_interval_hours() -> u64 {
+    24
 }
 
 impl Default for ServerConfig {
@@ -132,6 +176,20 @@ impl Default for AclSettings {
     }
 }
 
+impl Default for SessionSettings {
+    fn default() -> Self {
+        Self {
+            enabled: default_sessions_enabled(),
+            storage: default_session_storage(),
+            database_url: None,
+            batch_size: default_session_batch_size(),
+            batch_interval_ms: default_session_batch_interval_ms(),
+            retention_days: default_session_retention_days(),
+            cleanup_interval_hours: default_session_cleanup_interval_hours(),
+        }
+    }
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -139,6 +197,7 @@ impl Default for Config {
             auth: AuthConfig::default(),
             logging: LoggingConfig::default(),
             acl: AclSettings::default(),
+            sessions: SessionSettings::default(),
         }
     }
 }
@@ -186,6 +245,29 @@ impl Config {
             }
         }
 
+        if !matches!(self.sessions.storage.as_str(), "memory" | "sqlite") {
+            return Err(RustSocksError::Config(format!(
+                "Invalid session storage: {}. Supported: memory, sqlite",
+                self.sessions.storage
+            )));
+        }
+
+        if self.sessions.enabled
+            && self.sessions.storage == "sqlite"
+            && self.sessions.database_url.is_none()
+        {
+            return Err(RustSocksError::Config(
+                "sessions.database_url is required when session tracking uses sqlite storage"
+                    .to_string(),
+            ));
+        }
+
+        if self.sessions.cleanup_interval_hours == 0 {
+            return Err(RustSocksError::Config(
+                "sessions.cleanup_interval_hours must be greater than 0".to_string(),
+            ));
+        }
+
         Ok(())
     }
 
@@ -213,6 +295,15 @@ enabled = false
 config_file = "config/acl.toml"
 watch = false
 anonymous_user = "anonymous"
+
+[sessions]
+enabled = false
+storage = "memory"  # Options: "memory", "sqlite"
+# database_url = "sqlite://var/lib/rustsocks/sessions.db"
+batch_size = 100
+batch_interval_ms = 1000
+retention_days = 90
+cleanup_interval_hours = 24
 "#;
 
         std::fs::write(path.as_ref(), example).map_err(|e| {
@@ -233,6 +324,13 @@ mod tests {
         assert_eq!(config.server.bind_address, "127.0.0.1");
         assert_eq!(config.server.bind_port, 1080);
         assert_eq!(config.auth.method, "none");
+        assert_eq!(config.sessions.storage, "memory");
+        assert_eq!(config.sessions.batch_size, 100);
+        assert_eq!(config.sessions.batch_interval_ms, 1000);
+        assert_eq!(config.sessions.retention_days, 90);
+        assert_eq!(config.sessions.cleanup_interval_hours, 24);
+        assert_eq!(config.sessions.storage, "memory");
+        assert_eq!(config.sessions.batch_size, 100);
     }
 
     #[test]
@@ -257,6 +355,26 @@ mod tests {
 
         // ACL enabled with file works
         config.acl.config_file = Some("config/acl.toml".to_string());
+        assert!(config.validate().is_ok());
+
+        // Invalid session storage
+        let mut config = Config::default();
+        config.sessions.storage = "invalid".to_string();
+        assert!(config.validate().is_err());
+
+        // Missing database_url when sqlite enabled
+        let mut config = Config::default();
+        config.sessions.enabled = true;
+        config.sessions.storage = "sqlite".to_string();
+        assert!(config.validate().is_err());
+
+        config.sessions.database_url = Some("sqlite::memory:".to_string());
+        assert!(config.validate().is_ok());
+
+        config.sessions.cleanup_interval_hours = 0;
+        assert!(config.validate().is_err());
+
+        config.sessions.cleanup_interval_hours = 12;
         assert!(config.validate().is_ok());
     }
 }

@@ -3,6 +3,8 @@ use crate::auth::AuthManager;
 use crate::config::Config;
 use crate::server::handler::handle_client;
 use crate::session::SessionManager;
+#[cfg(feature = "database")]
+use crate::session::{BatchConfig, SessionStore};
 use crate::utils::error::{Result, RustSocksError};
 use std::sync::Arc;
 use tokio::net::TcpListener;
@@ -18,7 +20,7 @@ pub struct SocksServer {
 }
 
 impl SocksServer {
-    pub fn new(config: Config) -> Result<Self> {
+    pub async fn new(config: Config) -> Result<Self> {
         let auth_manager = Arc::new(AuthManager::new(&config.auth)?);
 
         let acl_engine = if config.acl.enabled {
@@ -50,7 +52,42 @@ impl SocksServer {
         let anonymous_user = Arc::new(config.acl.anonymous_user.clone());
         let config = Arc::new(config);
 
-        let session_manager = Arc::new(SessionManager::new());
+        #[cfg_attr(not(feature = "database"), allow(unused_mut))]
+        let mut session_manager_inner = SessionManager::new();
+
+        #[cfg(feature = "database")]
+        if config.sessions.enabled && config.sessions.storage == "sqlite" {
+            let url = config
+                .sessions
+                .database_url
+                .as_ref()
+                .expect("validated: database_url present when sqlite storage enabled")
+                .clone();
+
+            match SessionStore::connect(&url).await {
+                Ok(store) => {
+                    let arc_store = Arc::new(store);
+                    let batch_config = BatchConfig::from_settings(
+                        config.sessions.batch_size,
+                        config.sessions.batch_interval_ms,
+                    );
+                    session_manager_inner.set_store(arc_store.clone(), batch_config);
+                    arc_store.spawn_cleanup(
+                        config.sessions.retention_days,
+                        config.sessions.cleanup_interval_hours,
+                    );
+                    info!("Session store initialized at {}", url);
+                }
+                Err(e) => {
+                    return Err(RustSocksError::Config(format!(
+                        "Failed to initialize session store: {}",
+                        e
+                    )));
+                }
+            }
+        }
+
+        let session_manager = Arc::new(session_manager_inner);
 
         Ok(Self {
             config,
@@ -113,5 +150,10 @@ impl SocksServer {
                 }
             }
         }
+    }
+
+    pub async fn shutdown(&self) {
+        #[cfg(feature = "database")]
+        self.session_manager.shutdown().await;
     }
 }

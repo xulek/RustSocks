@@ -71,7 +71,7 @@ async fn main() -> Result<()> {
     }
 
     // Create and run server
-    let server = SocksServer::new(config)?;
+    let server = SocksServer::new(config).await?;
 
     info!("Server initialized, starting listener...");
 
@@ -95,6 +95,8 @@ async fn main() -> Result<()> {
             info!("Server shutdown complete");
         }
     }
+
+    server.shutdown().await;
 
     Ok(())
 }
