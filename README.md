@@ -87,6 +87,17 @@
 - ✅ Test integracyjny (`tests/acl_integration.rs`) symuluje handshake SOCKS5 i weryfikuje blokadę
 - ✅ Test wydajnościowy potwierdza średni czas ewaluacji ACL <5 ms
 
+### Sprint 2.2 - Session Manager (W TRAKCIE) 🔄
+
+- ✅ **2.2.1 Session Data Structures**
+  - `Session` z pełnym zestawem pól (ID, timing, sieć, statystyki, status, ACL)
+  - `SessionStatus` oraz `SessionProtocol` (serde snake_case/lowercase)
+  - `ConnectionInfo` i `SessionFilter` z domyślnym limitem 100
+  - Testy jednostkowe serializacji i wartości domyślnych
+- 🔜 2.2.2 Session Manager (DashMap, lifecycle)
+- 🔜 2.2.3 Persistence (SQLite/sqlx)
+- 🔜 2.2.4 Batch Writer & 2.2.5 Traffic Tracking
+
 ## 🎯 Weryfikacja Działania
 
 Serwer został **pomyślnie przetestowany** z curl:
@@ -368,5 +379,5 @@ MIT License
 
 **Status:** 🟢 Sprint 1 MVP + Sprint 2.1 ACL + Sprint 2.1.5 Hot Reload UKOŃCZONE!
 **Wersja:** 0.2.1 (MVP + ACL Engine + Hot Reload)
-**Testy:** 31/31 passed ✅
+**Testy:** 34/34 passed ✅
 **Data:** 2025-10-24

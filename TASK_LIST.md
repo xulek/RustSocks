@@ -151,16 +151,16 @@
 ### 2.2 Session Manager - Core (Tydzień 2-3)
 
 #### 2.2.1 Session Data Structures
-- [ ] Session struct
-  - [ ] session_id (UUID)
-  - [ ] user info
-  - [ ] timing (start, end, duration)
-  - [ ] network info (source, dest, ports)
-  - [ ] traffic stats (bytes, packets)
-  - [ ] status enum
-  - [ ] ACL decision info
-- [ ] SessionFilter struct
-- [ ] ConnectionInfo struct
+- [x] Session struct
+  - [x] session_id (UUID)
+  - [x] user info
+  - [x] timing (start, end, duration)
+  - [x] network info (source, dest, ports)
+  - [x] traffic stats (bytes, packets)
+  - [x] status enum
+  - [x] ACL decision info
+- [x] SessionFilter struct
+- [x] ConnectionInfo struct
 
 #### 2.2.2 In-Memory Session Tracking
 - [ ] SessionManager z DashMap (concurrent)
