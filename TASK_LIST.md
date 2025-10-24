@@ -163,15 +163,15 @@
 - [x] ConnectionInfo struct
 
 #### 2.2.2 In-Memory Session Tracking
-- [ ] SessionManager z DashMap (concurrent)
-- [ ] Session lifecycle management
-  - [ ] new_session()
-  - [ ] update_traffic()
-  - [ ] close_session()
-  - [ ] get_session()
-- [ ] Active sessions tracking
-- [ ] Traffic counting (bytes sent/received)
-- [ ] Rejected sessions tracking
+- [x] SessionManager z DashMap (concurrent)
+- [x] Session lifecycle management
+  - [x] new_session()
+  - [x] update_traffic()
+  - [x] close_session()
+  - [x] get_session()
+- [x] Active sessions tracking
+- [x] Traffic counting (bytes sent/received)
+- [x] Rejected sessions tracking
 
 #### 2.2.3 Database Persistence
 - [ ] SQLite schema design

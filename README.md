@@ -94,7 +94,11 @@
   - `SessionStatus` oraz `SessionProtocol` (serde snake_case/lowercase)
   - `ConnectionInfo` i `SessionFilter` z domyślnym limitem 100
   - Testy jednostkowe serializacji i wartości domyślnych
-- 🔜 2.2.2 Session Manager (DashMap, lifecycle)
+- ✅ **2.2.2 In-Memory Session Manager**
+  - `SessionManager` oparty na `DashMap` + `RwLock`
+  - Życie sesji: `new_session`, `update_traffic`, `close_session`, `get_session`
+  - Liczniki ruchu i snapshoty zamkniętych/odrzuconych sesji
+  - Integracja z ACL: odrzucenia logowane jako `RejectedByAcl`
 - 🔜 2.2.3 Persistence (SQLite/sqlx)
 - 🔜 2.2.4 Batch Writer & 2.2.5 Traffic Tracking
 
@@ -379,5 +383,5 @@ MIT License
 
 **Status:** 🟢 Sprint 1 MVP + Sprint 2.1 ACL + Sprint 2.1.5 Hot Reload UKOŃCZONE!
 **Wersja:** 0.2.1 (MVP + ACL Engine + Hot Reload)
-**Testy:** 34/34 passed ✅
+**Testy:** 37/37 passed ✅
 **Data:** 2025-10-24

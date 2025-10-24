@@ -2,6 +2,7 @@ use crate::acl::{AclDecision, AclEngine, AclStats, Protocol};
 use crate::auth::AuthManager;
 use crate::protocol::*;
 use crate::server::proxy::proxy_data;
+use crate::session::{ConnectionInfo, SessionManager, SessionProtocol, SessionStatus};
 use crate::utils::error::{Result, RustSocksError};
 use std::sync::Arc;
 use tokio::net::TcpStream;
@@ -13,6 +14,8 @@ pub async fn handle_client(
     acl_engine: Option<Arc<AclEngine>>,
     acl_stats: Arc<AclStats>,
     anonymous_user: Arc<String>,
+    session_manager: Arc<SessionManager>,
+    client_addr: std::net::SocketAddr,
 ) -> Result<()> {
     // Step 1: Method selection
     let greeting = parse_client_greeting(&mut client_stream).await?;
@@ -44,41 +47,59 @@ pub async fn handle_client(
         info!("User authenticated: {}", username);
     }
 
+    let acl_user = user
+        .clone()
+        .unwrap_or_else(|| anonymous_user.as_ref().clone());
+
     // Step 3: SOCKS5 request
     let request = parse_socks5_request(&mut client_stream).await?;
 
+    let dest_string = request.address.to_string();
     info!(
         "SOCKS5 request: command={:?}, dest={}:{}",
-        request.command,
-        request.address.to_string(),
-        request.port
+        request.command, dest_string, request.port
     );
+
+    let session_protocol = match request.command {
+        Command::UdpAssociate => SessionProtocol::Udp,
+        _ => SessionProtocol::Tcp,
+    };
+
+    let mut acl_rule_match: Option<String> = None;
+    let mut acl_decision = "allow".to_string();
 
     // Step 3b: ACL enforcement (if enabled)
     if let Some(engine) = acl_engine.as_ref() {
-        let acl_user = user
-            .as_deref()
-            .unwrap_or_else(|| anonymous_user.as_ref().as_str());
         let protocol = match request.command {
             Command::UdpAssociate => Protocol::Udp,
             _ => Protocol::Tcp,
         };
 
         let (decision, matched_rule) = engine
-            .evaluate(acl_user, &request.address, request.port, &protocol)
+            .evaluate(&acl_user, &request.address, request.port, &protocol)
             .await;
 
         match decision {
             AclDecision::Block => {
-                acl_stats.record_block(acl_user);
+                acl_stats.record_block(&acl_user);
                 let rule = matched_rule.as_deref().unwrap_or("unknown rule");
 
                 warn!(
-                    user = acl_user,
-                    dest = %request.address.to_string(),
+                    user = %acl_user,
+                    dest = %dest_string,
                     port = request.port,
                     rule,
                     "ACL blocked connection"
+                );
+
+                session_manager.track_rejected_session(
+                    &acl_user,
+                    client_addr.ip(),
+                    client_addr.port(),
+                    dest_string.clone(),
+                    request.port,
+                    session_protocol,
+                    matched_rule.clone(),
                 );
 
                 send_socks5_response(
@@ -92,22 +113,24 @@ pub async fn handle_client(
                 return Ok(());
             }
             AclDecision::Allow => {
-                acl_stats.record_allow(acl_user);
-                if let Some(rule) = matched_rule {
-                    debug!(
-                        user = acl_user,
-                        dest = %request.address.to_string(),
+                acl_stats.record_allow(&acl_user);
+                acl_rule_match = matched_rule.clone();
+                acl_decision = "allow".to_string();
+
+                match matched_rule.as_deref() {
+                    Some(rule) => debug!(
+                        user = %acl_user,
+                        dest = %dest_string,
                         port = request.port,
                         rule,
                         "ACL allowed connection"
-                    );
-                } else {
-                    debug!(
-                        user = acl_user,
-                        dest = %request.address.to_string(),
+                    ),
+                    None => debug!(
+                        user = %acl_user,
+                        dest = %dest_string,
                         port = request.port,
                         "ACL allowed connection (default policy)"
-                    );
+                    ),
                 }
             }
         }
@@ -116,7 +139,18 @@ pub async fn handle_client(
     // Step 4: Handle command
     match request.command {
         Command::Connect => {
-            handle_connect(client_stream, &request.address, request.port).await?;
+            handle_connect(
+                client_stream,
+                &request.address,
+                request.port,
+                session_manager,
+                acl_user,
+                client_addr,
+                acl_decision,
+                acl_rule_match,
+                session_protocol,
+            )
+            .await?;
         }
         Command::Bind => {
             warn!("BIND command not yet implemented");
@@ -149,26 +183,31 @@ async fn handle_connect(
     mut client_stream: TcpStream,
     dest_addr: &Address,
     dest_port: u16,
+    session_manager: Arc<SessionManager>,
+    session_user: String,
+    client_addr: std::net::SocketAddr,
+    acl_decision: String,
+    acl_rule_match: Option<String>,
+    session_protocol: SessionProtocol,
 ) -> Result<()> {
-    // Connect to upstream
-    let dest = match dest_addr {
+    let (connect_addr, dest_host) = match dest_addr {
         Address::IPv4(octets) => {
             let ip = std::net::Ipv4Addr::from(*octets);
-            format!("{}:{}", ip, dest_port)
+            (format!("{}:{}", ip, dest_port), ip.to_string())
         }
         Address::IPv6(octets) => {
             let ip = std::net::Ipv6Addr::from(*octets);
-            format!("[{}]:{}", ip, dest_port)
+            (format!("[{}]:{}", ip, dest_port), ip.to_string())
         }
-        Address::Domain(domain) => format!("{}:{}", domain, dest_port),
+        Address::Domain(domain) => (format!("{}:{}", domain, dest_port), domain.clone()),
     };
 
-    debug!("Connecting to upstream: {}", dest);
+    debug!("Connecting to upstream: {}", connect_addr);
 
-    let upstream_stream = match TcpStream::connect(&dest).await {
+    let upstream_stream = match TcpStream::connect(&connect_addr).await {
         Ok(stream) => stream,
         Err(e) => {
-            warn!("Failed to connect to {}: {}", dest, e);
+            warn!("Failed to connect to {}: {}", connect_addr, e);
             send_socks5_response(
                 &mut client_stream,
                 ReplyCode::ConnectionRefused,
@@ -179,6 +218,24 @@ async fn handle_connect(
             return Err(e.into());
         }
     };
+
+    // Session tracking
+    let connection_info = ConnectionInfo {
+        source_ip: client_addr.ip(),
+        source_port: client_addr.port(),
+        dest_ip: dest_host.clone(),
+        dest_port,
+        protocol: session_protocol,
+    };
+
+    let session_id = session_manager
+        .new_session(
+            &session_user,
+            connection_info,
+            acl_decision,
+            acl_rule_match.clone(),
+        )
+        .await;
 
     // Get local address for response
     let local_addr = upstream_stream.local_addr()?;
@@ -197,10 +254,26 @@ async fn handle_connect(
     )
     .await?;
 
-    info!("Connected to {}, proxying data", dest);
+    info!("Connected to {}, proxying data", connect_addr);
 
     // Proxy data between client and upstream
-    proxy_data(client_stream, upstream_stream).await?;
-
-    Ok(())
+    match proxy_data(client_stream, upstream_stream).await {
+        Ok(_) => {
+            session_manager
+                .close_session(
+                    &session_id,
+                    Some("Connection closed normally".to_string()),
+                    SessionStatus::Closed,
+                )
+                .await;
+            Ok(())
+        }
+        Err(e) => {
+            let reason = format!("Proxy error: {}", e);
+            session_manager
+                .close_session(&session_id, Some(reason), SessionStatus::Failed)
+                .await;
+            Err(e)
+        }
+    }
 }

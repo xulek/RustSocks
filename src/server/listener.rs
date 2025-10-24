@@ -2,6 +2,7 @@ use crate::acl::{load_acl_config_sync, AclEngine, AclStats};
 use crate::auth::AuthManager;
 use crate::config::Config;
 use crate::server::handler::handle_client;
+use crate::session::SessionManager;
 use crate::utils::error::{Result, RustSocksError};
 use std::sync::Arc;
 use tokio::net::TcpListener;
@@ -13,6 +14,7 @@ pub struct SocksServer {
     acl_engine: Option<Arc<AclEngine>>,
     acl_stats: Arc<AclStats>,
     anonymous_user: Arc<String>,
+    session_manager: Arc<SessionManager>,
 }
 
 impl SocksServer {
@@ -48,12 +50,15 @@ impl SocksServer {
         let anonymous_user = Arc::new(config.acl.anonymous_user.clone());
         let config = Arc::new(config);
 
+        let session_manager = Arc::new(SessionManager::new());
+
         Ok(Self {
             config,
             auth_manager,
             acl_engine,
             acl_stats: Arc::new(AclStats::default()),
             anonymous_user,
+            session_manager,
         })
     }
 
@@ -85,6 +90,7 @@ impl SocksServer {
                     let acl_engine = self.acl_engine.clone();
                     let acl_stats = self.acl_stats.clone();
                     let anonymous_user = self.anonymous_user.clone();
+                    let session_manager = self.session_manager.clone();
 
                     tokio::spawn(async move {
                         if let Err(e) = handle_client(
@@ -93,6 +99,8 @@ impl SocksServer {
                             acl_engine,
                             acl_stats,
                             anonymous_user,
+                            session_manager,
+                            addr,
                         )
                         .await
                         {

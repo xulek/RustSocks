@@ -4,6 +4,7 @@ use rustsocks::auth::AuthManager;
 use rustsocks::config::AuthConfig;
 use rustsocks::protocol::ReplyCode;
 use rustsocks::server::handler::handle_client;
+use rustsocks::session::SessionManager;
 use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
@@ -48,18 +49,28 @@ async fn acl_blocks_connection_and_tracks_stats() {
         .await
         .expect("bind test listener");
     let addr = listener.local_addr().expect("listener addr");
+    let session_manager = Arc::new(SessionManager::new());
 
     let server_task = {
         let auth_manager = auth_manager.clone();
         let acl_engine = Some(acl_engine.clone());
         let acl_stats = acl_stats.clone();
         let anonymous_user = anonymous_user.clone();
+        let session_manager = session_manager.clone();
 
         tokio::spawn(async move {
-            let (stream, _) = listener.accept().await.expect("accept test client");
-            handle_client(stream, auth_manager, acl_engine, acl_stats, anonymous_user)
-                .await
-                .expect("handler should complete");
+            let (stream, client_addr) = listener.accept().await.expect("accept test client");
+            handle_client(
+                stream,
+                auth_manager,
+                acl_engine,
+                acl_stats,
+                anonymous_user,
+                session_manager,
+                client_addr,
+            )
+            .await
+            .expect("handler should complete");
         })
     };
 
@@ -114,4 +125,9 @@ async fn acl_blocks_connection_and_tracks_stats() {
         .expect("anonymous user should have stats");
     assert_eq!(user_stats.blocked, 1);
     assert_eq!(user_stats.allowed, 0);
+
+    let rejected = session_manager.rejected_snapshot();
+    assert_eq!(rejected.len(), 1);
+    assert_eq!(rejected[0].user, "anonymous");
+    assert_eq!(rejected[0].dest_ip, "blocked.example.com");
 }
