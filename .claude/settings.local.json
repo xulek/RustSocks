@@ -1,0 +1,30 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cargo init:*)",
+      "Bash(rustc:*)",
+      "Bash(curl:*)",
+      "Bash(sh -s -- -y)",
+      "Bash(source \"$HOME/.cargo/env\")",
+      "Bash(cargo --version:*)",
+      "Bash(mkdir:*)",
+      "Bash(cargo check:*)",
+      "Bash(cargo test:*)",
+      "Bash(cargo build:*)",
+      "Bash(./target/release/rustsocks:*)",
+      "Bash(netstat:*)",
+      "Bash(ss:*)",
+      "Bash(cargo clippy:*)",
+      "Bash(export PATH=\"$HOME/.cargo/bin:$PATH\")",
+      "Bash(find:*)",
+      "Bash($HOME/.cargo/bin/cargo check)",
+      "Bash($HOME/.cargo/bin/cargo test acl)",
+      "Bash($HOME/.cargo/bin/cargo test --lib acl)",
+      "Bash($HOME/.cargo/bin/cargo test:*)",
+      "Bash($HOME/.cargo/bin/cargo test --lib)",
+      "Bash($HOME/.cargo/bin/cargo build --release)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
