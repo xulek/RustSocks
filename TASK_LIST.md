@@ -220,13 +220,14 @@
 - [x] Metrics integration w SessionManager
 
 #### 2.2.7 Session Statistics API
-- [ ] get_stats() implementation
-  - [ ] Active session count
-  - [ ] Total sessions today
-  - [ ] Total bytes today
-  - [ ] Top users by sessions
-  - [ ] Top destinations by connections
-  - [ ] ACL stats (allowed/blocked)
+- [x] get_stats() implementation
+  - [x] Active session count
+  - [x] Total sessions today
+  - [x] Total bytes today
+  - [x] Top users by sessions
+  - [x] Top destinations by connections
+  - [x] ACL stats (allowed/blocked)
+- [x] HTTP /stats endpoint (JSON)
 
 ### 2.3 IPv6 & Domain Resolution (Tydzień 3)
 - [ ] IPv6 address parsing (pełna obsługa)

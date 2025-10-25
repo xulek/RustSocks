@@ -15,5 +15,6 @@ pub use metrics::SessionMetrics;
 #[cfg(feature = "database")]
 pub use store::SessionStore;
 pub use types::{
-    ConnectionInfo, Protocol as SessionProtocol, Session, SessionFilter, SessionStatus,
+    AclDecisionStats, ConnectionInfo, DestinationStat, Protocol as SessionProtocol, Session,
+    SessionFilter, SessionStats, SessionStatus, UserSessionStat,
 };

@@ -4,10 +4,16 @@ use super::batch::{BatchConfig, BatchWriter};
 use super::metrics::SessionMetrics;
 #[cfg(feature = "database")]
 use super::store::SessionStore;
-use super::types::{ConnectionInfo, Protocol, Session, SessionStatus};
+use super::types::{
+    AclDecisionStats, ConnectionInfo, DestinationStat, Protocol, Session, SessionStats,
+    SessionStatus, UserSessionStat,
+};
+use chrono::{Duration as ChronoDuration, Utc};
 use dashmap::DashMap;
+use std::collections::HashMap;
 use std::net::IpAddr;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
@@ -98,6 +104,109 @@ impl SessionManager {
     /// Count currently active sessions.
     pub fn active_session_count(&self) -> usize {
         self.active_sessions.len()
+    }
+
+    /// Aggregate high-level statistics for sessions that started within the provided lookback window.
+    pub async fn get_stats(&self, lookback: Duration) -> SessionStats {
+        let now = Utc::now();
+        let lookback_chrono =
+            ChronoDuration::from_std(lookback).unwrap_or_else(|_| ChronoDuration::hours(24));
+        let cutoff = now - lookback_chrono;
+
+        let active_count = self.active_sessions.len();
+
+        // Snapshot active sessions to avoid holding locks across await.
+        let active_handles: Vec<_> = self
+            .active_sessions
+            .iter()
+            .map(|entry| entry.value().clone())
+            .collect();
+
+        let mut window_sessions: Vec<Session> = Vec::new();
+
+        for handle in active_handles {
+            let session = handle.read().await.clone();
+            if session.start_time >= cutoff {
+                window_sessions.push(session);
+            }
+        }
+
+        let closed_sessions = self.closed_sessions.lock().unwrap().clone();
+        window_sessions.extend(
+            closed_sessions
+                .into_iter()
+                .filter(|session| session.start_time >= cutoff),
+        );
+
+        let rejected_sessions = self.rejected_sessions.lock().unwrap().clone();
+        window_sessions.extend(
+            rejected_sessions
+                .into_iter()
+                .filter(|session| session.start_time >= cutoff),
+        );
+
+        let total_sessions = window_sessions.len();
+        let total_bytes = window_sessions.iter().fold(0u64, |acc, session| {
+            acc.saturating_add(session.bytes_sent.saturating_add(session.bytes_received))
+        });
+
+        let mut user_counts: HashMap<String, u64> = HashMap::new();
+        let mut destination_counts: HashMap<String, u64> = HashMap::new();
+        let mut acl_allowed = 0u64;
+        let mut acl_blocked = 0u64;
+
+        for session in &window_sessions {
+            *user_counts.entry(session.user.clone()).or_insert(0) += 1;
+            *destination_counts
+                .entry(session.dest_ip.clone())
+                .or_insert(0) += 1;
+
+            if session.acl_decision.eq_ignore_ascii_case("allow") {
+                acl_allowed += 1;
+            } else if session.acl_decision.eq_ignore_ascii_case("block") {
+                acl_blocked += 1;
+            }
+        }
+
+        const TOP_LIMIT: usize = 10;
+
+        let mut top_users: Vec<UserSessionStat> = user_counts
+            .into_iter()
+            .map(|(user, sessions)| UserSessionStat { user, sessions })
+            .collect();
+        top_users.sort_by(|a, b| {
+            b.sessions
+                .cmp(&a.sessions)
+                .then_with(|| a.user.cmp(&b.user))
+        });
+        top_users.truncate(TOP_LIMIT);
+
+        let mut top_destinations: Vec<DestinationStat> = destination_counts
+            .into_iter()
+            .map(|(dest_ip, connections)| DestinationStat {
+                dest_ip,
+                connections,
+            })
+            .collect();
+        top_destinations.sort_by(|a, b| {
+            b.connections
+                .cmp(&a.connections)
+                .then_with(|| a.dest_ip.cmp(&b.dest_ip))
+        });
+        top_destinations.truncate(TOP_LIMIT);
+
+        SessionStats {
+            generated_at: now,
+            active_sessions: active_count,
+            total_sessions,
+            total_bytes,
+            top_users,
+            top_destinations,
+            acl: AclDecisionStats {
+                allowed: acl_allowed,
+                blocked: acl_blocked,
+            },
+        }
     }
 
     /// Update traffic counters for an active session.
@@ -228,6 +337,7 @@ impl Default for SessionManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashMap;
     use std::net::{IpAddr, Ipv4Addr};
 
     #[cfg(feature = "metrics")]
@@ -304,6 +414,69 @@ mod tests {
         assert_eq!(rejected[0].status, SessionStatus::RejectedByAcl);
         assert_eq!(rejected[0].acl_decision, "block");
         assert_eq!(rejected[0].acl_rule_matched.as_deref(), Some("Block admin"));
+    }
+
+    #[tokio::test]
+    async fn get_stats_aggregates_today_sessions() {
+        let manager = SessionManager::new();
+
+        let mut conn_a = sample_connection();
+        conn_a.dest_ip = "app.internal".into();
+
+        let session_a = manager
+            .new_session("alice", conn_a, "allow", Some("Allow app".into()))
+            .await;
+        manager.update_traffic(&session_a, 150, 50, 2, 1).await;
+        manager
+            .close_session(&session_a, Some("finished".into()), SessionStatus::Closed)
+            .await;
+
+        let mut conn_b = sample_connection();
+        conn_b.dest_ip = "api.internal".into();
+        let session_b = manager.new_session("bob", conn_b, "allow", None).await;
+        if let Some(handle) = manager.get_session(&session_b) {
+            let mut guard = handle.write().await;
+            guard.start_time = guard.start_time - ChronoDuration::hours(48);
+        }
+
+        manager
+            .track_rejected_session(
+                "carol",
+                IpAddr::V4(Ipv4Addr::LOCALHOST),
+                41000,
+                "blocked.internal".into(),
+                8080,
+                Protocol::Tcp,
+                Some("Block admin".into()),
+            )
+            .await;
+
+        let stats = manager.get_stats(Duration::from_secs(24 * 3600)).await;
+
+        assert_eq!(stats.active_sessions, 1);
+        assert_eq!(stats.total_sessions, 2);
+        assert_eq!(stats.total_bytes, 200);
+
+        let users: HashMap<_, _> = stats
+            .top_users
+            .iter()
+            .map(|entry| (entry.user.as_str(), entry.sessions))
+            .collect();
+        assert_eq!(users.get("alice"), Some(&1));
+        assert_eq!(users.get("carol"), Some(&1));
+        assert!(users.get("bob").is_none());
+
+        let destinations: HashMap<_, _> = stats
+            .top_destinations
+            .iter()
+            .map(|entry| (entry.dest_ip.as_str(), entry.connections))
+            .collect();
+        assert_eq!(destinations.get("app.internal"), Some(&1));
+        assert_eq!(destinations.get("blocked.internal"), Some(&1));
+        assert!(destinations.get("api.internal").is_none());
+
+        assert_eq!(stats.acl.allowed, 1);
+        assert_eq!(stats.acl.blocked, 1);
     }
 
     #[cfg(feature = "metrics")]

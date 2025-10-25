@@ -366,54 +366,89 @@ impl SessionManager {
             .map_err(|e| format!("Failed to query history: {}", e))
     }
     
-    /// Get session statistics
-    pub async fn get_stats(&self) -> SessionStats {
-        let active_count = self.active_sessions.len();
-        let today_start = Utc::now().date_naive().and_hms_opt(0, 0, 0).unwrap()
-            .and_local_timezone(Utc).unwrap();
-        
-        let today_filter = SessionFilter {
-            start_after: Some(today_start),
-            ..Default::default()
-        };
-        
-        let today_sessions = self.query_history(today_filter).await
-            .unwrap_or_default();
-        
-        let total_bytes_today: u64 = today_sessions.iter()
+    /// Get session statistics for a rolling window
+    pub async fn get_stats(&self, lookback: Duration) -> SessionStats {
+        let now = Utc::now();
+        let cutoff = now - lookback;
+
+        let mut window_sessions = Vec::new();
+
+        for handle in self
+            .active_sessions
+            .iter()
+            .map(|entry| entry.value().clone())
+        {
+            let session = handle.read().await.clone();
+            if session.start_time >= cutoff {
+                window_sessions.push(session);
+            }
+        }
+
+        window_sessions.extend(
+            self.closed_sessions
+                .lock()
+                .unwrap()
+                .iter()
+                .cloned()
+                .filter(|session| session.start_time >= cutoff),
+        );
+
+        window_sessions.extend(
+            self.rejected_sessions
+                .lock()
+                .unwrap()
+                .iter()
+                .cloned()
+                .filter(|session| session.start_time >= cutoff),
+        );
+
+        let total_bytes: u64 = window_sessions
+            .iter()
             .map(|s| s.bytes_sent + s.bytes_received)
             .sum();
-        
-        // Top users
-        let mut user_counts: std::collections::HashMap<String, usize> = 
+
+        let mut user_counts: std::collections::HashMap<String, u64> =
             std::collections::HashMap::new();
-        for session in &today_sessions {
+        let mut dest_counts: std::collections::HashMap<String, u64> =
+            std::collections::HashMap::new();
+        let mut acl_allowed = 0u64;
+        let mut acl_blocked = 0u64;
+
+        for session in &window_sessions {
             *user_counts.entry(session.user.clone()).or_insert(0) += 1;
+            *dest_counts.entry(session.dest_ip.clone()).or_insert(0) += 1;
+            match session.acl_decision.as_str() {
+                d if d.eq_ignore_ascii_case("allow") => acl_allowed += 1,
+                d if d.eq_ignore_ascii_case("block") => acl_blocked += 1,
+                _ => {}
+            }
         }
-        let mut top_users: Vec<_> = user_counts.into_iter()
-            .map(|(user, count)| UserStats { user, sessions: count })
+
+        let mut top_users: Vec<_> = user_counts
+            .into_iter()
+            .map(|(user, sessions)| UserSessionStat { user, sessions })
             .collect();
         top_users.sort_by(|a, b| b.sessions.cmp(&a.sessions));
         top_users.truncate(10);
-        
-        // Top destinations
-        let mut dest_counts: std::collections::HashMap<String, usize> = 
-            std::collections::HashMap::new();
-        for session in &today_sessions {
-            *dest_counts.entry(session.dest_ip.clone()).or_insert(0) += 1;
-        }
-        let mut top_destinations: Vec<_> = dest_counts.into_iter()
-            .map(|(ip, count)| DestStats { ip, connections: count })
+
+        let mut top_destinations: Vec<_> = dest_counts
+            .into_iter()
+            .map(|(dest_ip, connections)| DestinationStat { dest_ip, connections })
             .collect();
         top_destinations.sort_by(|a, b| b.connections.cmp(&a.connections));
         top_destinations.truncate(10);
-        
+
         SessionStats {
-            active_sessions: active_count,
-            total_sessions_today: today_sessions.len(),
-            total_bytes_today,
+            generated_at: now,
+            active_sessions: self.active_sessions.len(),
+            total_sessions: window_sessions.len(),
+            total_bytes,
             top_users,
             top_destinations,
+            acl: AclDecisionStats {
+                allowed: acl_allowed,
+                blocked: acl_blocked,
+            },
         }
     }
     
@@ -439,23 +474,31 @@ impl SessionManager {
 
 #[derive(Debug, Serialize)]
 pub struct SessionStats {
+    pub generated_at: DateTime<Utc>,
     pub active_sessions: usize,
-    pub total_sessions_today: usize,
-    pub total_bytes_today: u64,
-    pub top_users: Vec<UserStats>,
-    pub top_destinations: Vec<DestStats>,
+    pub total_sessions: usize,
+    pub total_bytes: u64,
+    pub top_users: Vec<UserSessionStat>,
+    pub top_destinations: Vec<DestinationStat>,
+    pub acl: AclDecisionStats,
 }
 
 #[derive(Debug, Serialize)]
-pub struct UserStats {
+pub struct UserSessionStat {
     pub user: String,
-    pub sessions: usize,
+    pub sessions: u64,
 }
 
 #[derive(Debug, Serialize)]
-pub struct DestStats {
-    pub ip: String,
-    pub connections: usize,
+pub struct DestinationStat {
+    pub dest_ip: String,
+    pub connections: u64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct AclDecisionStats {
+    pub allowed: u64,
+    pub blocked: u64,
 }
 
 // Metrics

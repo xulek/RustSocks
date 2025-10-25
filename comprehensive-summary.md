@@ -294,11 +294,11 @@ GET /api/sessions/{session_id}
 GET /api/sessions/stats
 Response: {
   active_sessions: 1234,
-  total_sessions_today: 5678,
-  total_bytes_today: 1099511627776,
+  total_sessions: 5678,
+  total_bytes: 1099511627776,
   top_users: [...],
   top_destinations: [...],
-  acl_stats: {allowed: 4500, blocked: 178}
+  acl: {allowed: 4500, blocked: 178}
 }
 
 # User-specific

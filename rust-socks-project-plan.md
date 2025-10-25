@@ -499,8 +499,8 @@ CREATE INDEX idx_sessions_status ON sessions(status);
 // Response: Agregowane statystyki
 {
   "active_sessions": 1234,
-  "total_sessions_today": 5678,
-  "total_bytes_today": 1099511627776,
+  "total_sessions": 5678,
+  "total_bytes": 1099511627776,
   "top_users": [
     {"user": "alice", "sessions": 234},
     {"user": "bob", "sessions": 123}
@@ -1752,8 +1752,8 @@ curl -H "Authorization: Bearer your-token" \
 # Response:
 {
   "active_sessions": 1234,
-  "total_sessions_today": 5678,
-  "total_bytes_today": 1099511627776,
+  "total_sessions": 5678,
+  "total_bytes": 1099511627776,
   "total_bytes_sent": 549755813888,
   "total_bytes_received": 549755813888,
   "top_users": [

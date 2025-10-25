@@ -3,12 +3,15 @@ use crate::auth::AuthManager;
 use crate::config::Config;
 use crate::server::handler::handle_client;
 use crate::server::proxy::TrafficUpdateConfig;
+use crate::server::stats;
 use crate::session::SessionManager;
 #[cfg(feature = "database")]
 use crate::session::{BatchConfig, SessionStore};
 use crate::utils::error::{Result, RustSocksError};
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::net::TcpListener;
+use tokio::task::JoinHandle;
 use tracing::{error, info, warn};
 
 pub struct SocksServer {
@@ -19,6 +22,7 @@ pub struct SocksServer {
     anonymous_user: Arc<String>,
     session_manager: Arc<SessionManager>,
     traffic_config: TrafficUpdateConfig,
+    stats_handle: Option<JoinHandle<()>>,
 }
 
 impl SocksServer {
@@ -94,6 +98,37 @@ impl SocksServer {
         let traffic_config =
             TrafficUpdateConfig::new(config.sessions.traffic_update_packet_interval);
 
+        let mut stats_handle = None;
+
+        if config.sessions.stats_api_enabled {
+            let bind_addr = format!(
+                "{}:{}",
+                config.sessions.stats_api_bind_address, config.sessions.stats_api_port
+            );
+            let default_window_secs = config
+                .sessions
+                .stats_window_hours
+                .checked_mul(3600)
+                .ok_or_else(|| {
+                    RustSocksError::Config("sessions.stats_window_hours is too large".to_string())
+                })?;
+            let default_window = Duration::from_secs(default_window_secs);
+
+            match stats::start_stats_server(&bind_addr, session_manager.clone(), default_window)
+                .await
+            {
+                Ok(handle) => {
+                    stats_handle = Some(handle);
+                }
+                Err(e) => {
+                    return Err(RustSocksError::Config(format!(
+                        "Failed to start stats API: {}",
+                        e
+                    )));
+                }
+            }
+        }
+
         Ok(Self {
             config,
             auth_manager,
@@ -102,6 +137,7 @@ impl SocksServer {
             anonymous_user,
             session_manager,
             traffic_config,
+            stats_handle,
         })
     }
 
@@ -161,6 +197,10 @@ impl SocksServer {
     }
 
     pub async fn shutdown(&self) {
+        if let Some(handle) = &self.stats_handle {
+            handle.abort();
+        }
+
         #[cfg(feature = "database")]
         self.session_manager.shutdown().await;
     }

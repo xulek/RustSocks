@@ -124,6 +124,12 @@
   - `IntCounterVec` per użytkownik (`rustsocks_user_sessions_total`, `rustsocks_user_bandwidth_bytes_total`)
   - `SessionManager` aktualizuje metryki na starcie, ruchu i zamknięciu oraz dla odrzuceń ACL
   - Test `session_metrics_update_counters` zabezpiecza regresje
+- ✅ **2.2.7 Session Statistics API**
+  - `SessionManager::get_stats(window)` agreguje dane dla konfigurowalnego okna (domyślnie 24 h rolling)
+  - Zwraca liczniki: aktywne sesje, liczba i łączny ruch w oknie, top 10 użytkowników oraz destynacji
+  - Wbudowane statystyki ACL (`allowed`/`blocked`) na podstawie decyzji wejściowych
+  - HTTP GET `/stats` (Axum) udostępnia JSON (`?window_hours=48` nadpisuje okno)
+  - Test `get_stats_aggregates_today_sessions` chroni logikę agregacji
 
 ## 🎯 Weryfikacja Działania
 
@@ -214,6 +220,10 @@ batch_interval_ms = 1000
 retention_days = 90
 cleanup_interval_hours = 24
 traffic_update_packet_interval = 10
+stats_window_hours = 24
+stats_api_enabled = false
+stats_api_bind_address = "127.0.0.1"
+stats_api_port = 9090
 ```
 
 ### Eksport metryk (Prometheus)
@@ -236,6 +246,49 @@ let metric_families = prometheus::gather();
 let mut buffer = Vec::new();
 TextEncoder::new().encode(&metric_families, &mut buffer)?;
 // zwróć buffer jako body `text/plain; version=0.0.4`
+```
+
+### Session Statistics API
+
+`SessionManager::get_stats(window)` udostępnia agregaty dla dowolnego okna czasowego (`std::time::Duration`, domyślnie 24 h):
+
+- `active_sessions` – liczba aktywnych sesji w momencie wywołania
+- `total_sessions` – ile sesji (aktywnych/zamkniętych/odrzuconych) rozpoczęło się w wybranym oknie
+- `total_bytes` – suma `bytes_sent + bytes_received` w zadanym oknie
+- `top_users` / `top_destinations` – Top 10 użytkowników i hostów wg liczby połączeń
+- `acl.allowed` / `acl.blocked` – podsumowanie decyzji ACL dla połączeń w oknie
+
+```rust
+use std::time::Duration;
+
+let stats = session_manager
+    .get_stats(Duration::from_secs(24 * 3600))
+    .await;
+println!(
+    "Aktywne: {}, sesje w oknie: {}, bajty w oknie: {}",
+    stats.active_sessions, stats.total_sessions, stats.total_bytes
+);
+```
+
+Po ustawieniu `sessions.stats_api_enabled = true` serwer HTTP (domyślnie `127.0.0.1:9090`) udostępnia endpoint:
+
+```text
+GET /stats            # JSON snapshot dla domyślnego okna
+GET /stats?window_hours=48
+```
+
+Przykładowa odpowiedź:
+
+```json
+{
+  "generated_at": "2024-05-01T12:00:00Z",
+  "active_sessions": 3,
+  "total_sessions": 42,
+  "total_bytes": 987654321,
+  "top_users": [{"user":"alice","sessions":10}],
+  "top_destinations": [{"dest_ip":"example.com","connections":7}],
+  "acl": {"allowed": 40, "blocked": 2}
+}
 ```
 
 ### ACL Configuration (Nowe! ✨)

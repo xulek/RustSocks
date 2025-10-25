@@ -76,6 +76,14 @@ pub struct SessionSettings {
     pub cleanup_interval_hours: u64,
     #[serde(default = "default_session_traffic_update_packet_interval")]
     pub traffic_update_packet_interval: u64,
+    #[serde(default = "default_stats_window_hours")]
+    pub stats_window_hours: u64,
+    #[serde(default = "default_stats_api_enabled")]
+    pub stats_api_enabled: bool,
+    #[serde(default = "default_stats_api_bind_address")]
+    pub stats_api_bind_address: String,
+    #[serde(default = "default_stats_api_port")]
+    pub stats_api_port: u16,
 }
 
 // Default values
@@ -143,6 +151,22 @@ fn default_session_traffic_update_packet_interval() -> u64 {
     10
 }
 
+fn default_stats_window_hours() -> u64 {
+    24
+}
+
+fn default_stats_api_enabled() -> bool {
+    false
+}
+
+fn default_stats_api_bind_address() -> String {
+    "127.0.0.1".to_string()
+}
+
+fn default_stats_api_port() -> u16 {
+    9090
+}
+
 impl Default for ServerConfig {
     fn default() -> Self {
         Self {
@@ -193,6 +217,10 @@ impl Default for SessionSettings {
             retention_days: default_session_retention_days(),
             cleanup_interval_hours: default_session_cleanup_interval_hours(),
             traffic_update_packet_interval: default_session_traffic_update_packet_interval(),
+            stats_window_hours: default_stats_window_hours(),
+            stats_api_enabled: default_stats_api_enabled(),
+            stats_api_bind_address: default_stats_api_bind_address(),
+            stats_api_port: default_stats_api_port(),
         }
     }
 }
@@ -281,6 +309,12 @@ impl Config {
             ));
         }
 
+        if self.sessions.stats_window_hours == 0 {
+            return Err(RustSocksError::Config(
+                "sessions.stats_window_hours must be greater than 0".to_string(),
+            ));
+        }
+
         Ok(())
     }
 
@@ -318,6 +352,10 @@ batch_interval_ms = 1000
 retention_days = 90
 cleanup_interval_hours = 24
 traffic_update_packet_interval = 10
+stats_window_hours = 24
+stats_api_enabled = false
+stats_api_bind_address = "127.0.0.1"
+stats_api_port = 9090
 "#;
 
         std::fs::write(path.as_ref(), example).map_err(|e| {
@@ -346,6 +384,10 @@ mod tests {
         assert_eq!(config.sessions.storage, "memory");
         assert_eq!(config.sessions.batch_size, 100);
         assert_eq!(config.sessions.traffic_update_packet_interval, 10);
+        assert_eq!(config.sessions.stats_window_hours, 24);
+        assert!(!config.sessions.stats_api_enabled);
+        assert_eq!(config.sessions.stats_api_bind_address, "127.0.0.1");
+        assert_eq!(config.sessions.stats_api_port, 9090);
     }
 
     #[test]
@@ -391,5 +433,8 @@ mod tests {
 
         config.sessions.cleanup_interval_hours = 12;
         assert!(config.validate().is_ok());
+
+        config.sessions.stats_window_hours = 0;
+        assert!(config.validate().is_err());
     }
 }

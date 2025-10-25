@@ -182,6 +182,36 @@ impl Default for SessionFilter {
     }
 }
 
+/// Aggregated statistics returned by `SessionManager::get_stats`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionStats {
+    pub generated_at: DateTime<Utc>,
+    pub active_sessions: usize,
+    pub total_sessions: usize,
+    pub total_bytes: u64,
+    pub top_users: Vec<UserSessionStat>,
+    pub top_destinations: Vec<DestinationStat>,
+    pub acl: AclDecisionStats,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UserSessionStat {
+    pub user: String,
+    pub sessions: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DestinationStat {
+    pub dest_ip: String,
+    pub connections: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AclDecisionStats {
+    pub allowed: u64,
+    pub blocked: u64,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
