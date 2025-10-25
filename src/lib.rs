@@ -1,6 +1,7 @@
 // RustSocks - High-performance SOCKS5 proxy server
 
 pub mod acl;
+pub mod api;
 pub mod auth;
 pub mod config;
 pub mod protocol;

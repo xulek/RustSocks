@@ -314,6 +314,40 @@ impl SessionManager {
     pub fn closed_snapshot(&self) -> Vec<Session> {
         self.closed_sessions.lock().unwrap().clone()
     }
+
+    /// Get all sessions (active + closed + rejected)
+    pub async fn get_all_sessions(&self) -> Vec<Session> {
+        let mut all = Vec::new();
+
+        // Add active sessions
+        for entry in self.active_sessions.iter() {
+            let session = entry.value().read().await.clone();
+            all.push(session);
+        }
+
+        // Add closed sessions
+        all.extend(self.closed_sessions.lock().unwrap().clone());
+
+        // Add rejected sessions
+        all.extend(self.rejected_sessions.lock().unwrap().clone());
+
+        all
+    }
+
+    /// Get active sessions only
+    pub async fn get_active_sessions(&self) -> Vec<Session> {
+        let mut sessions = Vec::new();
+        for entry in self.active_sessions.iter() {
+            let session = entry.value().read().await.clone();
+            sessions.push(session);
+        }
+        sessions
+    }
+
+    /// Get closed sessions only
+    pub fn get_closed_sessions(&self) -> Vec<Session> {
+        self.closed_sessions.lock().unwrap().clone()
+    }
 }
 
 impl Default for SessionManager {

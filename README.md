@@ -301,6 +301,106 @@ Przykładowa odpowiedź:
 }
 ```
 
+### REST API for Monitoring (Nowe! ✨)
+
+RustSocks udostępnia REST API do monitorowania sesji i zarządzania. API można włączyć w konfiguracji:
+
+```toml
+[sessions]
+stats_api_enabled = true
+stats_api_bind_address = "127.0.0.1"
+stats_api_port = 9090
+```
+
+**Session Endpoints:**
+
+```bash
+# Get active sessions
+curl http://127.0.0.1:9090/api/sessions/active
+
+# Get session history with filtering
+curl "http://127.0.0.1:9090/api/sessions/history?user=alice&hours=24&page=1&page_size=50"
+
+# Get session statistics (top users, destinations, traffic)
+curl http://127.0.0.1:9090/api/sessions/stats
+
+# Get specific session details
+curl http://127.0.0.1:9090/api/sessions/{session_id}
+
+# Get sessions for specific user
+curl http://127.0.0.1:9090/api/users/alice/sessions
+```
+
+**Management Endpoints:**
+
+```bash
+# Health check
+curl http://127.0.0.1:9090/health
+# Response: {"status":"healthy","version":"0.4.0","uptime_seconds":0}
+
+# Prometheus metrics
+curl http://127.0.0.1:9090/metrics
+```
+
+**API Response Example** (`/api/sessions/stats`):
+
+```json
+{
+  "total_sessions": 142,
+  "active_sessions": 5,
+  "closed_sessions": 135,
+  "failed_sessions": 2,
+  "total_bytes_sent": 1234567890,
+  "total_bytes_received": 9876543210,
+  "top_users": [
+    {
+      "user": "alice",
+      "session_count": 45,
+      "bytes_sent": 500000000,
+      "bytes_received": 300000000
+    }
+  ],
+  "top_destinations": [
+    {
+      "destination": "example.com:443",
+      "session_count": 20,
+      "bytes_sent": 100000000,
+      "bytes_received": 50000000
+    }
+  ]
+}
+```
+
+**History with Pagination** (`/api/sessions/history`):
+
+```json
+{
+  "data": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "user": "alice",
+      "source_ip": "192.168.1.100",
+      "source_port": 54321,
+      "dest_ip": "example.com",
+      "dest_port": 443,
+      "protocol": "tcp",
+      "status": "closed",
+      "acl_decision": "allow",
+      "acl_rule": "Allow HTTPS to company network",
+      "bytes_sent": 1024000,
+      "bytes_received": 512000,
+      "start_time": "2025-10-25T10:30:00Z",
+      "end_time": "2025-10-25T10:35:00Z",
+      "duration_seconds": 300
+    }
+  ],
+  "total": 142,
+  "page": 1,
+  "page_size": 50,
+  "total_pages": 3
+}
+```
+
 ### ACL Configuration (Nowe! ✨)
 
 ```toml
@@ -428,13 +528,16 @@ cargo test --features database
 cargo test -- --nocapture
 ```
 
-**Status testów:** ✅ 37/37 (default) · ✅ 38/38 (`--features database`)
+**Status testów:** ✅ 65/65 passed (47 unit + 2 ACL + 7 API + 4 BIND + 1 IPv6 + 1 session + 3 UDP)
 
 **Zakres pokrycia:**
 - Protocol/Auth/Config – testy jednostkowe ✅
 - ACL Engine (matcher, loader, engine, watcher) – 17+ przypadków ✅
 - Session Manager & Store – cykl życia, batch writer, odrzucenia ACL ✅
-- Integracje: `tests/acl_integration.rs`, `session::store` (SQLite in-memory) ✅
+- REST API – 7 endpoint tests (health, metrics, sessions, stats, history, pagination) ✅
+- BIND Command – 4 integration tests ✅
+- UDP ASSOCIATE – 3 integration tests ✅
+- Integracje: `tests/acl_integration.rs`, `tests/api_endpoints.rs`, `tests/bind_command.rs`, `tests/udp_associate.rs` ✅
 
 ## 🎯 Roadmap
 
@@ -447,13 +550,45 @@ cargo test -- --nocapture
 - [x] UDP ASSOCIATE command ✅
 - [x] BIND command ✅
 
-### Sprint 3 - Production & API
-- [ ] REST API dla monitoringu
-- [ ] Prometheus metrics
-- [ ] Grafana dashboards
-- [ ] systemd integration
-- [ ] Docker packaging
-- [ ] PAM authentication
+### Sprint 3 - Production & API (W TRAKCIE) 🔄
+
+- ✅ **Sprint 3.1 - UDP ASSOCIATE** ✅
+  - UDP relay implementation
+  - Packet forwarding
+  - Timeout management
+  - UDP session tracking
+  - ACL integration
+
+- ✅ **Sprint 3.2 - BIND Command** ✅
+  - BIND implementation (reverse connections)
+  - Port allocation mechanism
+  - Incoming connection handling
+  - ACL integration
+  - 4 integration tests
+
+- ✅ **Sprint 3.3 - REST API Core** ✅
+  - **Axum server setup** with state management
+  - **Session Endpoints:**
+    - `GET /api/sessions/active` - List active sessions
+    - `GET /api/sessions/history` - History with filtering (user, dest_ip, hours, status) & pagination
+    - `GET /api/sessions/{id}` - Session details
+    - `GET /api/sessions/stats` - Aggregated statistics (top users, destinations, traffic)
+    - `GET /api/users/{user}/sessions` - User-specific sessions
+  - **Management Endpoints:**
+    - `GET /health` - Health check with version
+    - `GET /metrics` - Prometheus text format metrics
+    - `POST /api/admin/reload-acl` - ACL hot reload (stub)
+    - `GET /api/acl/rules` - Inspect current rules (stub)
+    - `POST /api/acl/test` - Test ACL decision (stub)
+  - **7 integration tests** for API endpoints
+  - JSON request/response types with proper error handling
+
+- [ ] **Sprint 3.4+ - Pozostałe**
+  - [ ] Extended Prometheus metrics & dashboards
+  - [ ] Grafana dashboards
+  - [ ] systemd integration
+  - [ ] Docker packaging
+  - [ ] PAM authentication
 
 ## 📊 Performance
 
@@ -495,7 +630,7 @@ MIT License
 
 ---
 
-**Status:** 🟢 Sprint 1 MVP + Sprint 2.1 ACL + Sprint 2.1.5 Hot Reload UKOŃCZONE!
-**Wersja:** 0.2.1 (MVP + ACL Engine + Hot Reload)
-**Testy:** 37/37 passed (default) ✅ · `cargo test --features database` → 38/38 ✅
-**Data:** 2025-10-24
+**Status:** 🟢 Sprint 1-2 UKOŃCZONE + Sprint 3.1-3.3 UKOŃCZONE! (UDP + BIND + REST API Core)
+**Wersja:** 0.4.0 (MVP + ACL + Sessions + UDP + BIND + REST API)
+**Testy:** 65/65 passed ✅ (47 unit + 18 integration tests)
+**Data:** 2025-10-25
