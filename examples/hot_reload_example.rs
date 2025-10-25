@@ -20,7 +20,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let engine = Arc::new(AclEngine::new(acl_config)?);
 
     // Create and start the watcher
-    let mut watcher = AclWatcher::new(config_path.clone(), engine.clone());
+    let mut watcher = AclWatcher::new(config_path.clone(), engine.clone(), None);
     watcher.start().await?;
 
     println!("ACL hot reload enabled. Watching: {:?}", config_path);

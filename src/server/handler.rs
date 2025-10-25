@@ -296,12 +296,13 @@ async fn handle_connect(
         protocol: session_ctx.protocol,
     };
 
-    let session_id = session_manager
-        .new_session(
+    let (session_id, cancel_token) = session_manager
+        .new_session_with_control(
             &session_ctx.user,
             connection_info,
             session_ctx.acl_decision.clone(),
             session_ctx.acl_rule.clone(),
+            None,
         )
         .await;
 
@@ -330,6 +331,7 @@ async fn handle_connect(
         upstream_stream,
         session_manager.clone(),
         session_id,
+        cancel_token,
         traffic_config,
     )
     .await
@@ -342,6 +344,10 @@ async fn handle_connect(
                     SessionStatus::Closed,
                 )
                 .await;
+            Ok(())
+        }
+        Err(RustSocksError::ConnectionClosed) => {
+            debug!(session = %session_id, "Session cancelled");
             Ok(())
         }
         Err(e) => {
@@ -363,6 +369,9 @@ async fn handle_udp_associate(
 ) -> Result<()> {
     let dest_host = "0.0.0.0".to_string(); // UDP ASSOCIATE doesn't specify real destination yet
 
+    // Create shutdown channel for UDP relay
+    let (shutdown_tx, shutdown_rx) = broadcast::channel(1);
+
     // Create session
     let connection_info = ConnectionInfo {
         source_ip: session_ctx.client_addr.ip(),
@@ -372,17 +381,15 @@ async fn handle_udp_associate(
         protocol: session_ctx.protocol,
     };
 
-    let session_id = session_manager
-        .new_session(
+    let (session_id, cancel_token) = session_manager
+        .new_session_with_control(
             &session_ctx.user,
             connection_info,
             session_ctx.acl_decision.clone(),
             session_ctx.acl_rule.clone(),
+            Some(shutdown_tx.clone()),
         )
         .await;
-
-    // Create shutdown channel for UDP relay
-    let (shutdown_tx, shutdown_rx) = broadcast::channel(1);
 
     // Start UDP relay
     let udp_relay_addr = match handle_udp_relay(
@@ -437,20 +444,27 @@ async fn handle_udp_associate(
     // Keep TCP connection alive - when it closes, UDP session ends
     // Read from stream to detect disconnect
     let mut buf = [0u8; 1];
-    match tokio::io::AsyncReadExt::read(&mut client_stream, &mut buf).await {
-        Ok(0) | Err(_) => {
-            debug!("TCP control connection closed, terminating UDP session");
-            let _ = shutdown_tx.send(());
-            session_manager
-                .close_session(
-                    &session_id,
-                    Some("TCP control connection closed".to_string()),
-                    SessionStatus::Closed,
-                )
-                .await;
+    tokio::select! {
+        result = tokio::io::AsyncReadExt::read(&mut client_stream, &mut buf) => {
+            match result {
+                Ok(0) | Err(_) => {
+                    debug!("TCP control connection closed, terminating UDP session");
+                    let _ = shutdown_tx.send(());
+                    session_manager
+                        .close_session(
+                            &session_id,
+                            Some("TCP control connection closed".to_string()),
+                            SessionStatus::Closed,
+                        )
+                        .await;
+                }
+                Ok(_) => {
+                    debug!("Unexpected data on TCP control connection");
+                }
+            }
         }
-        Ok(_) => {
-            debug!("Unexpected data on TCP control connection");
+        _ = cancel_token.cancelled() => {
+            debug!("UDP session cancelled via ACL update");
         }
     }
 

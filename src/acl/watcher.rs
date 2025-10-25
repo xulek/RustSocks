@@ -1,5 +1,6 @@
 use super::engine::AclEngine;
 use super::loader::load_acl_config_sync;
+use crate::session::SessionManager;
 use notify::{
     Config, Event, EventKind, RecommendedWatcher, RecursiveMode, Result as NotifyResult, Watcher,
 };
@@ -19,6 +20,7 @@ pub struct AclWatcher {
     watcher: Option<RecommendedWatcher>,
     poll_handle: Option<JoinHandle<()>>,
     last_fingerprint: Arc<Mutex<Option<FileFingerprint>>>,
+    session_manager: Option<Arc<SessionManager>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -41,13 +43,18 @@ impl FileFingerprint {
 
 impl AclWatcher {
     /// Create a new ACL watcher
-    pub fn new(config_path: PathBuf, engine: Arc<AclEngine>) -> Self {
+    pub fn new(
+        config_path: PathBuf,
+        engine: Arc<AclEngine>,
+        session_manager: Option<Arc<SessionManager>>,
+    ) -> Self {
         Self {
             config_path,
             engine,
             watcher: None,
             poll_handle: None,
             last_fingerprint: Arc::new(Mutex::new(None)),
+            session_manager,
         }
     }
 
@@ -57,6 +64,7 @@ impl AclWatcher {
         let config_path = self.config_path.clone();
         let engine = self.engine.clone();
         let fingerprint_state = self.last_fingerprint.clone();
+        let session_manager = self.session_manager.clone();
 
         // Setup file watcher
         let mut watcher = RecommendedWatcher::new(
@@ -94,10 +102,17 @@ impl AclWatcher {
 
         // Spawn background task to handle reload events
         let fingerprint_state_clone = fingerprint_state.clone();
+        let session_manager_clone = session_manager.clone();
         tokio::spawn(async move {
             while let Some(_event) = rx.recv().await {
                 info!("ACL config file changed, checking for reload...");
-                Self::maybe_reload(&config_path, &engine, &fingerprint_state_clone).await;
+                Self::maybe_reload(
+                    &config_path,
+                    &engine,
+                    &fingerprint_state_clone,
+                    session_manager_clone.clone(),
+                )
+                .await;
             }
         });
 
@@ -105,11 +120,13 @@ impl AclWatcher {
         let poll_path = self.config_path.clone();
         let poll_engine = self.engine.clone();
         let poll_state = self.last_fingerprint.clone();
+        let poll_manager = session_manager.clone();
         let poll_handle = tokio::spawn(async move {
             let mut ticker = interval(Duration::from_secs(1));
             loop {
                 ticker.tick().await;
-                Self::maybe_reload(&poll_path, &poll_engine, &poll_state).await;
+                Self::maybe_reload(&poll_path, &poll_engine, &poll_state, poll_manager.clone())
+                    .await;
             }
         });
 
@@ -119,7 +136,11 @@ impl AclWatcher {
     }
 
     /// Handle a reload event (with validation and rollback)
-    async fn handle_reload_event(config_path: &Path, engine: &Arc<AclEngine>) -> bool {
+    async fn handle_reload_event(
+        config_path: &Path,
+        engine: &Arc<AclEngine>,
+        session_manager: Option<Arc<SessionManager>>,
+    ) -> bool {
         let start_time = Instant::now();
 
         // Step 1: Load new config
@@ -152,6 +173,14 @@ impl AclWatcher {
                         "ACL reload took longer than 100ms target"
                     );
                 }
+
+                if let Some(manager) = session_manager {
+                    let manager = manager.clone();
+                    let engine = engine.clone();
+                    tokio::spawn(async move {
+                        manager.enforce_acl(engine).await;
+                    });
+                }
                 true
             }
             Err(e) => {
@@ -171,6 +200,7 @@ impl AclWatcher {
         config_path: &Path,
         engine: &Arc<AclEngine>,
         state: &Arc<Mutex<Option<FileFingerprint>>>,
+        session_manager: Option<Arc<SessionManager>>,
     ) {
         let current_fp = match FileFingerprint::capture(config_path) {
             Ok(fp) => fp,
@@ -193,7 +223,7 @@ impl AclWatcher {
             return;
         }
 
-        Self::handle_reload_event(config_path, engine).await;
+        Self::handle_reload_event(config_path, engine, session_manager).await;
 
         let mut state_lock = state.lock().await;
         *state_lock = Some(current_fp);
@@ -335,7 +365,7 @@ mod tests {
 
         // Create engine and watcher
         let engine = Arc::new(AclEngine::new(initial_config).unwrap());
-        let mut watcher = AclWatcher::new(path.clone(), engine.clone());
+        let mut watcher = AclWatcher::new(path.clone(), engine.clone(), None);
         watcher.start().await.unwrap();
 
         // Wait a bit for watcher to initialize

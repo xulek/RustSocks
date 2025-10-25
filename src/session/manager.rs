@@ -8,12 +8,17 @@ use super::types::{
     AclDecisionStats, ConnectionInfo, DestinationStat, Session, SessionStats, SessionStatus,
     UserSessionStat,
 };
+use crate::acl::{AclDecision, AclEngine, Protocol as AclProtocol};
+use crate::protocol::Address;
 use chrono::{Duration as ChronoDuration, Utc};
 use dashmap::DashMap;
 use std::collections::HashMap;
+use std::net::{Ipv4Addr, Ipv6Addr};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tokio::sync::RwLock;
+use tokio::sync::{broadcast, RwLock};
+use tokio_util::sync::CancellationToken;
+use tracing::{info, warn};
 use uuid::Uuid;
 
 /// In-memory session tracker built on top of DashMap.
@@ -22,10 +27,17 @@ pub struct SessionManager {
     active_sessions: DashMap<Uuid, Arc<RwLock<Session>>>,
     closed_sessions: Mutex<Vec<Session>>,
     rejected_sessions: Mutex<Vec<Session>>,
+    session_controls: DashMap<Uuid, SessionControl>,
     #[cfg(feature = "database")]
     store: Option<Arc<SessionStore>>,
     #[cfg(feature = "database")]
     batch_writer: Option<Arc<BatchWriter>>,
+}
+
+#[derive(Debug, Clone)]
+struct SessionControl {
+    cancel_token: CancellationToken,
+    udp_shutdown: Option<broadcast::Sender<()>>,
 }
 
 impl SessionManager {
@@ -35,6 +47,7 @@ impl SessionManager {
             active_sessions: DashMap::new(),
             closed_sessions: Mutex::new(Vec::new()),
             rejected_sessions: Mutex::new(Vec::new()),
+            session_controls: DashMap::new(),
             #[cfg(feature = "database")]
             store: None,
             #[cfg(feature = "database")]
@@ -66,11 +79,34 @@ impl SessionManager {
         acl_decision: impl Into<String>,
         acl_rule_matched: Option<String>,
     ) -> Uuid {
+        self.new_session_with_control(user, connection, acl_decision, acl_rule_matched, None)
+            .await
+            .0
+    }
+
+    /// Start tracking a session and return its cancellation token so callers can react to shutdown.
+    pub async fn new_session_with_control(
+        &self,
+        user: &str,
+        connection: ConnectionInfo,
+        acl_decision: impl Into<String>,
+        acl_rule_matched: Option<String>,
+        udp_shutdown: Option<broadcast::Sender<()>>,
+    ) -> (Uuid, CancellationToken) {
         let mut session =
             Session::new(user.to_string(), connection, acl_decision, acl_rule_matched);
         session.status = SessionStatus::Active;
 
         let session_id = session.session_id;
+        let cancel_token = CancellationToken::new();
+
+        self.session_controls.insert(
+            session_id,
+            SessionControl {
+                cancel_token: cancel_token.clone(),
+                udp_shutdown,
+            },
+        );
 
         #[cfg(feature = "metrics")]
         SessionMetrics::record_session_start(&session.user);
@@ -83,7 +119,7 @@ impl SessionManager {
         self.active_sessions
             .insert(session_id, Arc::new(RwLock::new(session)));
 
-        session_id
+        (session_id, cancel_token)
     }
 
     #[cfg(feature = "database")]
@@ -257,6 +293,8 @@ impl SessionManager {
         reason: Option<String>,
         status: SessionStatus,
     ) {
+        self.session_controls.remove(session_id);
+
         if let Some((_, session_arc)) = self.active_sessions.remove(session_id) {
             let mut session = session_arc.write().await;
             session.close(reason, status);
@@ -272,6 +310,24 @@ impl SessionManager {
                 writer.enqueue(snapshot).await;
             }
         }
+    }
+
+    /// Terminate an active session by cancelling underlying IO and recording closure.
+    pub async fn terminate_session(
+        &self,
+        session_id: &Uuid,
+        reason: impl Into<String>,
+        status: SessionStatus,
+    ) {
+        if let Some(control) = self.session_controls.get(session_id) {
+            control.cancel_token.cancel();
+            if let Some(tx) = &control.udp_shutdown {
+                let _ = tx.send(());
+            }
+        }
+
+        self.close_session(session_id, Some(reason.into()), status)
+            .await;
     }
 
     /// Record a connection rejected before session creation (e.g., ACL block).
@@ -323,7 +379,66 @@ impl SessionManager {
             .collect();
 
         for session_id in session_ids {
-            self.close_session(&session_id, Some(reason.clone()), status.clone())
+            self.terminate_session(&session_id, reason.clone(), status.clone())
+                .await;
+        }
+    }
+
+    /// Re-evaluate all active sessions against the provided ACL engine and terminate those that are no longer allowed.
+    pub async fn enforce_acl(&self, acl_engine: Arc<AclEngine>) {
+        let mut to_terminate = Vec::new();
+
+        for entry in self.active_sessions.iter() {
+            let session_guard = entry.value().read().await;
+            let session = session_guard.clone();
+            drop(session_guard);
+
+            let address = if let Ok(ipv4) = session.dest_ip.parse::<Ipv4Addr>() {
+                Address::IPv4(ipv4.octets())
+            } else if let Ok(ipv6) = session.dest_ip.parse::<Ipv6Addr>() {
+                Address::IPv6(ipv6.octets())
+            } else {
+                Address::Domain(session.dest_ip.clone())
+            };
+
+            let acl_protocol = match session.protocol {
+                super::types::Protocol::Tcp => AclProtocol::Tcp,
+                super::types::Protocol::Udp => AclProtocol::Udp,
+            };
+
+            let (decision, matched_rule) = acl_engine
+                .evaluate(&session.user, &address, session.dest_port, &acl_protocol)
+                .await;
+
+            if decision == AclDecision::Block {
+                let rule_desc = matched_rule.unwrap_or_else(|| "Default policy".to_string());
+                let reason = format!("Terminated by ACL update ({})", rule_desc);
+                to_terminate.push((
+                    session.session_id,
+                    reason,
+                    session.user.clone(),
+                    session.dest_ip.clone(),
+                    session.dest_port,
+                ));
+            }
+        }
+
+        if !to_terminate.is_empty() {
+            info!(
+                count = to_terminate.len(),
+                "Revoking sessions due to ACL update"
+            );
+        }
+
+        for (session_id, reason, user, dest, port) in to_terminate {
+            warn!(
+                %session_id,
+                user = %user,
+                dest = %dest,
+                port,
+                "Closing session after ACL update"
+            );
+            self.terminate_session(&session_id, reason.clone(), SessionStatus::Failed)
                 .await;
         }
     }
@@ -372,9 +487,14 @@ impl Default for SessionManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::acl::types::{
+        AclConfig, AclRule, Action, GlobalAclConfig, Protocol as AclAclProtocol, UserAcl,
+    };
+    use crate::acl::AclEngine;
     use crate::session::types::Protocol;
     use std::collections::HashMap;
     use std::net::{IpAddr, Ipv4Addr};
+    use std::sync::Arc;
 
     #[cfg(feature = "metrics")]
     use crate::session::metrics::{
@@ -537,6 +657,73 @@ mod tests {
         assert_eq!(closed[0].close_reason.as_deref(), Some("Server shutdown"));
         assert!(closed[0].end_time.is_some());
         assert!(closed[0].duration_secs.is_some());
+    }
+
+    #[tokio::test]
+    async fn enforce_acl_revokes_blocked_session() {
+        let manager = SessionManager::new();
+        let mut conn = sample_connection();
+        conn.dest_ip = "10.42.0.10".into();
+        conn.dest_port = 443;
+
+        let initial_config = AclConfig {
+            global: GlobalAclConfig {
+                default_policy: Action::Allow,
+            },
+            users: vec![UserAcl {
+                username: "alice".into(),
+                groups: vec![],
+                rules: vec![AclRule {
+                    action: Action::Allow,
+                    description: "Allow all".into(),
+                    destinations: vec!["0.0.0.0/0".into()],
+                    ports: vec!["*".into()],
+                    protocols: vec![AclAclProtocol::Tcp],
+                    priority: 10,
+                }],
+            }],
+            groups: vec![],
+        };
+
+        let engine = Arc::new(AclEngine::new(initial_config).expect("engine"));
+
+        let (_session_id, _token) = manager
+            .new_session_with_control("alice", conn.clone(), "allow", None, None)
+            .await;
+
+        assert_eq!(manager.active_session_count(), 1);
+
+        let block_config = AclConfig {
+            global: GlobalAclConfig {
+                default_policy: Action::Block,
+            },
+            users: vec![UserAcl {
+                username: "alice".into(),
+                groups: vec![],
+                rules: vec![AclRule {
+                    action: Action::Block,
+                    description: "Block test dest".into(),
+                    destinations: vec!["10.42.0.10".into()],
+                    ports: vec!["443".into()],
+                    protocols: vec![AclAclProtocol::Tcp],
+                    priority: 500,
+                }],
+            }],
+            groups: vec![],
+        };
+
+        engine.reload(block_config).await.expect("reload");
+
+        manager.enforce_acl(engine.clone()).await;
+
+        assert_eq!(manager.active_session_count(), 0);
+        let closed = manager.closed_snapshot();
+        assert_eq!(closed.len(), 1);
+        assert_eq!(closed[0].status, SessionStatus::Failed);
+        assert_eq!(
+            closed[0].close_reason.as_deref(),
+            Some("Terminated by ACL update (Block test dest)"),
+        );
     }
 
     #[cfg(feature = "metrics")]

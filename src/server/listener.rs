@@ -34,6 +34,7 @@ impl SocksServer {
 
         let mut acl_engine: Option<Arc<AclEngine>> = None;
         let mut acl_watcher: Option<Mutex<AclWatcher>> = None;
+        let mut watcher_setup: Option<(PathBuf, Arc<AclEngine>)> = None;
 
         if config.acl.enabled {
             let config_path_str = config
@@ -60,17 +61,7 @@ impl SocksServer {
             };
 
             if config.acl.watch {
-                let mut watcher = AclWatcher::new(config_path.clone(), engine.clone());
-                watcher.start().await.map_err(|e| {
-                    RustSocksError::Config(format!("Failed to start ACL watcher: {}", e))
-                })?;
-
-                info!(
-                    path = %config_path.display(),
-                    "ACL hot reload watcher enabled"
-                );
-
-                acl_watcher = Some(Mutex::new(watcher));
+                watcher_setup = Some((config_path.clone(), engine.clone()));
             }
 
             acl_engine = Some(engine);
@@ -119,6 +110,25 @@ impl SocksServer {
         }
 
         let session_manager = Arc::new(session_manager_inner);
+
+        if let Some((config_path, engine)) = watcher_setup {
+            let mut watcher = AclWatcher::new(
+                config_path.clone(),
+                engine.clone(),
+                Some(session_manager.clone()),
+            );
+            watcher.start().await.map_err(|e| {
+                RustSocksError::Config(format!("Failed to start ACL watcher: {}", e))
+            })?;
+
+            info!(
+                path = %config_path.display(),
+                "ACL hot reload watcher enabled"
+            );
+
+            acl_watcher = Some(Mutex::new(watcher));
+            acl_engine = Some(engine);
+        }
 
         let traffic_config =
             TrafficUpdateConfig::new(config.sessions.traffic_update_packet_interval);

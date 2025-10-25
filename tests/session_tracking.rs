@@ -43,8 +43,8 @@ async fn proxy_updates_session_traffic_on_shutdown_flush() {
         protocol: SessionProtocol::Tcp,
     };
 
-    let session_id = session_manager
-        .new_session("integration-user", connection_info, "allow", None)
+    let (session_id, cancel_token) = session_manager
+        .new_session_with_control("integration-user", connection_info, "allow", None, None)
         .await;
 
     let proxy_task = tokio::spawn(proxy_data(
@@ -52,6 +52,7 @@ async fn proxy_updates_session_traffic_on_shutdown_flush() {
         upstream_stream,
         session_manager.clone(),
         session_id,
+        cancel_token,
         TrafficUpdateConfig::new(10),
     ));
 

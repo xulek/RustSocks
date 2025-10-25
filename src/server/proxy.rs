@@ -6,6 +6,7 @@ use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::net::TcpStream;
+use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, trace};
 use uuid::Uuid;
 
@@ -52,6 +53,7 @@ pub async fn proxy_data(
     upstream: TcpStream,
     session_manager: Arc<SessionManager>,
     session_id: Uuid,
+    cancel_token: CancellationToken,
     update_config: TrafficUpdateConfig,
 ) -> Result<()> {
     let (client_read, client_write) = client.into_split();
@@ -62,6 +64,7 @@ pub async fn proxy_data(
         upstream_write,
         session_manager.clone(),
         session_id,
+        cancel_token.clone(),
         update_config,
         TrafficDirection::Upload,
     ));
@@ -71,6 +74,7 @@ pub async fn proxy_data(
         client_write,
         session_manager,
         session_id,
+        cancel_token,
         update_config,
         TrafficDirection::Download,
     ));
@@ -88,8 +92,22 @@ pub async fn proxy_data(
             );
             Ok(())
         }
-        (Err(err), Ok(_)) | (Ok(_), Err(err)) => Err(err),
-        (Err(err), Err(_)) => Err(err),
+        (Err(err), Ok(_)) | (Ok(_), Err(err)) => {
+            if matches!(err, RustSocksError::ConnectionClosed) {
+                Err(RustSocksError::ConnectionClosed)
+            } else {
+                Err(err)
+            }
+        }
+        (Err(err1), Err(err2)) => {
+            if matches!(err1, RustSocksError::ConnectionClosed)
+                || matches!(err2, RustSocksError::ConnectionClosed)
+            {
+                Err(RustSocksError::ConnectionClosed)
+            } else {
+                Err(err1)
+            }
+        }
     }
 }
 
@@ -102,6 +120,7 @@ async fn proxy_direction(
     mut writer: OwnedWriteHalf,
     session_manager: Arc<SessionManager>,
     session_id: Uuid,
+    cancel_token: CancellationToken,
     update_config: TrafficUpdateConfig,
     direction: TrafficDirection,
 ) -> Result<TrafficTotals> {
@@ -110,9 +129,19 @@ async fn proxy_direction(
     let mut pending_bytes = 0u64;
     let mut pending_packets = 0u64;
     let packet_interval = update_config.packet_interval().get();
+    let mut cancelled = false;
 
     loop {
-        let bytes_read = match reader.read(&mut buffer).await {
+        let read_result = tokio::select! {
+            _ = cancel_token.cancelled() => {
+                trace!("Direction {:?} cancelled", direction);
+                cancelled = true;
+                break;
+            }
+            result = reader.read(&mut buffer) => result,
+        };
+
+        let bytes_read = match read_result {
             Ok(0) => {
                 trace!("Direction {:?} reached EOF", direction);
                 break;
@@ -190,6 +219,10 @@ async fn proxy_direction(
             &mut pending_packets,
         )
         .await;
+    }
+
+    if cancelled {
+        return Err(RustSocksError::ConnectionClosed);
     }
 
     Ok(totals)

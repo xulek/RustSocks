@@ -53,12 +53,13 @@ pub async fn handle_bind(
         protocol: SessionProtocol::Tcp,
     };
 
-    let session_id = session_manager
-        .new_session(
+    let (session_id, cancel_token) = session_manager
+        .new_session_with_control(
             &bind_ctx.user,
             connection_info,
             bind_ctx.acl_decision.clone(),
             bind_ctx.acl_rule.clone(),
+            None,
         )
         .await;
 
@@ -81,6 +82,7 @@ pub async fn handle_bind(
                 incoming_stream,
                 session_manager.clone(),
                 session_id,
+                cancel_token,
                 TrafficUpdateConfig::default(),
             )
             .await
@@ -93,6 +95,9 @@ pub async fn handle_bind(
                             SessionStatus::Closed,
                         )
                         .await;
+                }
+                Err(RustSocksError::ConnectionClosed) => {
+                    info!("BIND session cancelled for client {}", client_addr);
                 }
                 Err(e) => {
                     let reason = format!("BIND proxy error: {}", e);
