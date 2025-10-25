@@ -208,16 +208,16 @@
 - [x] Performance: <2ms overhead per update
 
 #### 2.2.6 Session Metrics
-- [ ] Prometheus metrics setup
-  - [ ] active_sessions gauge
-  - [ ] total_sessions counter
-  - [ ] rejected_sessions counter
-  - [ ] session_duration histogram
-  - [ ] total_bytes_sent counter
-  - [ ] total_bytes_received counter
-  - [ ] user_sessions counter_vec
-  - [ ] user_bandwidth counter_vec
-- [ ] Metrics integration w SessionManager
+- [x] Prometheus metrics setup
+  - [x] active_sessions gauge
+  - [x] total_sessions counter
+  - [x] rejected_sessions counter
+  - [x] session_duration histogram
+  - [x] total_bytes_sent counter
+  - [x] total_bytes_received counter
+  - [x] user_sessions counter_vec
+  - [x] user_bandwidth counter_vec
+- [x] Metrics integration w SessionManager
 
 #### 2.2.7 Session Statistics API
 - [ ] get_stats() implementation

@@ -117,6 +117,13 @@
   - Finałowy flush na zamknięciu kanałów zapewnia brak utraty danych metrycznych
   - Integracja dwukierunkowa: liczniki `bytes_sent/received` i `packets_sent/received`
   - Nowy test integracyjny (`tests/session_tracking.rs`) weryfikuje flush przy zamknięciu
+- ✅ **2.2.6 Session Metrics**
+  - Prometheus: `rustsocks_active_sessions`, `rustsocks_sessions_total`, `rustsocks_sessions_rejected_total`
+  - Histogram czasu trwania (`rustsocks_session_duration_seconds`) z bucketami 0.5s → 2h
+  - Liczniki ruchu globalne (`rustsocks_bytes_sent_total`, `rustsocks_bytes_received_total`)
+  - `IntCounterVec` per użytkownik (`rustsocks_user_sessions_total`, `rustsocks_user_bandwidth_bytes_total`)
+  - `SessionManager` aktualizuje metryki na starcie, ruchu i zamknięciu oraz dla odrzuceń ACL
+  - Test `session_metrics_update_counters` zabezpiecza regresje
 
 ## 🎯 Weryfikacja Działania
 
@@ -207,6 +214,28 @@ batch_interval_ms = 1000
 retention_days = 90
 cleanup_interval_hours = 24
 traffic_update_packet_interval = 10
+```
+
+### Eksport metryk (Prometheus)
+
+RustSocks rejestruje metryki sesji w globalnym rejestrze Prometheusa (`prometheus::default_registry()`):
+
+- `rustsocks_active_sessions` (`IntGauge`) – aktualna liczba aktywnych sesji
+- `rustsocks_sessions_total` / `rustsocks_sessions_rejected_total` (`IntCounter`) – przyjęte i odrzucone próby
+- `rustsocks_session_duration_seconds` (`Histogram`) – długość życia sesji (buckety 0.5s → 2h)
+- `rustsocks_bytes_sent_total` / `rustsocks_bytes_received_total` (`IntCounter`) – łączny ruch
+- `rustsocks_user_sessions_total` (`IntCounterVec{user}`) – sesje per użytkownik
+- `rustsocks_user_bandwidth_bytes_total` (`IntCounterVec{user,direction}`) – transfer per użytkownik i kierunek
+
+Eksport HTTP można zrealizować w dowolnym handlerze, np.:
+
+```rust
+use prometheus::{Encoder, TextEncoder};
+
+let metric_families = prometheus::gather();
+let mut buffer = Vec::new();
+TextEncoder::new().encode(&metric_families, &mut buffer)?;
+// zwróć buffer jako body `text/plain; version=0.0.4`
 ```
 
 ### ACL Configuration (Nowe! ✨)

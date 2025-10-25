@@ -1,5 +1,7 @@
 #[cfg(feature = "database")]
 use super::batch::{BatchConfig, BatchWriter};
+#[cfg(feature = "metrics")]
+use super::metrics::SessionMetrics;
 #[cfg(feature = "database")]
 use super::store::SessionStore;
 use super::types::{ConnectionInfo, Protocol, Session, SessionStatus};
@@ -65,6 +67,9 @@ impl SessionManager {
 
         let session_id = session.session_id;
 
+        #[cfg(feature = "metrics")]
+        SessionMetrics::record_session_start(&session.user);
+
         #[cfg(feature = "database")]
         if let Some(writer) = &self.batch_writer {
             writer.enqueue(session.clone()).await;
@@ -109,6 +114,8 @@ impl SessionManager {
             drop(entry);
 
             let mut session_guard = session.write().await;
+            #[cfg(feature = "metrics")]
+            let user_label = session_guard.user.clone();
             session_guard.bytes_sent = session_guard.bytes_sent.saturating_add(bytes_sent);
             session_guard.bytes_received =
                 session_guard.bytes_received.saturating_add(bytes_received);
@@ -116,6 +123,9 @@ impl SessionManager {
             session_guard.packets_received = session_guard
                 .packets_received
                 .saturating_add(packets_received);
+
+            #[cfg(feature = "metrics")]
+            SessionMetrics::record_traffic(&user_label, bytes_sent, bytes_received);
 
             #[cfg(feature = "database")]
             if let Some(writer) = &self.batch_writer {
@@ -140,6 +150,8 @@ impl SessionManager {
         if let Some((_, session_arc)) = self.active_sessions.remove(session_id) {
             let mut session = session_arc.write().await;
             session.close(reason, status);
+            #[cfg(feature = "metrics")]
+            SessionMetrics::record_session_close(session.duration_secs);
             let snapshot = session.clone();
             drop(session);
 
@@ -181,6 +193,9 @@ impl SessionManager {
             SessionStatus::RejectedByAcl,
         );
 
+        #[cfg(feature = "metrics")]
+        SessionMetrics::record_rejected_session(user);
+
         let session_id = session.session_id;
 
         #[cfg(feature = "database")]
@@ -214,6 +229,19 @@ impl Default for SessionManager {
 mod tests {
     use super::*;
     use std::net::{IpAddr, Ipv4Addr};
+
+    #[cfg(feature = "metrics")]
+    use crate::session::metrics::{
+        REJECTED_SESSIONS, SESSION_DURATION, TOTAL_BYTES_RECEIVED, TOTAL_BYTES_SENT,
+        TOTAL_SESSIONS, USER_BANDWIDTH, USER_SESSIONS,
+    };
+    #[cfg(feature = "metrics")]
+    use lazy_static::lazy_static;
+
+    #[cfg(feature = "metrics")]
+    lazy_static! {
+        static ref METRICS_TEST_GUARD: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    }
 
     fn sample_connection() -> ConnectionInfo {
         ConnectionInfo {
@@ -276,5 +304,92 @@ mod tests {
         assert_eq!(rejected[0].status, SessionStatus::RejectedByAcl);
         assert_eq!(rejected[0].acl_decision, "block");
         assert_eq!(rejected[0].acl_rule_matched.as_deref(), Some("Block admin"));
+    }
+
+    #[cfg(feature = "metrics")]
+    #[tokio::test]
+    async fn session_metrics_update_counters() {
+        let _guard = METRICS_TEST_GUARD.lock().unwrap();
+
+        let base_total = TOTAL_SESSIONS.get();
+        let base_rejected = REJECTED_SESSIONS.get();
+        let base_bytes_sent = TOTAL_BYTES_SENT.get();
+        let base_bytes_received = TOTAL_BYTES_RECEIVED.get();
+        let base_duration_count = SESSION_DURATION.get_sample_count();
+        let base_user_alice = USER_SESSIONS.with_label_values(&["alice"]).get();
+        let base_user_bob = USER_SESSIONS.with_label_values(&["bob"]).get();
+        let base_user_send = USER_BANDWIDTH.with_label_values(&["alice", "sent"]).get();
+        let base_user_recv = USER_BANDWIDTH
+            .with_label_values(&["alice", "received"])
+            .get();
+
+        let manager = SessionManager::new();
+        let conn = sample_connection();
+        let session_id = manager.new_session("alice", conn, "allow", None).await;
+
+        assert!(
+            TOTAL_SESSIONS.get() >= base_total + 1,
+            "total sessions should increase"
+        );
+        assert!(
+            USER_SESSIONS.with_label_values(&["alice"]).get() >= base_user_alice + 1,
+            "user sessions counter should increase"
+        );
+
+        manager.update_traffic(&session_id, 512, 256, 2, 2).await;
+
+        assert!(
+            TOTAL_BYTES_SENT.get() >= base_bytes_sent + 512,
+            "bytes sent counter should increase"
+        );
+        assert!(
+            TOTAL_BYTES_RECEIVED.get() >= base_bytes_received + 256,
+            "bytes received counter should increase"
+        );
+        assert!(
+            USER_BANDWIDTH.with_label_values(&["alice", "sent"]).get() >= base_user_send + 512,
+            "user sent bandwidth should increase"
+        );
+        assert!(
+            USER_BANDWIDTH
+                .with_label_values(&["alice", "received"])
+                .get()
+                >= base_user_recv + 256,
+            "user received bandwidth should increase"
+        );
+
+        manager
+            .close_session(
+                &session_id,
+                Some("metrics close".into()),
+                SessionStatus::Closed,
+            )
+            .await;
+
+        assert!(
+            SESSION_DURATION.get_sample_count() >= base_duration_count + 1,
+            "duration histogram should record the session"
+        );
+
+        manager
+            .track_rejected_session(
+                "bob",
+                IpAddr::V4(Ipv4Addr::LOCALHOST),
+                40001,
+                "blocked.metrics.example".into(),
+                1080,
+                Protocol::Tcp,
+                None,
+            )
+            .await;
+
+        assert!(
+            REJECTED_SESSIONS.get() >= base_rejected + 1,
+            "rejected sessions counter should increase"
+        );
+        assert!(
+            USER_SESSIONS.with_label_values(&["bob"]).get() >= base_user_bob + 1,
+            "user sessions counter should track rejected users"
+        );
     }
 }
