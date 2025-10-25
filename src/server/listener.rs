@@ -215,6 +215,11 @@ impl SocksServer {
                 Ok((stream, addr)) => {
                     info!("New connection from {}", addr);
 
+                    // Optimize client TCP socket for low latency
+                    if let Err(e) = stream.set_nodelay(true) {
+                        warn!("Failed to set TCP_NODELAY on client socket: {}", e);
+                    }
+
                     let ctx = handler_ctx.clone();
 
                     tokio::spawn(async move {

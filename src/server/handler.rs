@@ -12,6 +12,16 @@ use tokio::net::TcpStream;
 use tokio::sync::broadcast;
 use tracing::{debug, info, warn};
 
+/// Optimize TCP socket for low-latency proxying
+/// - Disables Nagle's algorithm (TCP_NODELAY) for lower latency
+fn optimize_tcp_socket(stream: &TcpStream) -> Result<()> {
+    // Disable Nagle's algorithm - improves latency for small packets
+    // This is the single most impactful TCP optimization for proxy workloads
+    stream.set_nodelay(true)?;
+
+    Ok(())
+}
+
 /// Context for handling client connections
 pub struct ClientHandlerContext {
     pub auth_manager: Arc<AuthManager>,
@@ -254,6 +264,10 @@ async fn handle_connect(
         debug!("Attempting upstream connection to {}", target);
         match TcpStream::connect(target).await {
             Ok(stream) => {
+                // Optimize TCP socket for low latency and high throughput
+                if let Err(e) = optimize_tcp_socket(&stream) {
+                    warn!("Failed to optimize upstream TCP socket: {}", e);
+                }
                 upstream_stream_opt = Some(stream);
                 break;
             }

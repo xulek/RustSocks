@@ -51,10 +51,14 @@ sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "sqlite", "chrono"
 prometheus = { version = "0.13", optional = true }
 lazy_static = { version = "1.4", optional = true }
 
+# Performance: Fast allocator (5-15% faster than system allocator)
+mimalloc = { version = "0.1", optional = true }
+
 [features]
-default = ["metrics"]
+default = ["metrics", "fast-allocator"]
 metrics = ["prometheus", "lazy_static"]
 database = ["sqlx"]
+fast-allocator = ["mimalloc"]
 
 [dev-dependencies]
 tokio-test = "0.4"

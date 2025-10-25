@@ -10,7 +10,9 @@ use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, trace};
 use uuid::Uuid;
 
-const BUFFER_SIZE: usize = 16 * 1024;
+// Increased from 16KB to 32KB for better throughput on large transfers
+// Reduces syscalls by 50% for large file transfers
+const BUFFER_SIZE: usize = 32 * 1024;
 
 #[derive(Debug, Clone, Copy)]
 pub struct TrafficUpdateConfig {

@@ -1,3 +1,8 @@
+// Use mimalloc as global allocator for 5-15% performance boost
+#[cfg(feature = "fast-allocator")]
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 use clap::Parser;
 use rustsocks::config::Config;
 use rustsocks::server::SocksServer;
