@@ -135,6 +135,10 @@
   - Priorytetyzuje adresy IPv6, ale próbuje wszystkie opcje zanim zgłosi błąd
   - `handle_connect` korzysta z listy kandydatów i raportuje `HostUnreachable` przy braku łączności
   - Testy jednostkowe i integracyjne pokrywają IPv4/IPv6 oraz mapowanie domen (`tests/ipv6_domain.rs`)
+- ✅ **2.4 ACL + Session Integration**
+  - `handle_client` tworzy sesję dopiero po pozytywnej decyzji ACL i przekazuje atrybuty reguły do `SessionManager`
+  - Odmowy ACL rejestrowane są przez `track_rejected_session`, co zasila metryki i statystyki
+  - Rozszerzony test integracyjny (`tests/acl_integration.rs`) obejmuje zarówno odrzucenie, jak i udany przepływ (sesja + połączenie upstream)
 
 ## 🎯 Weryfikacja Działania
 

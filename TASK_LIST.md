@@ -237,11 +237,11 @@
 - [x] Integration test IPv6 + domains
 
 ### 2.4 Integration - ACL + Session (Tydzień 3)
-- [ ] Connection handler full integration
-- [ ] ACL check → Session creation flow
-- [ ] Rejected session tracking
-- [ ] End-to-end test flow
-- [ ] Performance test: combined overhead <7ms
+- [x] Connection handler full integration
+- [x] ACL check → Session creation flow
+- [x] Rejected session tracking
+- [x] End-to-end test flow
+ - [ ] Performance test: combined overhead <7ms
 - [ ] Load test: 1000 concurrent connections
 
 ---
