@@ -130,6 +130,11 @@
   - Wbudowane statystyki ACL (`allowed`/`blocked`) na podstawie decyzji wejściowych
   - HTTP GET `/stats` (Axum) udostępnia JSON (`?window_hours=48` nadpisuje okno)
   - Test `get_stats_aggregates_today_sessions` chroni logikę agregacji
+- ✅ **2.3 IPv6 & Domain Resolution**
+  - Nowy resolver (`server::resolver::resolve_address`) obsługuje IPv4/IPv6 literały i domeny (async DNS via `lookup_host`)
+  - Priorytetyzuje adresy IPv6, ale próbuje wszystkie opcje zanim zgłosi błąd
+  - `handle_connect` korzysta z listy kandydatów i raportuje `HostUnreachable` przy braku łączności
+  - Testy jednostkowe i integracyjne pokrywają IPv4/IPv6 oraz mapowanie domen (`tests/ipv6_domain.rs`)
 
 ## 🎯 Weryfikacja Działania
 

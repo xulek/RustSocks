@@ -2,6 +2,7 @@ use crate::acl::{AclDecision, AclEngine, AclStats, Protocol};
 use crate::auth::AuthManager;
 use crate::protocol::*;
 use crate::server::proxy::{proxy_data, TrafficUpdateConfig};
+use crate::server::resolver::resolve_address;
 use crate::session::{ConnectionInfo, SessionManager, SessionProtocol, SessionStatus};
 use crate::utils::error::{Result, RustSocksError};
 use std::sync::Arc;
@@ -195,34 +196,69 @@ async fn handle_connect(
     session_protocol: SessionProtocol,
     traffic_config: TrafficUpdateConfig,
 ) -> Result<()> {
-    let (connect_addr, dest_host) = match dest_addr {
-        Address::IPv4(octets) => {
-            let ip = std::net::Ipv4Addr::from(*octets);
-            (format!("{}:{}", ip, dest_port), ip.to_string())
-        }
-        Address::IPv6(octets) => {
-            let ip = std::net::Ipv6Addr::from(*octets);
-            (format!("[{}]:{}", ip, dest_port), ip.to_string())
-        }
-        Address::Domain(domain) => (format!("{}:{}", domain, dest_port), domain.clone()),
+    let dest_host = match dest_addr {
+        Address::IPv4(octets) => std::net::Ipv4Addr::from(*octets).to_string(),
+        Address::IPv6(octets) => std::net::Ipv6Addr::from(*octets).to_string(),
+        Address::Domain(domain) => domain.clone(),
     };
 
-    debug!("Connecting to upstream: {}", connect_addr);
-
-    let upstream_stream = match TcpStream::connect(&connect_addr).await {
-        Ok(stream) => stream,
+    let candidates = match resolve_address(dest_addr, dest_port).await {
+        Ok(list) => list,
         Err(e) => {
-            warn!("Failed to connect to {}: {}", connect_addr, e);
+            warn!(
+                "Destination resolution failed for {}:{}: {}",
+                dest_host, dest_port, e
+            );
             send_socks5_response(
                 &mut client_stream,
-                ReplyCode::ConnectionRefused,
+                ReplyCode::HostUnreachable,
                 Address::IPv4([0, 0, 0, 0]),
                 0,
             )
             .await?;
-            return Err(e.into());
+            return Err(e);
         }
     };
+
+    let mut last_err: Option<std::io::Error> = None;
+    let mut upstream_stream_opt = None;
+
+    for target in candidates {
+        debug!("Attempting upstream connection to {}", target);
+        match TcpStream::connect(target).await {
+            Ok(stream) => {
+                upstream_stream_opt = Some(stream);
+                break;
+            }
+            Err(e) => {
+                last_err = Some(e);
+            }
+        }
+    }
+
+    let upstream_stream = match upstream_stream_opt {
+        Some(stream) => stream,
+        None => {
+            if let Some(ref err) = last_err {
+                warn!("Failed to connect to {}:{}: {}", dest_host, dest_port, err);
+            }
+            send_socks5_response(
+                &mut client_stream,
+                ReplyCode::HostUnreachable,
+                Address::IPv4([0, 0, 0, 0]),
+                0,
+            )
+            .await?;
+            return Err(RustSocksError::Io(last_err.unwrap_or_else(|| {
+                std::io::Error::new(std::io::ErrorKind::Other, "no reachable upstream addresses")
+            })));
+        }
+    };
+
+    let peer_display = upstream_stream
+        .peer_addr()
+        .map(|addr| addr.to_string())
+        .unwrap_or_else(|_| format!("{}:{}", dest_host, dest_port));
 
     // Session tracking
     let connection_info = ConnectionInfo {
@@ -259,7 +295,7 @@ async fn handle_connect(
     )
     .await?;
 
-    info!("Connected to {}, proxying data", connect_addr);
+    info!("Connected to {}, proxying data", peer_display);
 
     // Proxy data between client and upstream
     match proxy_data(

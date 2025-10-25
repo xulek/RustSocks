@@ -230,11 +230,11 @@
 - [x] HTTP /stats endpoint (JSON)
 
 ### 2.3 IPv6 & Domain Resolution (Tydzień 3)
-- [ ] IPv6 address parsing (pełna obsługa)
-- [ ] Domain name resolution (async DNS)
-- [ ] Address type selection logic
-- [ ] Testy wszystkich typów adresów
-- [ ] Integration test IPv6 + domains
+- [x] IPv6 address parsing (pełna obsługa)
+- [x] Domain name resolution (async DNS)
+- [x] Address type selection logic
+- [x] Testy wszystkich typów adresów
+- [x] Integration test IPv6 + domains
 
 ### 2.4 Integration - ACL + Session (Tydzień 3)
 - [ ] Connection handler full integration
