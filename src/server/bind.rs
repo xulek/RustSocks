@@ -116,7 +116,10 @@ pub async fn handle_bind(
             return Err(RustSocksError::Io(e));
         }
         Err(_) => {
-            warn!("BIND: timeout waiting for incoming connection ({}s)", BIND_ACCEPT_TIMEOUT.as_secs());
+            warn!(
+                "BIND: timeout waiting for incoming connection ({}s)",
+                BIND_ACCEPT_TIMEOUT.as_secs()
+            );
             send_bind_response(&mut client_stream, ReplyCode::GeneralFailure, client_addr).await?;
             session_manager
                 .close_session(

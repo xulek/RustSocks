@@ -52,6 +52,9 @@ async fn main() -> Result<()> {
     init_logging(&args.log_level)?;
 
     info!("RustSocks v{} starting", env!("CARGO_PKG_VERSION"));
+    if let Ok(cwd) = std::env::current_dir() {
+        info!("Current working directory: {}", cwd.display());
+    }
 
     // Load configuration
     let mut config = if let Some(config_path) = args.config {

@@ -4,26 +4,33 @@ bind_port = 1080
 max_connections = 1000
 
 [auth]
-method = "none"  # Options: "none", "userpass"
+method = "userpass"  # Options: "none", "userpass"
 
 # For userpass authentication, add users:
-# [[auth.users]]
-# username = "alice"
-# password = "secret123"
+ [[auth.users]]
+ username = "alice"
+ password = "secret123"
 
 [logging]
 level = "info"  # Options: "trace", "debug", "info", "warn", "error"
 format = "pretty"  # Options: "pretty", "json"
 
 [acl]
-enabled = false
+enabled = true
 config_file = "config/acl.toml"
-watch = false
+watch = true
 anonymous_user = "anonymous"
 
 [sessions]
-enabled = false
-storage = "memory"  # Options: "memory", "sqlite"
-# database_url = "sqlite://var/lib/rustsocks/sessions.db"
+enabled = true
+storage = "sqlite"  # Options: "memory", "sqlite"
+database_url = "sqlite://sessions.db"
 batch_size = 100
 batch_interval_ms = 1000
+retention_days = 90
+cleanup_interval_hours = 24
+traffic_update_packet_interval = 10
+stats_window_hours = 24
+stats_api_enabled = false
+stats_api_bind_address = "127.0.0.1"
+stats_api_port = 9090

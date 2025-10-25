@@ -577,9 +577,9 @@ cargo test -- --nocapture
   - **Management Endpoints:**
     - `GET /health` - Health check with version
     - `GET /metrics` - Prometheus text format metrics
-    - `POST /api/admin/reload-acl` - ACL hot reload (stub)
-    - `GET /api/acl/rules` - Inspect current rules (stub)
-    - `POST /api/acl/test` - Test ACL decision (stub)
+    - `POST /api/admin/reload-acl` - ACL hot reload from file ✅
+    - `GET /api/acl/rules` - Get ACL rules summary (user/group counts) ✅
+    - `POST /api/acl/test` - Test ACL decision for user/dest/port/protocol ✅
   - **7 integration tests** for API endpoints
   - JSON request/response types with proper error handling
 

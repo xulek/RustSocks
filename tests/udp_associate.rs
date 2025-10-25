@@ -77,7 +77,10 @@ async fn udp_associate_basic_flow() {
     let port = u16::from_be_bytes([response[8], response[9]]);
     assert!(port > 0); // UDP relay should bind to non-zero port
 
-    println!("UDP ASSOCIATE test completed - relay bound on port {}", port);
+    println!(
+        "UDP ASSOCIATE test completed - relay bound on port {}",
+        port
+    );
 
     // Close TCP connection (should terminate UDP session)
     drop(client);
@@ -147,9 +150,7 @@ username = "anonymous"
     client.read_exact(&mut buf).await.unwrap();
 
     // Send UDP ASSOCIATE request
-    let request = [
-        0x05, 0x03, 0x00, 0x01, 127, 0, 0, 1, 0x00, 0x00,
-    ];
+    let request = [0x05, 0x03, 0x00, 0x01, 127, 0, 0, 1, 0x00, 0x00];
     client.write_all(&request).await.unwrap();
 
     // Read response - should succeed
@@ -227,9 +228,7 @@ username = "anonymous"
     client.read_exact(&mut buf).await.unwrap();
 
     // Send UDP ASSOCIATE request
-    let request = [
-        0x05, 0x03, 0x00, 0x01, 127, 0, 0, 1, 0x00, 0x00,
-    ];
+    let request = [0x05, 0x03, 0x00, 0x01, 127, 0, 0, 1, 0x00, 0x00];
     client.write_all(&request).await.unwrap();
 
     // Read response - should be blocked

@@ -206,9 +206,7 @@ pub async fn send_socks5_response(
 /// Format: RSV(2) + FRAG(1) + ATYP(1) + DST.ADDR(var) + DST.PORT(2) + DATA
 pub fn parse_udp_packet(buf: &[u8]) -> Result<UdpPacket> {
     if buf.len() < 10 {
-        return Err(RustSocksError::Protocol(
-            "UDP packet too short".to_string(),
-        ));
+        return Err(RustSocksError::Protocol("UDP packet too short".to_string()));
     }
 
     let mut pos = 0;
@@ -236,7 +234,9 @@ pub fn parse_udp_packet(buf: &[u8]) -> Result<UdpPacket> {
         0x01 => {
             // IPv4
             if buf.len() < pos + 4 {
-                return Err(RustSocksError::Protocol("Invalid IPv4 in UDP packet".to_string()));
+                return Err(RustSocksError::Protocol(
+                    "Invalid IPv4 in UDP packet".to_string(),
+                ));
             }
             let addr = [buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]];
             pos += 4;
@@ -245,22 +245,29 @@ pub fn parse_udp_packet(buf: &[u8]) -> Result<UdpPacket> {
         0x03 => {
             // Domain
             if buf.len() < pos + 1 {
-                return Err(RustSocksError::Protocol("Invalid domain in UDP packet".to_string()));
+                return Err(RustSocksError::Protocol(
+                    "Invalid domain in UDP packet".to_string(),
+                ));
             }
             let domain_len = buf[pos] as usize;
             pos += 1;
             if buf.len() < pos + domain_len {
-                return Err(RustSocksError::Protocol("Invalid domain in UDP packet".to_string()));
+                return Err(RustSocksError::Protocol(
+                    "Invalid domain in UDP packet".to_string(),
+                ));
             }
-            let domain = String::from_utf8(buf[pos..pos + domain_len].to_vec())
-                .map_err(|_| RustSocksError::Protocol("Invalid domain encoding in UDP packet".to_string()))?;
+            let domain = String::from_utf8(buf[pos..pos + domain_len].to_vec()).map_err(|_| {
+                RustSocksError::Protocol("Invalid domain encoding in UDP packet".to_string())
+            })?;
             pos += domain_len;
             Address::Domain(domain)
         }
         0x04 => {
             // IPv6
             if buf.len() < pos + 16 {
-                return Err(RustSocksError::Protocol("Invalid IPv6 in UDP packet".to_string()));
+                return Err(RustSocksError::Protocol(
+                    "Invalid IPv6 in UDP packet".to_string(),
+                ));
             }
             let mut addr = [0u8; 16];
             addr.copy_from_slice(&buf[pos..pos + 16]);
@@ -274,7 +281,9 @@ pub fn parse_udp_packet(buf: &[u8]) -> Result<UdpPacket> {
 
     // Port (big-endian)
     if buf.len() < pos + 2 {
-        return Err(RustSocksError::Protocol("Invalid port in UDP packet".to_string()));
+        return Err(RustSocksError::Protocol(
+            "Invalid port in UDP packet".to_string(),
+        ));
     }
     let port = u16::from_be_bytes([buf[pos], buf[pos + 1]]);
     pos += 2;

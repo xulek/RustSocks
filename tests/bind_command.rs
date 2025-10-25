@@ -77,7 +77,10 @@ async fn bind_basic_handshake() {
     let bind_port = u16::from_be_bytes([response[8], response[9]]);
     assert!(bind_port > 0); // BIND should bind to non-zero port
 
-    println!("BIND handshake test completed - server listening on port {}", bind_port);
+    println!(
+        "BIND handshake test completed - server listening on port {}",
+        bind_port
+    );
 
     // Close client connection
     drop(client);
@@ -129,9 +132,7 @@ async fn bind_with_incoming_connection() {
     assert_eq!(buf[1], 0x00);
 
     // Send BIND request
-    let request = [
-        0x05, 0x02, 0x00, 0x01, 127, 0, 0, 1, 0x00, 0x00,
-    ];
+    let request = [0x05, 0x02, 0x00, 0x01, 127, 0, 0, 1, 0x00, 0x00];
     client.write_all(&request).await.unwrap();
 
     // Read first response (bind address)
@@ -164,12 +165,17 @@ async fn bind_with_incoming_connection() {
     )
     .await;
 
-    assert!(read_result.is_ok(), "Should receive second response within timeout");
+    assert!(
+        read_result.is_ok(),
+        "Should receive second response within timeout"
+    );
 
     assert_eq!(second_response[0], 0x05); // SOCKS version
     assert_eq!(second_response[1], 0x00); // Succeeded
 
-    println!("BIND command test completed - received second response with incoming connection info");
+    println!(
+        "BIND command test completed - received second response with incoming connection info"
+    );
 
     // Close connections
     drop(client);
@@ -240,9 +246,7 @@ username = "anonymous"
     client.read_exact(&mut buf).await.unwrap();
 
     // Send BIND request to allowed destination
-    let request = [
-        0x05, 0x02, 0x00, 0x01, 127, 0, 0, 1, 0x00, 0x00,
-    ];
+    let request = [0x05, 0x02, 0x00, 0x01, 127, 0, 0, 1, 0x00, 0x00];
     client.write_all(&request).await.unwrap();
 
     // Read response - should succeed
@@ -322,9 +326,7 @@ username = "anonymous"
     client.read_exact(&mut buf).await.unwrap();
 
     // Send BIND request - should be blocked
-    let request = [
-        0x05, 0x02, 0x00, 0x01, 127, 0, 0, 1, 0x00, 0x00,
-    ];
+    let request = [0x05, 0x02, 0x00, 0x01, 127, 0, 0, 1, 0x00, 0x00];
     client.write_all(&request).await.unwrap();
 
     // Read response - should be blocked

@@ -286,9 +286,9 @@
 #### 3.3.3 Management Endpoints
 - [x] GET /health (health check) ✅
 - [x] GET /metrics (Prometheus format) ✅
-- [ ] POST /api/admin/reload-acl (stub - TODO: implementation)
-- [ ] GET /api/acl/rules (stub - TODO: implementation)
-- [ ] POST /api/acl/test (stub - TODO: implementation)
+- [x] POST /api/admin/reload-acl (ACL hot reload) ✅
+- [x] GET /api/acl/rules (ACL rules summary) ✅
+- [x] POST /api/acl/test (Test ACL decision) ✅
 
 #### 3.3.4 API Documentation
 - [ ] OpenAPI/Swagger spec
@@ -599,7 +599,7 @@
 - **Sprint 2.2-2.4 (Session Manager + Integration):** ✅ 100% (Ukończony!)
 - **Sprint 3.1 (UDP ASSOCIATE):** ✅ 100% (Ukończony!)
 - **Sprint 3.2 (BIND Command):** ✅ 100% (Ukończony!)
-- **Sprint 3.3 (REST API):** ✅ ~80% (Core完成, pozostają: CORS, auth, rate limiting, OpenAPI)
+- **Sprint 3.3 (REST API):** ✅ ~95% (Wszystkie endpointy zaimplementowane ✅, pozostają: CORS, auth, rate limiting, OpenAPI)
 - **Sprint 3.4+ (Metrics & Advanced):** 🔄 Następny
 - **Sprint 4 (Advanced):** ⏳ 0% (Przyszłość)
 

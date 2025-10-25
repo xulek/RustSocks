@@ -225,7 +225,6 @@ impl Default for SessionSettings {
     }
 }
 
-
 impl Config {
     /// Load configuration from file
     pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self> {

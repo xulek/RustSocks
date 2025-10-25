@@ -1,4 +1,4 @@
-use crate::acl::{load_acl_config_sync, AclEngine, AclStats};
+use crate::acl::{load_acl_config_sync, AclEngine, AclStats, AclWatcher};
 use crate::auth::AuthManager;
 use crate::config::Config;
 use crate::server::handler::{handle_client, ClientHandlerContext};
@@ -8,9 +8,11 @@ use crate::session::SessionManager;
 #[cfg(feature = "database")]
 use crate::session::{BatchConfig, SessionStore};
 use crate::utils::error::{Result, RustSocksError};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::net::TcpListener;
+use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use tracing::{error, info, warn};
 
@@ -23,25 +25,31 @@ pub struct SocksServer {
     session_manager: Arc<SessionManager>,
     traffic_config: TrafficUpdateConfig,
     stats_handle: Option<JoinHandle<()>>,
+    acl_watcher: Option<Mutex<AclWatcher>>,
 }
 
 impl SocksServer {
     pub async fn new(config: Config) -> Result<Self> {
         let auth_manager = Arc::new(AuthManager::new(&config.auth)?);
 
-        let acl_engine = if config.acl.enabled {
-            let config_path = config
+        let mut acl_engine: Option<Arc<AclEngine>> = None;
+        let mut acl_watcher: Option<Mutex<AclWatcher>> = None;
+
+        if config.acl.enabled {
+            let config_path_str = config
                 .acl
                 .config_file
                 .as_ref()
                 .expect("validated: config_file must be provided when ACL is enabled");
 
-            let acl_config = load_acl_config_sync(config_path).map_err(RustSocksError::Config)?;
+            let config_path = Self::resolve_acl_path(config_path_str)?;
 
-            match AclEngine::new(acl_config) {
+            let acl_config = load_acl_config_sync(&config_path).map_err(RustSocksError::Config)?;
+
+            let engine = match AclEngine::new(acl_config) {
                 Ok(engine) => {
-                    info!("ACL engine initialized from {}", config_path);
-                    Some(Arc::new(engine))
+                    info!("ACL engine initialized from {}", config_path.display());
+                    Arc::new(engine)
                 }
                 Err(e) => {
                     return Err(RustSocksError::Config(format!(
@@ -49,11 +57,26 @@ impl SocksServer {
                         e
                     )));
                 }
+            };
+
+            if config.acl.watch {
+                let mut watcher = AclWatcher::new(config_path.clone(), engine.clone());
+                watcher.start().await.map_err(|e| {
+                    RustSocksError::Config(format!("Failed to start ACL watcher: {}", e))
+                })?;
+
+                info!(
+                    path = %config_path.display(),
+                    "ACL hot reload watcher enabled"
+                );
+
+                acl_watcher = Some(Mutex::new(watcher));
             }
+
+            acl_engine = Some(engine);
         } else {
             info!("ACL engine disabled");
-            None
-        };
+        }
 
         let anonymous_user = Arc::new(config.acl.anonymous_user.clone());
         let config = Arc::new(config);
@@ -69,6 +92,8 @@ impl SocksServer {
                 .as_ref()
                 .expect("validated: database_url present when sqlite storage enabled")
                 .clone();
+
+            info!(database_url = %url, raw = ?url, "Initializing session store");
 
             match SessionStore::connect(&url).await {
                 Ok(store) => {
@@ -138,6 +163,7 @@ impl SocksServer {
             session_manager,
             traffic_config,
             stats_handle,
+            acl_watcher,
         })
     }
 
@@ -190,11 +216,39 @@ impl SocksServer {
     }
 
     pub async fn shutdown(&self) {
+        if let Some(watcher) = &self.acl_watcher {
+            let mut watcher = watcher.lock().await;
+            watcher.stop();
+        }
+
         if let Some(handle) = &self.stats_handle {
             handle.abort();
         }
 
         #[cfg(feature = "database")]
         self.session_manager.shutdown().await;
+    }
+
+    fn resolve_acl_path(path: &str) -> std::result::Result<PathBuf, RustSocksError> {
+        let path_buf = PathBuf::from(path);
+        let absolute_path = if path_buf.is_absolute() {
+            path_buf
+        } else {
+            std::env::current_dir()
+                .map_err(|e| {
+                    RustSocksError::Config(format!(
+                        "Failed to determine current directory for ACL config: {}",
+                        e
+                    ))
+                })?
+                .join(path_buf)
+        };
+
+        absolute_path.canonicalize().map_err(|e| {
+            RustSocksError::Config(format!(
+                "Failed to canonicalize ACL config path '{}': {}",
+                path, e
+            ))
+        })
     }
 }

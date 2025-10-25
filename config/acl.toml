@@ -1,0 +1,23 @@
+  [global]
+  default_policy = "block"
+
+  [[users]]
+  username = "alice"
+  groups = ["developers"]
+
+    [[users.rules]]
+    action = "allow"
+    description = "Allow HTTPS"
+    destinations = ["0.0.0.0/0", "::/0"]
+    ports = ["*"]
+    protocols = ["tcp"]
+    priority = 100
+
+  [[groups]]
+  name = "developers"
+    [[groups.rules]]
+    action = "allow"
+    description = "Dev servers"
+    destinations = ["*.dev.company.com"]
+    ports = ["*"]
+    priority = 50

@@ -5,8 +5,8 @@ use super::metrics::SessionMetrics;
 #[cfg(feature = "database")]
 use super::store::SessionStore;
 use super::types::{
-    AclDecisionStats, ConnectionInfo, DestinationStat, Session, SessionStats,
-    SessionStatus, UserSessionStat,
+    AclDecisionStats, ConnectionInfo, DestinationStat, Session, SessionStats, SessionStatus,
+    UserSessionStat,
 };
 use chrono::{Duration as ChronoDuration, Utc};
 use dashmap::DashMap;
@@ -88,6 +88,9 @@ impl SessionManager {
 
     #[cfg(feature = "database")]
     pub async fn shutdown(&self) {
+        self.close_all_active("Server shutdown", SessionStatus::Failed)
+            .await;
+
         if let Some(writer) = &self.batch_writer {
             writer.shutdown().await;
         }
@@ -278,12 +281,7 @@ impl SessionManager {
         conn: ConnectionInfo,
         acl_rule: Option<String>,
     ) -> Uuid {
-        let mut session = Session::new(
-            user.to_string(),
-            conn,
-            "block",
-            acl_rule,
-        );
+        let mut session = Session::new(user.to_string(), conn, "block", acl_rule);
 
         session.close(
             Some("Rejected by ACL".to_string()),
@@ -313,6 +311,21 @@ impl SessionManager {
     /// Snapshot of closed sessions (testing/diagnostics).
     pub fn closed_snapshot(&self) -> Vec<Session> {
         self.closed_sessions.lock().unwrap().clone()
+    }
+
+    /// Close all active sessions with a common reason/status (e.g., server shutdown).
+    pub async fn close_all_active(&self, reason: &str, status: SessionStatus) {
+        let reason = reason.to_string();
+        let session_ids: Vec<Uuid> = self
+            .active_sessions
+            .iter()
+            .map(|entry| *entry.key())
+            .collect();
+
+        for session_id in session_ids {
+            self.close_session(&session_id, Some(reason.clone()), status.clone())
+                .await;
+        }
     }
 
     /// Get all sessions (active + closed + rejected)
@@ -426,11 +439,7 @@ mod tests {
             protocol: Protocol::Tcp,
         };
         let session_id = manager
-            .track_rejected_session(
-                "bob",
-                conn,
-                Some("Block admin".into()),
-            )
+            .track_rejected_session("bob", conn, Some("Block admin".into()))
             .await;
 
         assert_ne!(session_id, Uuid::nil());
@@ -473,11 +482,7 @@ mod tests {
             protocol: Protocol::Tcp,
         };
         manager
-            .track_rejected_session(
-                "carol",
-                conn_carol,
-                Some("Block admin".into()),
-            )
+            .track_rejected_session("carol", conn_carol, Some("Block admin".into()))
             .await;
 
         let stats = manager.get_stats(Duration::from_secs(24 * 3600)).await;
@@ -506,6 +511,32 @@ mod tests {
 
         assert_eq!(stats.acl.allowed, 1);
         assert_eq!(stats.acl.blocked, 1);
+    }
+
+    #[tokio::test]
+    async fn close_all_active_marks_sessions_closed() {
+        let manager = SessionManager::new();
+        let conn = sample_connection();
+
+        let session_id = manager
+            .new_session("alice", conn.clone(), "allow", None)
+            .await;
+
+        assert_eq!(manager.active_session_count(), 1);
+
+        manager
+            .close_all_active("Server shutdown", SessionStatus::Failed)
+            .await;
+
+        assert_eq!(manager.active_session_count(), 0);
+
+        let closed = manager.closed_snapshot();
+        assert_eq!(closed.len(), 1);
+        assert_eq!(closed[0].session_id, session_id);
+        assert_eq!(closed[0].status, SessionStatus::Failed);
+        assert_eq!(closed[0].close_reason.as_deref(), Some("Server shutdown"));
+        assert!(closed[0].end_time.is_some());
+        assert!(closed[0].duration_secs.is_some());
     }
 
     #[cfg(feature = "metrics")]
@@ -581,11 +612,7 @@ mod tests {
             protocol: Protocol::Tcp,
         };
         manager
-            .track_rejected_session(
-                "bob",
-                conn_rejected,
-                None,
-            )
+            .track_rejected_session("bob", conn_rejected, None)
             .await;
 
         assert!(

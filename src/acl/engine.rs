@@ -103,6 +103,11 @@ impl AclEngine {
 
         // Collect all rules for this user (user rules + group rules)
         let all_rules = self.collect_rules(&config, user);
+        debug!(
+            user = user,
+            rule_count = all_rules.len(),
+            "Collected ACL rules for evaluation"
+        );
 
         if all_rules.is_empty() {
             debug!(
@@ -175,6 +180,24 @@ impl AclEngine {
                 _ => b.priority.cmp(&a.priority), // Higher priority first
             }
         });
+
+        debug!(
+            user = user,
+            rules = ?all_rules
+                .iter()
+                .map(|r| {
+                    (
+                        &r.action,
+                        &r.description,
+                        r.priority,
+                        &r.destinations,
+                        &r.ports,
+                        &r.protocols,
+                    )
+                })
+                .collect::<Vec<_>>(),
+            "ACL rule order for user"
+        );
 
         all_rules
     }

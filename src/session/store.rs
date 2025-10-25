@@ -1,8 +1,10 @@
 use super::types::{Protocol as SessionProtocol, Session, SessionFilter, SessionStatus};
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
-use sqlx::sqlite::SqlitePoolOptions;
+use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use sqlx::{FromRow, QueryBuilder, SqlitePool};
 use std::borrow::Cow;
+use std::path::Path;
+use std::str::FromStr;
 use std::sync::Arc;
 use tokio::time::{interval, Duration, MissedTickBehavior};
 use tracing::{debug, info, warn};
@@ -17,9 +19,28 @@ pub struct SessionStore {
 impl SessionStore {
     /// Create a new store and apply migrations.
     pub async fn connect(database_url: &str) -> Result<Self, sqlx::Error> {
+        let options = SqliteConnectOptions::from_str(database_url)?;
+
+        // Ensure parent directory exists for file-based databases
+        let filename = options.clone().get_filename();
+        let filename_path = filename.as_ref();
+        if filename_path != Path::new(":memory:") {
+            if let Some(parent) = filename_path.parent() {
+                if !parent.as_os_str().is_empty() {
+                    std::fs::create_dir_all(parent).map_err(sqlx::Error::Io)?;
+                }
+            }
+
+            if !filename_path.exists() {
+                std::fs::File::create(filename_path).map_err(sqlx::Error::Io)?;
+            }
+        }
+
+        let options = options.create_if_missing(true);
+
         let pool = SqlitePoolOptions::new()
             .max_connections(5)
-            .connect(database_url)
+            .connect_with(options)
             .await?;
 
         // Apply migrations shipped in the `migrations/` directory.
@@ -359,11 +380,13 @@ impl SessionRow {
             None => None,
         };
 
-        let protocol = self.protocol
+        let protocol = self
+            .protocol
             .parse::<SessionProtocol>()
             .map_err(|e| decode_error("protocol", e))?;
 
-        let status = self.status
+        let status = self
+            .status
             .parse::<SessionStatus>()
             .map_err(|e| decode_error("status", e))?;
 

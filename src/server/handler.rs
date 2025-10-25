@@ -1,9 +1,9 @@
 use crate::acl::{AclDecision, AclEngine, AclStats, Protocol};
 use crate::auth::AuthManager;
 use crate::protocol::*;
+use crate::server::bind::handle_bind as handle_bind_relay;
 use crate::server::proxy::{proxy_data, TrafficUpdateConfig};
 use crate::server::resolver::resolve_address;
-use crate::server::bind::handle_bind as handle_bind_relay;
 use crate::server::udp::handle_udp_associate as handle_udp_relay;
 use crate::session::{ConnectionInfo, SessionManager, SessionProtocol, SessionStatus};
 use crate::utils::error::{Result, RustSocksError};
@@ -111,11 +111,7 @@ pub async fn handle_client(
                     protocol: session_protocol,
                 };
                 ctx.session_manager
-                    .track_rejected_session(
-                        &acl_user,
-                        conn_info,
-                        matched_rule.clone(),
-                    )
+                    .track_rejected_session(&acl_user, conn_info, matched_rule.clone())
                     .await;
 
                 send_socks5_response(
@@ -280,9 +276,9 @@ async fn handle_connect(
                 0,
             )
             .await?;
-            return Err(RustSocksError::Io(
-                last_err.unwrap_or_else(|| std::io::Error::other("no reachable upstream addresses"))
-            ));
+            return Err(RustSocksError::Io(last_err.unwrap_or_else(|| {
+                std::io::Error::other("no reachable upstream addresses")
+            })));
         }
     };
 

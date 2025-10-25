@@ -5,8 +5,10 @@ use notify::{
 };
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
-use tokio::sync::mpsc;
+use std::time::{Duration, Instant, SystemTime};
+use tokio::sync::{mpsc, Mutex};
+use tokio::task::JoinHandle;
+use tokio::time::interval;
 use tracing::{error, info, warn};
 
 /// ACL Hot Reload Watcher
@@ -15,6 +17,26 @@ pub struct AclWatcher {
     config_path: PathBuf,
     engine: Arc<AclEngine>,
     watcher: Option<RecommendedWatcher>,
+    poll_handle: Option<JoinHandle<()>>,
+    last_fingerprint: Arc<Mutex<Option<FileFingerprint>>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct FileFingerprint {
+    modified: Option<SystemTime>,
+    len: u64,
+}
+
+impl FileFingerprint {
+    fn capture(path: &Path) -> Result<Self, String> {
+        let metadata = std::fs::metadata(path)
+            .map_err(|e| format!("Failed to access ACL config metadata: {}", e))?;
+
+        let modified = metadata.modified().ok();
+        let len = metadata.len();
+
+        Ok(Self { modified, len })
+    }
 }
 
 impl AclWatcher {
@@ -24,6 +46,8 @@ impl AclWatcher {
             config_path,
             engine,
             watcher: None,
+            poll_handle: None,
+            last_fingerprint: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -32,6 +56,7 @@ impl AclWatcher {
         let (tx, mut rx) = mpsc::channel(100);
         let config_path = self.config_path.clone();
         let engine = self.engine.clone();
+        let fingerprint_state = self.last_fingerprint.clone();
 
         // Setup file watcher
         let mut watcher = RecommendedWatcher::new(
@@ -56,24 +81,45 @@ impl AclWatcher {
 
         self.watcher = Some(watcher);
 
+        // Capture the initial fingerprint so we don't reload immediately
+        if let Ok(initial_fp) = FileFingerprint::capture(&config_path) {
+            let mut state = fingerprint_state.lock().await;
+            *state = Some(initial_fp);
+        }
+
         info!(
             path = ?config_path,
             "ACL hot reload watcher started"
         );
 
         // Spawn background task to handle reload events
+        let fingerprint_state_clone = fingerprint_state.clone();
         tokio::spawn(async move {
             while let Some(_event) = rx.recv().await {
-                info!("ACL config file changed, reloading...");
-                Self::handle_reload_event(&config_path, &engine).await;
+                info!("ACL config file changed, checking for reload...");
+                Self::maybe_reload(&config_path, &engine, &fingerprint_state_clone).await;
             }
         });
+
+        // Spawn polling fallback for environments where filesystem events are unreliable
+        let poll_path = self.config_path.clone();
+        let poll_engine = self.engine.clone();
+        let poll_state = self.last_fingerprint.clone();
+        let poll_handle = tokio::spawn(async move {
+            let mut ticker = interval(Duration::from_secs(1));
+            loop {
+                ticker.tick().await;
+                Self::maybe_reload(&poll_path, &poll_engine, &poll_state).await;
+            }
+        });
+
+        self.poll_handle = Some(poll_handle);
 
         Ok(())
     }
 
     /// Handle a reload event (with validation and rollback)
-    async fn handle_reload_event(config_path: &Path, engine: &Arc<AclEngine>) {
+    async fn handle_reload_event(config_path: &Path, engine: &Arc<AclEngine>) -> bool {
         let start_time = Instant::now();
 
         // Step 1: Load new config
@@ -84,7 +130,7 @@ impl AclWatcher {
                     error = %e,
                     "Failed to load new ACL config, keeping current configuration"
                 );
-                return;
+                return false;
             }
         };
 
@@ -106,6 +152,7 @@ impl AclWatcher {
                         "ACL reload took longer than 100ms target"
                     );
                 }
+                true
             }
             Err(e) => {
                 error!(
@@ -114,12 +161,49 @@ impl AclWatcher {
                 );
                 // The current config remains unchanged due to the failed reload
                 // This is our "rollback" - we simply don't swap if validation/compilation fails
+                false
             }
         }
     }
 
+    /// Check if the file fingerprint changed and reload if needed
+    async fn maybe_reload(
+        config_path: &Path,
+        engine: &Arc<AclEngine>,
+        state: &Arc<Mutex<Option<FileFingerprint>>>,
+    ) {
+        let current_fp = match FileFingerprint::capture(config_path) {
+            Ok(fp) => fp,
+            Err(e) => {
+                warn!(
+                    path = ?config_path,
+                    error = %e,
+                    "Failed to stat ACL config while watching"
+                );
+                return;
+            }
+        };
+
+        let should_reload = {
+            let state_lock = state.lock().await;
+            state_lock.as_ref() != Some(&current_fp)
+        };
+
+        if !should_reload {
+            return;
+        }
+
+        Self::handle_reload_event(config_path, engine).await;
+
+        let mut state_lock = state.lock().await;
+        *state_lock = Some(current_fp);
+    }
+
     /// Stop watching
     pub fn stop(&mut self) {
+        if let Some(handle) = self.poll_handle.take() {
+            handle.abort();
+        }
         self.watcher = None;
         info!("ACL hot reload watcher stopped");
     }

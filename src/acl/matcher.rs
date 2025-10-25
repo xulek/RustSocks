@@ -66,6 +66,13 @@ impl CompiledDestinationMatcher {
                 let addr_ip = Ipv6Addr::from(*octets);
                 matcher_ip == &addr_ip
             }
+            (_, Address::Domain(domain)) => {
+                if let Ok(parsed) = domain.parse::<IpAddr>() {
+                    matcher_ip_eq(ip, &parsed)
+                } else {
+                    false
+                }
+            }
             _ => false,
         }
     }
@@ -74,7 +81,10 @@ impl CompiledDestinationMatcher {
         let ip = match addr {
             Address::IPv4(octets) => IpAddr::V4(Ipv4Addr::from(*octets)),
             Address::IPv6(octets) => IpAddr::V6(Ipv6Addr::from(*octets)),
-            Address::Domain(_) => return false,
+            Address::Domain(domain) => match domain.parse::<IpAddr>() {
+                Ok(parsed) => parsed,
+                Err(_) => return false,
+            },
         };
 
         cidr.contains(&ip)
@@ -94,6 +104,14 @@ impl CompiledDestinationMatcher {
         } else {
             false
         }
+    }
+}
+
+fn matcher_ip_eq(matcher: &IpAddr, candidate: &IpAddr) -> bool {
+    match (matcher, candidate) {
+        (IpAddr::V4(expected), IpAddr::V4(actual)) => expected == actual,
+        (IpAddr::V6(expected), IpAddr::V6(actual)) => expected == actual,
+        _ => false,
     }
 }
 
@@ -343,5 +361,16 @@ mod tests {
         assert!(re2.is_match("api.example.com"));
         assert!(re2.is_match("api.test.com"));
         assert!(!re2.is_match("api.example.org"));
+    }
+
+    #[test]
+    fn test_domain_string_as_ip_matches_cidr_and_ip() {
+        let cidr_matcher = CompiledDestinationMatcher::compile("192.168.0.0/16").unwrap();
+        assert!(cidr_matcher.matches(&Address::Domain("192.168.55.220".to_string())));
+        assert!(!cidr_matcher.matches(&Address::Domain("10.0.0.5".to_string())));
+
+        let ip_matcher = CompiledDestinationMatcher::compile("10.0.0.1").unwrap();
+        assert!(ip_matcher.matches(&Address::Domain("10.0.0.1".to_string())));
+        assert!(!ip_matcher.matches(&Address::Domain("10.0.0.2".to_string())));
     }
 }

@@ -1,17 +1,22 @@
+use crate::api::types::{
+    DestinationStat, PagedResponse, SessionQueryParams, SessionResponse, SessionStatsResponse,
+    UserStat,
+};
+use crate::session::SessionManager;
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
     Json,
 };
-use crate::api::types::{PagedResponse, SessionQueryParams, SessionResponse, SessionStatsResponse, UserStat, DestinationStat};
-use crate::session::SessionManager;
-use std::sync::Arc;
 use chrono::Utc;
+use std::sync::Arc;
 
 /// API state containing shared resources
 #[derive(Clone)]
 pub struct ApiState {
     pub session_manager: Arc<SessionManager>,
+    pub acl_engine: Option<Arc<crate::acl::AclEngine>>,
+    pub acl_config_path: Option<String>,
 }
 
 /// GET /api/sessions/active - Get active sessions
@@ -59,11 +64,9 @@ pub async fn get_session_history(
     }
 
     // Sort by end_time descending (newest first)
-    sessions.sort_by(|a, b| {
-        match (a.end_time, b.end_time) {
-            (Some(at), Some(bt)) => bt.cmp(&at),
-            _ => std::cmp::Ordering::Equal,
-        }
+    sessions.sort_by(|a, b| match (a.end_time, b.end_time) {
+        (Some(at), Some(bt)) => bt.cmp(&at),
+        _ => std::cmp::Ordering::Equal,
     });
 
     // Pagination
@@ -111,15 +114,25 @@ pub async fn get_session_stats(
 ) -> (StatusCode, Json<SessionStatsResponse>) {
     let all_sessions = state.session_manager.get_all_sessions().await;
 
-    let active_sessions = all_sessions.iter().filter(|s| s.status.as_str() == "active").count() as u64;
-    let closed_sessions = all_sessions.iter().filter(|s| s.status.as_str() == "closed").count() as u64;
-    let failed_sessions = all_sessions.iter().filter(|s| s.status.as_str() == "failed").count() as u64;
+    let active_sessions = all_sessions
+        .iter()
+        .filter(|s| s.status.as_str() == "active")
+        .count() as u64;
+    let closed_sessions = all_sessions
+        .iter()
+        .filter(|s| s.status.as_str() == "closed")
+        .count() as u64;
+    let failed_sessions = all_sessions
+        .iter()
+        .filter(|s| s.status.as_str() == "failed")
+        .count() as u64;
 
     let total_bytes_sent: u64 = all_sessions.iter().map(|s| s.bytes_sent).sum();
     let total_bytes_received: u64 = all_sessions.iter().map(|s| s.bytes_received).sum();
 
     // Calculate top users (by session count)
-    let mut user_stats: std::collections::HashMap<String, (u64, u64, u64)> = std::collections::HashMap::new();
+    let mut user_stats: std::collections::HashMap<String, (u64, u64, u64)> =
+        std::collections::HashMap::new();
     for session in &all_sessions {
         let entry = user_stats.entry(session.user.clone()).or_insert((0, 0, 0));
         entry.0 += 1;
@@ -140,7 +153,8 @@ pub async fn get_session_stats(
     top_users.truncate(10);
 
     // Calculate top destinations
-    let mut dest_stats: std::collections::HashMap<String, (u64, u64, u64)> = std::collections::HashMap::new();
+    let mut dest_stats: std::collections::HashMap<String, (u64, u64, u64)> =
+        std::collections::HashMap::new();
     for session in &all_sessions {
         let key = format!("{}:{}", session.dest_ip, session.dest_port);
         let entry = dest_stats.entry(key).or_insert((0, 0, 0));

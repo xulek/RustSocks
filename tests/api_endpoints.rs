@@ -1,17 +1,17 @@
+use axum::{
+    body::Body,
+    http::{Request, StatusCode},
+    routing::{get, post},
+    Router,
+};
 use rustsocks::api::handlers::sessions::ApiState;
 use rustsocks::api::handlers::{
-    get_active_sessions, get_session_stats, get_session_history, get_user_sessions,
-    health_check, get_metrics,
+    get_acl_rules, get_active_sessions, get_metrics, get_session_history, get_session_stats,
+    get_user_sessions, health_check, test_acl_decision,
 };
 use rustsocks::session::{ConnectionInfo, SessionManager, SessionProtocol, SessionStatus};
 use std::net::IpAddr;
 use std::sync::Arc;
-use axum::{
-    body::Body,
-    http::{Request, StatusCode},
-    Router,
-    routing::get,
-};
 use tower::util::ServiceExt;
 
 #[tokio::test]
@@ -19,6 +19,8 @@ async fn test_health_endpoint() {
     let session_manager = Arc::new(SessionManager::new());
     let state = ApiState {
         session_manager: session_manager.clone(),
+        acl_engine: None,
+        acl_config_path: None,
     };
 
     let app = Router::new()
@@ -26,13 +28,20 @@ async fn test_health_endpoint() {
         .with_state(state);
 
     let response = app
-        .oneshot(Request::builder().uri("/health").body(Body::empty()).unwrap())
+        .oneshot(
+            Request::builder()
+                .uri("/health")
+                .body(Body::empty())
+                .unwrap(),
+        )
         .await
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::OK);
 
-    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let health: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
     assert_eq!(health["status"], "healthy");
@@ -58,6 +67,8 @@ async fn test_metrics_endpoint() {
 
     let state = ApiState {
         session_manager: session_manager.clone(),
+        acl_engine: None,
+        acl_config_path: None,
     };
 
     let app = Router::new()
@@ -65,13 +76,20 @@ async fn test_metrics_endpoint() {
         .with_state(state);
 
     let response = app
-        .oneshot(Request::builder().uri("/metrics").body(Body::empty()).unwrap())
+        .oneshot(
+            Request::builder()
+                .uri("/metrics")
+                .body(Body::empty())
+                .unwrap(),
+        )
         .await
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::OK);
 
-    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let metrics = String::from_utf8(body.to_vec()).unwrap();
 
     assert!(metrics.contains("rustsocks_active_sessions"));
@@ -101,6 +119,8 @@ async fn test_get_active_sessions() {
 
     let state = ApiState {
         session_manager: session_manager.clone(),
+        acl_engine: None,
+        acl_config_path: None,
     };
 
     let app = Router::new()
@@ -119,12 +139,17 @@ async fn test_get_active_sessions() {
 
     assert_eq!(response.status(), StatusCode::OK);
 
-    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let sessions: Vec<serde_json::Value> = serde_json::from_slice(&body).unwrap();
 
     assert_eq!(sessions.len(), 3);
     // Check that all expected users are present (order not guaranteed due to DashMap)
-    let users: Vec<String> = sessions.iter().map(|s| s["user"].as_str().unwrap().to_string()).collect();
+    let users: Vec<String> = sessions
+        .iter()
+        .map(|s| s["user"].as_str().unwrap().to_string())
+        .collect();
     assert!(users.contains(&"user0".to_string()));
     assert!(users.contains(&"user1".to_string()));
     assert!(users.contains(&"user2".to_string()));
@@ -151,6 +176,8 @@ async fn test_get_session_stats() {
 
     let state = ApiState {
         session_manager: session_manager.clone(),
+        acl_engine: None,
+        acl_config_path: None,
     };
 
     let app = Router::new()
@@ -169,7 +196,9 @@ async fn test_get_session_stats() {
 
     assert_eq!(response.status(), StatusCode::OK);
 
-    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let stats: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
     assert_eq!(stats["total_sessions"], 5);
@@ -213,6 +242,8 @@ async fn test_get_user_sessions() {
 
     let state = ApiState {
         session_manager: session_manager.clone(),
+        acl_engine: None,
+        acl_config_path: None,
     };
 
     let app = Router::new()
@@ -231,7 +262,9 @@ async fn test_get_user_sessions() {
 
     assert_eq!(response.status(), StatusCode::OK);
 
-    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let sessions: Vec<serde_json::Value> = serde_json::from_slice(&body).unwrap();
 
     assert_eq!(sessions.len(), 3);
@@ -261,13 +294,19 @@ async fn test_session_history_with_filters() {
         // Close some sessions
         if i < 3 {
             session_manager
-                .close_session(&session_id, Some("Test close".to_string()), SessionStatus::Closed)
+                .close_session(
+                    &session_id,
+                    Some("Test close".to_string()),
+                    SessionStatus::Closed,
+                )
                 .await;
         }
     }
 
     let state = ApiState {
         session_manager: session_manager.clone(),
+        acl_engine: None,
+        acl_config_path: None,
     };
 
     let app = Router::new()
@@ -288,7 +327,9 @@ async fn test_session_history_with_filters() {
 
     assert_eq!(response.status(), StatusCode::OK);
 
-    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let result: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
     // Should have sessions only for user0
@@ -324,6 +365,8 @@ async fn test_session_history_pagination() {
 
     let state = ApiState {
         session_manager: session_manager.clone(),
+        acl_engine: None,
+        acl_config_path: None,
     };
 
     let app = Router::new()
@@ -343,7 +386,9 @@ async fn test_session_history_pagination() {
 
     assert_eq!(response.status(), StatusCode::OK);
 
-    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let result: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
     assert_eq!(result["total"], 10);
@@ -351,4 +396,168 @@ async fn test_session_history_pagination() {
     assert_eq!(result["page_size"], 5);
     assert_eq!(result["total_pages"], 2);
     assert_eq!(result["data"].as_array().unwrap().len(), 5);
+}
+
+#[tokio::test]
+async fn test_get_acl_rules_without_acl() {
+    let session_manager = Arc::new(SessionManager::new());
+    let state = ApiState {
+        session_manager,
+        acl_engine: None,
+        acl_config_path: None,
+    };
+
+    let app = Router::new()
+        .route("/api/acl/rules", get(get_acl_rules))
+        .with_state(state);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/acl/rules")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let result: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    assert_eq!(result["message"], "ACL is not enabled");
+}
+
+#[tokio::test]
+async fn test_test_acl_decision_without_acl() {
+    let session_manager = Arc::new(SessionManager::new());
+    let state = ApiState {
+        session_manager,
+        acl_engine: None,
+        acl_config_path: None,
+    };
+
+    let app = Router::new()
+        .route("/api/acl/test", post(test_acl_decision))
+        .with_state(state);
+
+    let request_body = serde_json::json!({
+        "user": "alice",
+        "destination": "example.com",
+        "port": 443,
+        "protocol": "tcp"
+    });
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/acl/test")
+                .header("content-type", "application/json")
+                .body(Body::from(request_body.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let result: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    assert_eq!(result["decision"], "error");
+    assert_eq!(result["matched_rule"], "ACL is not enabled");
+}
+
+#[tokio::test]
+async fn test_test_acl_decision_invalid_protocol() {
+    let session_manager = Arc::new(SessionManager::new());
+    let state = ApiState {
+        session_manager,
+        acl_engine: None,
+        acl_config_path: None,
+    };
+
+    let app = Router::new()
+        .route("/api/acl/test", post(test_acl_decision))
+        .with_state(state);
+
+    let request_body = serde_json::json!({
+        "user": "alice",
+        "destination": "example.com",
+        "port": 443,
+        "protocol": "invalid"
+    });
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/acl/test")
+                .header("content-type", "application/json")
+                .body(Body::from(request_body.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let result: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    assert_eq!(result["decision"], "error");
+    // When ACL is not enabled, we get "ACL is not enabled" error first, before protocol validation
+    assert_eq!(result["matched_rule"], "ACL is not enabled");
+}
+
+#[tokio::test]
+async fn test_test_acl_decision_valid_request() {
+    let session_manager = Arc::new(SessionManager::new());
+    let state = ApiState {
+        session_manager,
+        acl_engine: None, // ACL not enabled, so will return "allow" as default
+        acl_config_path: None,
+    };
+
+    let app = Router::new()
+        .route("/api/acl/test", post(test_acl_decision))
+        .with_state(state);
+
+    let request_body = serde_json::json!({
+        "user": "alice",
+        "destination": "example.com",
+        "port": 443,
+        "protocol": "tcp"
+    });
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/acl/test")
+                .header("content-type", "application/json")
+                .body(Body::from(request_body.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let result: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    assert_eq!(result["decision"], "error");
+    // ACL not enabled returns error
+    assert_eq!(result["matched_rule"], "ACL is not enabled");
 }
