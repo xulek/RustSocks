@@ -1,5 +1,3 @@
-#![cfg(feature = "database")]
-
 use super::store::SessionStore;
 use super::types::Session;
 use std::sync::Arc;

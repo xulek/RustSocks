@@ -28,12 +28,16 @@ impl Protocol {
             Protocol::Udp => "udp",
         }
     }
+}
 
-    pub fn from_str(value: &str) -> Option<Self> {
+impl std::str::FromStr for Protocol {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
         match value {
-            "tcp" | "TCP" => Some(Protocol::Tcp),
-            "udp" | "UDP" => Some(Protocol::Udp),
-            _ => None,
+            "tcp" | "TCP" => Ok(Protocol::Tcp),
+            "udp" | "UDP" => Ok(Protocol::Udp),
+            _ => Err(format!("Invalid protocol: {}", value)),
         }
     }
 }
@@ -57,14 +61,18 @@ impl SessionStatus {
             SessionStatus::RejectedByAcl => "rejected_by_acl",
         }
     }
+}
 
-    pub fn from_str(value: &str) -> Option<Self> {
+impl std::str::FromStr for SessionStatus {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
         match value {
-            "active" | "ACTIVE" => Some(SessionStatus::Active),
-            "closed" | "CLOSED" => Some(SessionStatus::Closed),
-            "failed" | "FAILED" => Some(SessionStatus::Failed),
-            "rejected_by_acl" | "REJECTED_BY_ACL" => Some(SessionStatus::RejectedByAcl),
-            _ => None,
+            "active" | "ACTIVE" => Ok(SessionStatus::Active),
+            "closed" | "CLOSED" => Ok(SessionStatus::Closed),
+            "failed" | "FAILED" => Ok(SessionStatus::Failed),
+            "rejected_by_acl" | "REJECTED_BY_ACL" => Ok(SessionStatus::RejectedByAcl),
+            _ => Err(format!("Invalid session status: {}", value)),
         }
     }
 }

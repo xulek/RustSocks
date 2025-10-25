@@ -1,5 +1,3 @@
-#![cfg(feature = "database")]
-
 use super::types::{Protocol as SessionProtocol, Session, SessionFilter, SessionStatus};
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
 use sqlx::sqlite::SqlitePoolOptions;
@@ -361,11 +359,13 @@ impl SessionRow {
             None => None,
         };
 
-        let protocol = SessionProtocol::from_str(&self.protocol)
-            .ok_or_else(|| decode_error("protocol", "invalid protocol"))?;
+        let protocol = self.protocol
+            .parse::<SessionProtocol>()
+            .map_err(|e| decode_error("protocol", e))?;
 
-        let status = SessionStatus::from_str(&self.status)
-            .ok_or_else(|| decode_error("status", "invalid status"))?;
+        let status = self.status
+            .parse::<SessionStatus>()
+            .map_err(|e| decode_error("status", e))?;
 
         let source_ip = self
             .source_ip

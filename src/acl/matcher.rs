@@ -19,7 +19,6 @@ enum DestinationMatcherType {
 
 #[derive(Debug, Clone)]
 struct WildcardPattern {
-    pattern: String,
     regex: Regex,
 }
 
@@ -30,7 +29,6 @@ impl CompiledDestinationMatcher {
             // Wildcard domain - convert to regex
             let pattern = wildcard_to_regex(s)?;
             DestinationMatcherType::WildcardDomain(WildcardPattern {
-                pattern: s.to_string(),
                 regex: Regex::new(&pattern)
                     .map_err(|e| format!("Invalid wildcard pattern: {}", e))?,
             })

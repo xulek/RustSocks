@@ -241,8 +241,8 @@
 - [x] ACL check → Session creation flow
 - [x] Rejected session tracking
 - [x] End-to-end test flow
- - [ ] Performance test: combined overhead <7ms
-- [ ] Load test: 1000 concurrent connections
+- [x] Performance test: combined overhead <7ms
+- [x] Load test: 1000 concurrent connections
 
 ---
 

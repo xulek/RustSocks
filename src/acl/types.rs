@@ -65,6 +65,7 @@ mod ipnet_serde {
 
 impl DestinationMatcher {
     /// Create from string - auto-detect type
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Result<Self, String> {
         // Check if it's a wildcard domain
         if s.contains('*') {
@@ -102,6 +103,7 @@ pub enum PortMatcher {
 
 impl PortMatcher {
     /// Create from string
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Result<Self, String> {
         if s == "*" {
             return Ok(PortMatcher::Any);
@@ -216,7 +218,7 @@ impl Default for GlobalAclConfig {
 }
 
 /// Complete ACL configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AclConfig {
     #[serde(default)]
     pub global: GlobalAclConfig,
@@ -226,16 +228,6 @@ pub struct AclConfig {
 
     #[serde(default)]
     pub groups: Vec<GroupAcl>,
-}
-
-impl Default for AclConfig {
-    fn default() -> Self {
-        Self {
-            global: GlobalAclConfig::default(),
-            users: Vec::new(),
-            groups: Vec::new(),
-        }
-    }
 }
 
 /// ACL Decision result

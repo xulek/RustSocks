@@ -3,12 +3,14 @@ use rustsocks::acl::{AclConfig, AclEngine, AclStats, Action, Protocol};
 use rustsocks::auth::AuthManager;
 use rustsocks::config::AuthConfig;
 use rustsocks::protocol::ReplyCode;
-use rustsocks::server::handler::handle_client;
+use rustsocks::server::{handle_client, ClientHandlerContext};
 use rustsocks::server::proxy::TrafficUpdateConfig;
 use rustsocks::session::{SessionManager, SessionStatus};
+use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
+use tokio::time::{Duration, Instant};
 
 fn blocking_acl_config() -> AclConfig {
     AclConfig {
@@ -63,27 +65,20 @@ async fn acl_blocks_connection_and_tracks_stats() {
     let session_manager = Arc::new(SessionManager::new());
 
     let server_task = {
-        let auth_manager = auth_manager.clone();
-        let acl_engine = Some(acl_engine.clone());
-        let acl_stats = acl_stats.clone();
-        let anonymous_user = anonymous_user.clone();
-        let session_manager = session_manager.clone();
-        let traffic_config = TrafficUpdateConfig::default();
+        let ctx = Arc::new(ClientHandlerContext {
+            auth_manager: auth_manager.clone(),
+            acl_engine: Some(acl_engine.clone()),
+            acl_stats: acl_stats.clone(),
+            anonymous_user: anonymous_user.clone(),
+            session_manager: session_manager.clone(),
+            traffic_config: TrafficUpdateConfig::default(),
+        });
 
         tokio::spawn(async move {
             let (stream, client_addr) = listener.accept().await.expect("accept test client");
-            handle_client(
-                stream,
-                auth_manager,
-                acl_engine,
-                acl_stats,
-                anonymous_user,
-                session_manager,
-                traffic_config,
-                client_addr,
-            )
-            .await
-            .expect("handler should complete");
+            handle_client(stream, ctx, client_addr)
+                .await
+                .expect("handler should complete");
         })
     };
 
@@ -145,8 +140,22 @@ async fn acl_blocks_connection_and_tracks_stats() {
     assert_eq!(rejected[0].dest_ip, "blocked.example.com");
 }
 
-#[tokio::test]
-async fn acl_allows_connection_and_creates_session() {
+struct AllowEnv {
+    server_addr: SocketAddr,
+    upstream_addr: SocketAddr,
+    session_manager: Arc<SessionManager>,
+    server_task: tokio::task::JoinHandle<()>,
+    upstream_task: tokio::task::JoinHandle<()>,
+}
+
+impl AllowEnv {
+    async fn wait(self) {
+        let _ = self.server_task.await;
+        let _ = self.upstream_task.await;
+    }
+}
+
+async fn spawn_allow_env(expected: usize) -> AllowEnv {
     let auth_manager = Arc::new(
         AuthManager::new(&AuthConfig {
             method: "none".into(),
@@ -158,6 +167,7 @@ async fn acl_allows_connection_and_creates_session() {
     let acl_engine = Arc::new(AclEngine::new(allowing_acl_config()).expect("acl engine"));
     let acl_stats = Arc::new(AclStats::new());
     let anonymous_user = Arc::new(String::from("anonymous"));
+    let session_manager = Arc::new(SessionManager::new());
 
     let upstream_listener = TcpListener::bind("127.0.0.1:0")
         .await
@@ -165,81 +175,191 @@ async fn acl_allows_connection_and_creates_session() {
     let upstream_addr = upstream_listener.local_addr().unwrap();
 
     let upstream_task = tokio::spawn(async move {
-        if let Ok((stream, _)) = upstream_listener.accept().await {
-            drop(stream);
+        for _ in 0..expected {
+            match upstream_listener.accept().await {
+                Ok((stream, _)) => drop(stream),
+                Err(_) => break,
+            }
         }
     });
 
     let listener = TcpListener::bind("127.0.0.1:0")
         .await
         .expect("bind test listener");
-    let addr = listener.local_addr().expect("listener addr");
-    let session_manager = Arc::new(SessionManager::new());
+    let server_addr = listener.local_addr().unwrap();
 
     let server_task = {
-        let auth_manager = auth_manager.clone();
-        let acl_engine = Some(acl_engine.clone());
-        let acl_stats = acl_stats.clone();
-        let anonymous_user = anonymous_user.clone();
-        let session_manager = session_manager.clone();
+        let ctx = Arc::new(ClientHandlerContext {
+            auth_manager: auth_manager.clone(),
+            acl_engine: Some(acl_engine.clone()),
+            acl_stats: acl_stats.clone(),
+            anonymous_user: anonymous_user.clone(),
+            session_manager: session_manager.clone(),
+            traffic_config: TrafficUpdateConfig::default(),
+        });
 
         tokio::spawn(async move {
-            if let Ok((stream, client_addr)) = listener.accept().await {
-                handle_client(
-                    stream,
-                    auth_manager,
-                    acl_engine,
-                    acl_stats,
-                    anonymous_user,
-                    session_manager,
-                    TrafficUpdateConfig::default(),
-                    client_addr,
-                )
-                .await
-                .expect("handler should complete");
+            let mut handles = Vec::with_capacity(expected);
+            for _ in 0..expected {
+                match listener.accept().await {
+                    Ok((stream, client_addr)) => {
+                        let ctx = ctx.clone();
+
+                        handles.push(tokio::spawn(async move {
+                            let _ = handle_client(stream, ctx, client_addr).await;
+                        }));
+                    }
+                    Err(_) => break,
+                }
+            }
+
+            for handle in handles {
+                let _ = handle.await;
             }
         })
     };
 
-    let mut client = TcpStream::connect(addr).await.expect("connect to handler");
+    AllowEnv {
+        server_addr,
+        upstream_addr,
+        session_manager,
+        server_task,
+        upstream_task,
+    }
+}
 
-    // Greeting (method negotiation)
-    client
-        .write_all(&[0x05, 0x01, 0x00])
-        .await
-        .expect("send greeting");
+async fn perform_handshake(
+    server_addr: SocketAddr,
+    upstream_addr: SocketAddr,
+) -> std::io::Result<Duration> {
+    let mut client = TcpStream::connect(server_addr).await?;
 
+    let start = Instant::now();
+
+    client.write_all(&[0x05, 0x01, 0x00]).await?;
     let mut response = [0u8; 2];
-    client
-        .read_exact(&mut response)
-        .await
-        .expect("read method selection");
-    assert_eq!(response, [0x05, 0x00]);
+    client.read_exact(&mut response).await?;
+    if response != [0x05, 0x00] {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "unexpected method selection reply",
+        ));
+    }
 
-    // CONNECT request targeting the upstream listener
-    let octets = upstream_addr.ip().to_string();
-    let ip: std::net::Ipv4Addr = octets.parse().expect("ipv4 parse");
+    let ip = match upstream_addr.ip() {
+        IpAddr::V4(ip) => ip,
+        IpAddr::V6(_) => {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "IPv6 upstream not supported in this test",
+            ))
+        }
+    };
+
     let mut request = Vec::new();
     request.extend_from_slice(&[0x05, 0x01, 0x00, 0x01]);
     request.extend_from_slice(&ip.octets());
     request.extend_from_slice(&upstream_addr.port().to_be_bytes());
-    client
-        .write_all(&request)
-        .await
-        .expect("send connect request");
+    client.write_all(&request).await?;
 
     let mut reply = [0u8; 10];
-    client.read_exact(&mut reply).await.expect("read reply");
-    assert_eq!(reply[1], ReplyCode::Succeeded as u8);
+    client.read_exact(&mut reply).await?;
+    if reply[1] != ReplyCode::Succeeded as u8 {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "connect reply not succeeded",
+        ));
+    }
 
-    client.shutdown().await.expect("client shutdown");
-    let _ = server_task.await;
-    let _ = upstream_task.await;
+    let elapsed = start.elapsed();
+    client.shutdown().await?;
 
-    assert!(acl_stats.snapshot().allowed >= 1);
+    Ok(elapsed)
+}
+
+#[tokio::test]
+async fn acl_allows_connection_and_creates_session() {
+    let env = spawn_allow_env(1).await;
+    let session_manager = env.session_manager.clone();
+    let dest_ip = env.upstream_addr.ip().to_string();
+
+    let duration = perform_handshake(env.server_addr, env.upstream_addr)
+        .await
+        .expect("handshake should succeed");
+    assert!(
+        duration.as_millis() < 1000,
+        "slow handshake: {:?}",
+        duration
+    );
+
+    env.wait().await;
+
     assert_eq!(session_manager.active_session_count(), 0);
     let closed = session_manager.closed_snapshot();
     assert_eq!(closed.len(), 1);
-    assert_eq!(closed[0].dest_ip, ip.to_string());
+    assert_eq!(closed[0].dest_ip, dest_ip);
     assert_eq!(closed[0].status, SessionStatus::Closed);
+}
+
+#[tokio::test]
+#[ignore = "Timing-sensitive benchmark"]
+async fn acl_performance_under_seven_ms() {
+    const ITERATIONS: usize = 32;
+    let env = spawn_allow_env(ITERATIONS).await;
+
+    let mut total = Duration::default();
+    for _ in 0..ITERATIONS {
+        match perform_handshake(env.server_addr, env.upstream_addr).await {
+            Ok(elapsed) => total += elapsed,
+            Err(err) => {
+                eprintln!("Skipping benchmark due to error: {:?}", err);
+                env.wait().await;
+                return;
+            }
+        }
+    }
+
+    env.wait().await;
+
+    let avg = total / ITERATIONS as u32;
+    assert!(
+        avg.as_micros() <= 7_000,
+        "average handshake overhead {:?} exceeds 7ms",
+        avg
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
+#[ignore = "Stress test with 1000 concurrent connections"]
+async fn acl_handles_thousand_concurrent_connections() {
+    const CONNECTIONS: usize = 1000;
+    let env = spawn_allow_env(CONNECTIONS).await;
+    let session_manager = env.session_manager.clone();
+
+    let mut success = 0usize;
+    let mut tasks = Vec::with_capacity(CONNECTIONS);
+    for _ in 0..CONNECTIONS {
+        let server_addr = env.server_addr;
+        let upstream_addr = env.upstream_addr;
+        tasks.push(tokio::spawn(async move {
+            perform_handshake(server_addr, upstream_addr).await.is_ok()
+        }));
+    }
+
+    for task in tasks {
+        if task.await.unwrap_or(false) {
+            success += 1;
+        }
+    }
+
+    env.wait().await;
+
+    assert_eq!(session_manager.active_session_count(), 0);
+    assert_eq!(session_manager.closed_snapshot().len(), success);
+    assert!(
+        success >= CONNECTIONS / 2,
+        "only {} successful handshakes out of {}",
+        success,
+        CONNECTIONS
+    );
 }

@@ -16,7 +16,7 @@ pub async fn resolve_address(address: &Address, port: u16) -> Result<Vec<SocketA
         Address::Domain(domain) => {
             let lookup = tokio::net::lookup_host((domain.as_str(), port))
                 .await
-                .map_err(|e| RustSocksError::Io(e))?;
+                .map_err(RustSocksError::Io)?;
             lookup.collect()
         }
     };

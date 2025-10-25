@@ -1,7 +1,7 @@
 use crate::acl::{load_acl_config_sync, AclEngine, AclStats};
 use crate::auth::AuthManager;
 use crate::config::Config;
-use crate::server::handler::handle_client;
+use crate::server::handler::{handle_client, ClientHandlerContext};
 use crate::server::proxy::TrafficUpdateConfig;
 use crate::server::stats;
 use crate::session::SessionManager;
@@ -160,31 +160,24 @@ impl SocksServer {
             info!("ACL enforcement disabled");
         }
 
+        let handler_ctx = Arc::new(ClientHandlerContext {
+            auth_manager: self.auth_manager.clone(),
+            acl_engine: self.acl_engine.clone(),
+            acl_stats: self.acl_stats.clone(),
+            anonymous_user: self.anonymous_user.clone(),
+            session_manager: self.session_manager.clone(),
+            traffic_config: self.traffic_config,
+        });
+
         loop {
             match listener.accept().await {
                 Ok((stream, addr)) => {
                     info!("New connection from {}", addr);
 
-                    let auth_manager = self.auth_manager.clone();
-                    let acl_engine = self.acl_engine.clone();
-                    let acl_stats = self.acl_stats.clone();
-                    let anonymous_user = self.anonymous_user.clone();
-                    let session_manager = self.session_manager.clone();
-                    let traffic_config = self.traffic_config;
+                    let ctx = handler_ctx.clone();
 
                     tokio::spawn(async move {
-                        if let Err(e) = handle_client(
-                            stream,
-                            auth_manager,
-                            acl_engine,
-                            acl_stats,
-                            anonymous_user,
-                            session_manager,
-                            traffic_config,
-                            addr,
-                        )
-                        .await
-                        {
+                        if let Err(e) = handle_client(stream, ctx, addr).await {
                             error!("Client error from {}: {}", addr, e);
                         }
                     });

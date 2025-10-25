@@ -94,10 +94,7 @@ pub async fn proxy_data(
 }
 
 fn join_error_to_rustsocks(err: tokio::task::JoinError) -> RustSocksError {
-    RustSocksError::Io(io::Error::new(
-        io::ErrorKind::Other,
-        format!("proxy task join error: {}", err),
-    ))
+    RustSocksError::Io(io::Error::other(format!("proxy task join error: {}", err)))
 }
 
 async fn proxy_direction(

@@ -9,14 +9,19 @@ use std::sync::Arc;
 use tokio::net::TcpStream;
 use tracing::{debug, info, warn};
 
+/// Context for handling client connections
+pub struct ClientHandlerContext {
+    pub auth_manager: Arc<AuthManager>,
+    pub acl_engine: Option<Arc<AclEngine>>,
+    pub acl_stats: Arc<AclStats>,
+    pub anonymous_user: Arc<String>,
+    pub session_manager: Arc<SessionManager>,
+    pub traffic_config: TrafficUpdateConfig,
+}
+
 pub async fn handle_client(
     mut client_stream: TcpStream,
-    auth_manager: Arc<AuthManager>,
-    acl_engine: Option<Arc<AclEngine>>,
-    acl_stats: Arc<AclStats>,
-    anonymous_user: Arc<String>,
-    session_manager: Arc<SessionManager>,
-    traffic_config: TrafficUpdateConfig,
+    ctx: Arc<ClientHandlerContext>,
     client_addr: std::net::SocketAddr,
 ) -> Result<()> {
     // Step 1: Method selection
@@ -25,10 +30,10 @@ pub async fn handle_client(
     debug!("Client offered methods: {:?}", greeting.methods);
 
     // Select auth method
-    let server_method = if greeting.methods.contains(&auth_manager.get_method()) {
-        auth_manager.get_method()
+    let server_method = if greeting.methods.contains(&ctx.auth_manager.get_method()) {
+        ctx.auth_manager.get_method()
     } else if greeting.methods.contains(&AuthMethod::NoAuth)
-        && auth_manager.supports(AuthMethod::NoAuth)
+        && ctx.auth_manager.supports(AuthMethod::NoAuth)
     {
         AuthMethod::NoAuth
     } else {
@@ -41,7 +46,8 @@ pub async fn handle_client(
     send_server_choice(&mut client_stream, server_method).await?;
 
     // Step 2: Authentication
-    let user = auth_manager
+    let user = ctx
+        .auth_manager
         .authenticate(&mut client_stream, server_method)
         .await?;
 
@@ -51,7 +57,7 @@ pub async fn handle_client(
 
     let acl_user = user
         .clone()
-        .unwrap_or_else(|| anonymous_user.as_ref().clone());
+        .unwrap_or_else(|| ctx.anonymous_user.as_ref().clone());
 
     // Step 3: SOCKS5 request
     let request = parse_socks5_request(&mut client_stream).await?;
@@ -71,7 +77,7 @@ pub async fn handle_client(
     let mut acl_decision = "allow".to_string();
 
     // Step 3b: ACL enforcement (if enabled)
-    if let Some(engine) = acl_engine.as_ref() {
+    if let Some(engine) = ctx.acl_engine.as_ref() {
         let protocol = match request.command {
             Command::UdpAssociate => Protocol::Udp,
             _ => Protocol::Tcp,
@@ -83,7 +89,7 @@ pub async fn handle_client(
 
         match decision {
             AclDecision::Block => {
-                acl_stats.record_block(&acl_user);
+                ctx.acl_stats.record_block(&acl_user);
                 let rule = matched_rule.as_deref().unwrap_or("unknown rule");
 
                 warn!(
@@ -94,14 +100,17 @@ pub async fn handle_client(
                     "ACL blocked connection"
                 );
 
-                session_manager
+                let conn_info = ConnectionInfo {
+                    source_ip: client_addr.ip(),
+                    source_port: client_addr.port(),
+                    dest_ip: dest_string.clone(),
+                    dest_port: request.port,
+                    protocol: session_protocol,
+                };
+                ctx.session_manager
                     .track_rejected_session(
                         &acl_user,
-                        client_addr.ip(),
-                        client_addr.port(),
-                        dest_string.clone(),
-                        request.port,
-                        session_protocol,
+                        conn_info,
                         matched_rule.clone(),
                     )
                     .await;
@@ -117,7 +126,7 @@ pub async fn handle_client(
                 return Ok(());
             }
             AclDecision::Allow => {
-                acl_stats.record_allow(&acl_user);
+                ctx.acl_stats.record_allow(&acl_user);
                 acl_rule_match = matched_rule.clone();
                 acl_decision = "allow".to_string();
 
@@ -143,17 +152,20 @@ pub async fn handle_client(
     // Step 4: Handle command
     match request.command {
         Command::Connect => {
+            let session_ctx = SessionContext {
+                user: acl_user,
+                client_addr,
+                acl_decision,
+                acl_rule: acl_rule_match,
+                protocol: session_protocol,
+            };
             handle_connect(
                 client_stream,
                 &request.address,
                 request.port,
-                session_manager,
-                acl_user,
-                client_addr,
-                acl_decision,
-                acl_rule_match,
-                session_protocol,
-                traffic_config,
+                ctx.session_manager.clone(),
+                session_ctx,
+                ctx.traffic_config,
             )
             .await?;
         }
@@ -184,16 +196,20 @@ pub async fn handle_client(
     Ok(())
 }
 
+struct SessionContext {
+    user: String,
+    client_addr: std::net::SocketAddr,
+    acl_decision: String,
+    acl_rule: Option<String>,
+    protocol: SessionProtocol,
+}
+
 async fn handle_connect(
     mut client_stream: TcpStream,
     dest_addr: &Address,
     dest_port: u16,
     session_manager: Arc<SessionManager>,
-    session_user: String,
-    client_addr: std::net::SocketAddr,
-    acl_decision: String,
-    acl_rule_match: Option<String>,
-    session_protocol: SessionProtocol,
+    session_ctx: SessionContext,
     traffic_config: TrafficUpdateConfig,
 ) -> Result<()> {
     let dest_host = match dest_addr {
@@ -249,9 +265,9 @@ async fn handle_connect(
                 0,
             )
             .await?;
-            return Err(RustSocksError::Io(last_err.unwrap_or_else(|| {
-                std::io::Error::new(std::io::ErrorKind::Other, "no reachable upstream addresses")
-            })));
+            return Err(RustSocksError::Io(
+                last_err.unwrap_or_else(|| std::io::Error::other("no reachable upstream addresses"))
+            ));
         }
     };
 
@@ -262,19 +278,19 @@ async fn handle_connect(
 
     // Session tracking
     let connection_info = ConnectionInfo {
-        source_ip: client_addr.ip(),
-        source_port: client_addr.port(),
+        source_ip: session_ctx.client_addr.ip(),
+        source_port: session_ctx.client_addr.port(),
         dest_ip: dest_host.clone(),
         dest_port,
-        protocol: session_protocol,
+        protocol: session_ctx.protocol,
     };
 
     let session_id = session_manager
         .new_session(
-            &session_user,
+            &session_ctx.user,
             connection_info,
-            acl_decision,
-            acl_rule_match.clone(),
+            session_ctx.acl_decision.clone(),
+            session_ctx.acl_rule.clone(),
         )
         .await;
 

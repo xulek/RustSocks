@@ -2,7 +2,7 @@ use crate::utils::error::{Result, RustSocksError};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Config {
     pub server: ServerConfig,
     pub auth: AuthConfig,
@@ -225,17 +225,6 @@ impl Default for SessionSettings {
     }
 }
 
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            server: ServerConfig::default(),
-            auth: AuthConfig::default(),
-            logging: LoggingConfig::default(),
-            acl: AclSettings::default(),
-            sessions: SessionSettings::default(),
-        }
-    }
-}
 
 impl Config {
     /// Load configuration from file

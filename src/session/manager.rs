@@ -5,13 +5,12 @@ use super::metrics::SessionMetrics;
 #[cfg(feature = "database")]
 use super::store::SessionStore;
 use super::types::{
-    AclDecisionStats, ConnectionInfo, DestinationStat, Protocol, Session, SessionStats,
+    AclDecisionStats, ConnectionInfo, DestinationStat, Session, SessionStats,
     SessionStatus, UserSessionStat,
 };
 use chrono::{Duration as ChronoDuration, Utc};
 use dashmap::DashMap;
 use std::collections::HashMap;
-use std::net::IpAddr;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::RwLock;
@@ -241,7 +240,6 @@ impl SessionManager {
                 let snapshot = session_guard.clone();
                 drop(session_guard);
                 writer.enqueue(snapshot).await;
-                return;
             }
 
             #[cfg(not(feature = "database"))]
@@ -277,22 +275,12 @@ impl SessionManager {
     pub async fn track_rejected_session(
         &self,
         user: &str,
-        source_ip: IpAddr,
-        source_port: u16,
-        dest_ip: String,
-        dest_port: u16,
-        protocol: Protocol,
+        conn: ConnectionInfo,
         acl_rule: Option<String>,
     ) -> Uuid {
         let mut session = Session::new(
             user.to_string(),
-            ConnectionInfo {
-                source_ip,
-                source_port,
-                dest_ip,
-                dest_port,
-                protocol,
-            },
+            conn,
             "block",
             acl_rule,
         );
@@ -337,6 +325,7 @@ impl Default for SessionManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::session::types::Protocol;
     use std::collections::HashMap;
     use std::net::{IpAddr, Ipv4Addr};
 
@@ -395,14 +384,17 @@ mod tests {
     #[tokio::test]
     async fn track_rejected_session() {
         let manager = SessionManager::new();
+        let conn = ConnectionInfo {
+            source_ip: IpAddr::V4(Ipv4Addr::LOCALHOST),
+            source_port: 40000,
+            dest_ip: "blocked.example.com".into(),
+            dest_port: 80,
+            protocol: Protocol::Tcp,
+        };
         let session_id = manager
             .track_rejected_session(
                 "bob",
-                IpAddr::V4(Ipv4Addr::LOCALHOST),
-                40000,
-                "blocked.example.com".into(),
-                80,
-                Protocol::Tcp,
+                conn,
                 Some("Block admin".into()),
             )
             .await;
@@ -439,14 +431,17 @@ mod tests {
             guard.start_time = guard.start_time - ChronoDuration::hours(48);
         }
 
+        let conn_carol = ConnectionInfo {
+            source_ip: IpAddr::V4(Ipv4Addr::LOCALHOST),
+            source_port: 41000,
+            dest_ip: "blocked.internal".into(),
+            dest_port: 8080,
+            protocol: Protocol::Tcp,
+        };
         manager
             .track_rejected_session(
                 "carol",
-                IpAddr::V4(Ipv4Addr::LOCALHOST),
-                41000,
-                "blocked.internal".into(),
-                8080,
-                Protocol::Tcp,
+                conn_carol,
                 Some("Block admin".into()),
             )
             .await;
@@ -544,14 +539,17 @@ mod tests {
             "duration histogram should record the session"
         );
 
+        let conn_rejected = ConnectionInfo {
+            source_ip: IpAddr::V4(Ipv4Addr::LOCALHOST),
+            source_port: 40001,
+            dest_ip: "blocked.metrics.example".into(),
+            dest_port: 1080,
+            protocol: Protocol::Tcp,
+        };
         manager
             .track_rejected_session(
                 "bob",
-                IpAddr::V4(Ipv4Addr::LOCALHOST),
-                40001,
-                "blocked.metrics.example".into(),
-                1080,
-                Protocol::Tcp,
+                conn_rejected,
                 None,
             )
             .await;

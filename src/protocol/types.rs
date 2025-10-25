@@ -1,3 +1,4 @@
+use std::fmt;
 use std::net::{Ipv4Addr, Ipv6Addr};
 
 /// SOCKS5 Version
@@ -56,12 +57,12 @@ pub enum Address {
     Domain(String),
 }
 
-impl Address {
-    pub fn to_string(&self) -> String {
+impl fmt::Display for Address {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Address::IPv4(octets) => Ipv4Addr::from(*octets).to_string(),
-            Address::IPv6(octets) => Ipv6Addr::from(*octets).to_string(),
-            Address::Domain(domain) => domain.clone(),
+            Address::IPv4(octets) => write!(f, "{}", Ipv4Addr::from(*octets)),
+            Address::IPv6(octets) => write!(f, "{}", Ipv6Addr::from(*octets)),
+            Address::Domain(domain) => write!(f, "{}", domain),
         }
     }
 }
