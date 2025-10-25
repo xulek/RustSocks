@@ -1,16 +1,16 @@
 use crate::acl::{load_acl_config_sync, AclEngine, AclStats, AclWatcher};
+use crate::api::types::ApiConfig;
+use crate::api::start_api_server;
 use crate::auth::AuthManager;
 use crate::config::Config;
 use crate::server::handler::{handle_client, ClientHandlerContext};
 use crate::server::proxy::TrafficUpdateConfig;
-use crate::server::stats;
 use crate::session::SessionManager;
 #[cfg(feature = "database")]
 use crate::session::{BatchConfig, SessionStore};
 use crate::utils::error::{Result, RustSocksError};
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::Duration;
 use tokio::net::TcpListener;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
@@ -136,28 +136,33 @@ impl SocksServer {
         let mut stats_handle = None;
 
         if config.sessions.stats_api_enabled {
-            let bind_addr = format!(
-                "{}:{}",
-                config.sessions.stats_api_bind_address, config.sessions.stats_api_port
-            );
-            let default_window_secs = config
-                .sessions
-                .stats_window_hours
-                .checked_mul(3600)
-                .ok_or_else(|| {
-                    RustSocksError::Config("sessions.stats_window_hours is too large".to_string())
-                })?;
-            let default_window = Duration::from_secs(default_window_secs);
+            let api_config = ApiConfig {
+                bind_address: config.sessions.stats_api_bind_address.clone(),
+                bind_port: config.sessions.stats_api_port,
+                enable_api: true,
+                token: None,
+            };
 
-            match stats::start_stats_server(&bind_addr, session_manager.clone(), default_window)
-                .await
+            let acl_config_path = if config.acl.enabled {
+                config.acl.config_file.clone()
+            } else {
+                None
+            };
+
+            match start_api_server(
+                api_config,
+                session_manager.clone(),
+                acl_engine.clone(),
+                acl_config_path,
+            )
+            .await
             {
                 Ok(handle) => {
                     stats_handle = Some(handle);
                 }
                 Err(e) => {
                     return Err(RustSocksError::Config(format!(
-                        "Failed to start stats API: {}",
+                        "Failed to start API server: {}",
                         e
                     )));
                 }

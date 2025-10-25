@@ -31,6 +31,6 @@ retention_days = 90
 cleanup_interval_hours = 24
 traffic_update_packet_interval = 10
 stats_window_hours = 24
-stats_api_enabled = false
+stats_api_enabled = true
 stats_api_bind_address = "127.0.0.1"
 stats_api_port = 9090
