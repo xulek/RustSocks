@@ -23,7 +23,8 @@
       "Bash($HOME/.cargo/bin/cargo test:*)",
       "Bash($HOME/.cargo/bin/cargo test --lib)",
       "Bash($HOME/.cargo/bin/cargo build --release)",
-      "Bash($HOME/.cargo/bin/cargo clippy --all-features -- -D warnings)"
+      "Bash($HOME/.cargo/bin/cargo clippy --all-features -- -D warnings)",
+      "Bash($HOME/.cargo/bin/cargo check --all-features)"
     ],
     "deny": [],
     "ask": []

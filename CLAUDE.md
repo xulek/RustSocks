@@ -25,6 +25,9 @@ cargo test
 # Run tests with database support
 cargo test --features database
 
+# Run all tests with all features
+cargo test --all-features
+
 # Run tests with output
 cargo test -- --nocapture
 
@@ -36,6 +39,9 @@ cargo check
 
 # Run clippy for linting
 cargo clippy
+
+# Run clippy with strict warnings (treat warnings as errors)
+cargo clippy --all-features -- -D warnings
 ```
 
 ### Running the Server
@@ -275,6 +281,59 @@ name = "developers"
   priority = 50
 ```
 
+## Database Operations
+
+### Running Migrations
+
+```bash
+# Migrations are automatically applied on startup when using SQLite storage
+# Located in: migrations/001_create_sessions_table.sql
+
+# To test migrations manually:
+sqlx migrate run --database-url sqlite://sessions.db
+```
+
+### Querying Session Data
+
+```bash
+# Open SQLite database
+sqlite3 sessions.db
+
+# Example queries:
+# Active sessions
+SELECT user, dest_ip, dest_port, bytes_sent, bytes_received
+FROM sessions WHERE status = 'active';
+
+# Rejected by ACL
+SELECT user, dest_ip, dest_port, acl_rule_matched
+FROM sessions WHERE status = 'rejected_by_acl';
+
+# Top users by traffic
+SELECT user, SUM(bytes_sent + bytes_received) as total_bytes, COUNT(*) as sessions
+FROM sessions GROUP BY user ORDER BY total_bytes DESC;
+
+# Sessions in last hour
+SELECT * FROM sessions
+WHERE datetime(start_time) >= datetime('now', '-1 hour');
+```
+
+### Database Schema
+
+The `sessions` table includes:
+- `session_id` (TEXT, PRIMARY KEY) - UUID
+- `user` (TEXT) - Username
+- `start_time` / `end_time` (TEXT) - RFC3339 timestamps
+- `duration_secs` (INTEGER) - Session duration
+- `source_ip` / `source_port` - Client connection info
+- `dest_ip` / `dest_port` - Destination info
+- `protocol` (TEXT) - "tcp" or "udp"
+- `bytes_sent` / `bytes_received` - Traffic counters
+- `packets_sent` / `packets_received` - Packet counters
+- `status` (TEXT) - "active", "closed", "failed", "rejected_by_acl"
+- `close_reason` (TEXT) - Optional close reason
+- `acl_rule_matched` (TEXT) - Matched ACL rule description
+- `acl_decision` (TEXT) - "allow" or "block"
+
 ## Testing
 
 ### Integration Tests
@@ -293,8 +352,17 @@ cargo test acl
 # Session tests with database
 cargo test --features database session
 
-# Ignored performance tests
-cargo test -- --ignored
+# All tests with all features
+cargo test --all-features
+
+# Ignored performance tests (release mode recommended)
+cargo test --release -- --ignored
+
+# Specific performance test
+cargo test --release acl_performance_under_seven_ms -- --ignored --nocapture
+
+# Run all integration tests
+cargo test --test '*'
 ```
 
 ### Test Guidelines
@@ -343,9 +411,142 @@ cargo test -- --ignored
 5. Rollback on validation errors
 6. Typical reload time: <100ms
 
+### Code Quality Standards
+
+**Clippy Rules:**
+- All code must pass `cargo clippy --all-features -- -D warnings` (warnings as errors)
+- Function parameter limits: max 7 parameters (use context structs if exceeded)
+- Use modern Rust idioms:
+  - `io::Error::other(msg)` instead of `io::Error::new(io::ErrorKind::Other, msg)`
+  - Implement standard traits (`Display`, `FromStr`) instead of custom methods
+  - Derive `Default` instead of manual implementations where possible
+- No unused imports or variables
+
+**Code Patterns:**
+- Context structs for grouping related parameters (e.g., `ClientHandlerContext`, `SessionContext`)
+- Use `Arc<T>` for shared ownership, `RwLock` for read-heavy workloads, `DashMap` for concurrent access
+- All database-related code must be feature-gated with `#[cfg(feature = "database")]`
+- Metrics code feature-gated with `#[cfg(feature = "metrics")]`
+
+## UDP ASSOCIATE Command
+
+**Implementation Status**: ✅ Complete
+
+The UDP ASSOCIATE command enables UDP traffic relaying through the SOCKS5 proxy.
+
+### How It Works
+
+1. **TCP Control Connection**: Client sends UDP ASSOCIATE request over TCP
+2. **UDP Relay Binding**: Server binds a UDP socket and returns the address/port to client
+3. **UDP Packet Format**: All UDP packets use SOCKS5 UDP packet format:
+   ```
+   +----+------+------+----------+----------+----------+
+   |RSV | FRAG | ATYP | DST.ADDR | DST.PORT |   DATA   |
+   +----+------+------+----------+----------+----------+
+   | 2  |  1   |  1   | Variable |    2     | Variable |
+   +----+------+------+----------+----------+----------+
+   ```
+4. **Bidirectional Relay**: Server forwards packets between client and destination
+5. **Session Lifetime**: UDP session remains active while TCP control connection is open
+6. **Timeout**: 120-second idle timeout (no packets in either direction)
+
+### Key Components
+
+- **`protocol/types.rs`**: `UdpHeader`, `UdpPacket` structures
+- **`protocol/parser.rs`**: `parse_udp_packet()`, `serialize_udp_packet()` functions
+- **`server/udp.rs`**: UDP relay implementation
+  - `UdpSessionMap`: Tracks client-to-destination mappings
+  - `handle_udp_associate()`: Main UDP relay handler
+  - `run_udp_relay()`: Relay loop with timeout
+  - `handle_client_packet()`: Forward client → destination
+  - `handle_destination_packet()`: Forward destination → client
+- **`server/handler.rs`**: Integration with main handler flow
+
+### Features
+
+- ✅ Full SOCKS5 UDP packet encapsulation
+- ✅ Bidirectional UDP forwarding
+- ✅ ACL enforcement (TCP/UDP protocol filtering)
+- ✅ Session tracking and traffic metrics
+- ✅ IPv4/IPv6/domain name support
+- ✅ Automatic cleanup on TCP disconnect
+- ✅ 120-second idle timeout
+- ❌ UDP fragmentation not supported (FRAG must be 0)
+
+### Testing
+
+```bash
+# Run UDP tests
+cargo test --all-features udp
+
+# Integration tests include:
+# - Basic UDP ASSOCIATE flow
+# - ACL allow/block for UDP
+# - Session tracking
+```
+
+## BIND Command
+
+**Implementation Status**: ✅ Complete
+
+The BIND command enables reverse connections through the SOCKS5 proxy, allowing incoming connections to reach the client.
+
+### How It Works
+
+1. **BIND Request**: Client sends BIND command specifying destination address and port
+2. **Listener Binding**: Server binds a TCP listener on an ephemeral port (0)
+3. **First Response**: Server sends first SOCKS5 response with the bind address/port
+4. **Wait for Connection**: Server waits up to 300 seconds (RFC 1928) for incoming connection
+5. **Second Response**: Server sends second response with the connecting peer's address/port
+6. **Data Proxying**: Server proxies data bidirectionally between client and incoming connection
+7. **Session Cleanup**: Session closes when connection ends
+
+### Key Components
+
+- **`server/bind.rs`**: BIND command implementation
+  - `handle_bind()`: Main BIND handler
+  - `send_bind_response()`: Send SOCKS5 BIND responses
+  - `BIND_ACCEPT_TIMEOUT`: 300-second timeout per RFC 1928
+- **`server/handler.rs`**: Integration with main handler flow (Command::Bind match)
+
+### Features
+
+- ✅ RFC 1928 compliant (300-second timeout)
+- ✅ Two-response protocol (bind address, then peer address)
+- ✅ ACL enforcement for incoming connections
+- ✅ Session tracking and traffic metrics
+- ✅ IPv4/IPv6 address support
+- ✅ Proper timeout handling with error responses
+- ✅ Bidirectional data proxying
+
+### BIND Response Format
+
+```
++----+-----+-------+------+----------+----------+
+|VER | REP |  RSV  | ATYP | BND.ADDR | BND.PORT |
++----+-----+-------+------+----------+----------+
+| 1  |  1  |   1   |  1   | Variable |    2     |
++----+-----+-------+------+----------+----------+
+```
+
+### Testing
+
+```bash
+# Run BIND tests
+cargo test --all-features bind
+
+# Integration tests include:
+# - Basic BIND handshake
+# - BIND with incoming connection acceptance
+# - ACL allow/block for BIND
+# - Session tracking
+```
+
 ## Roadmap Context
 
 - **Sprint 1 (Complete)**: MVP with SOCKS5 protocol, auth, basic proxy
 - **Sprint 2.1 (Complete)**: ACL engine with hot reload
 - **Sprint 2.2-2.4 (Complete)**: Session manager, persistence, metrics, IPv6/domain resolution
-- **Sprint 3 (Planned)**: REST API, production packaging, PAM auth, BIND/UDP ASSOCIATE commands
+- **Sprint 3.1 (Complete)**: UDP ASSOCIATE command ✅
+- **Sprint 3.2 (Complete)**: BIND command ✅
+- **Sprint 3.3+ (Planned)**: REST API, production packaging, PAM auth

@@ -3,10 +3,13 @@ use crate::auth::AuthManager;
 use crate::protocol::*;
 use crate::server::proxy::{proxy_data, TrafficUpdateConfig};
 use crate::server::resolver::resolve_address;
+use crate::server::bind::handle_bind as handle_bind_relay;
+use crate::server::udp::handle_udp_associate as handle_udp_relay;
 use crate::session::{ConnectionInfo, SessionManager, SessionProtocol, SessionStatus};
 use crate::utils::error::{Result, RustSocksError};
 use std::sync::Arc;
 use tokio::net::TcpStream;
+use tokio::sync::broadcast;
 use tracing::{debug, info, warn};
 
 /// Context for handling client connections
@@ -170,26 +173,38 @@ pub async fn handle_client(
             .await?;
         }
         Command::Bind => {
-            warn!("BIND command not yet implemented");
-            send_socks5_response(
-                &mut client_stream,
-                ReplyCode::CommandNotSupported,
-                Address::IPv4([0, 0, 0, 0]),
-                0,
+            let bind_ctx = crate::server::bind::BindContext {
+                user: acl_user,
+                client_addr,
+                acl_decision,
+                acl_rule: acl_rule_match,
+            };
+
+            handle_bind_relay(
+                client_stream,
+                &request.address,
+                request.port,
+                ctx.session_manager.clone(),
+                bind_ctx,
             )
             .await?;
-            return Err(RustSocksError::UnsupportedCommand(0x02));
         }
         Command::UdpAssociate => {
-            warn!("UDP ASSOCIATE command not yet implemented");
-            send_socks5_response(
-                &mut client_stream,
-                ReplyCode::CommandNotSupported,
-                Address::IPv4([0, 0, 0, 0]),
-                0,
+            let session_ctx = SessionContext {
+                user: acl_user,
+                client_addr,
+                acl_decision,
+                acl_rule: acl_rule_match,
+                protocol: session_protocol,
+            };
+            handle_udp_associate(
+                client_stream,
+                &request.address,
+                request.port,
+                ctx.session_manager.clone(),
+                session_ctx,
             )
             .await?;
-            return Err(RustSocksError::UnsupportedCommand(0x03));
         }
     }
 
@@ -341,4 +356,107 @@ async fn handle_connect(
             Err(e)
         }
     }
+}
+
+async fn handle_udp_associate(
+    mut client_stream: TcpStream,
+    _dest_addr: &Address,
+    _dest_port: u16,
+    session_manager: Arc<SessionManager>,
+    session_ctx: SessionContext,
+) -> Result<()> {
+    let dest_host = "0.0.0.0".to_string(); // UDP ASSOCIATE doesn't specify real destination yet
+
+    // Create session
+    let connection_info = ConnectionInfo {
+        source_ip: session_ctx.client_addr.ip(),
+        source_port: session_ctx.client_addr.port(),
+        dest_ip: dest_host.clone(),
+        dest_port: 0,
+        protocol: session_ctx.protocol,
+    };
+
+    let session_id = session_manager
+        .new_session(
+            &session_ctx.user,
+            connection_info,
+            session_ctx.acl_decision.clone(),
+            session_ctx.acl_rule.clone(),
+        )
+        .await;
+
+    // Create shutdown channel for UDP relay
+    let (shutdown_tx, shutdown_rx) = broadcast::channel(1);
+
+    // Start UDP relay
+    let udp_relay_addr = match handle_udp_relay(
+        session_ctx.client_addr,
+        session_manager.clone(),
+        session_id,
+        shutdown_rx,
+    )
+    .await
+    {
+        Ok(addr) => addr,
+        Err(e) => {
+            warn!("Failed to start UDP relay: {}", e);
+            send_socks5_response(
+                &mut client_stream,
+                ReplyCode::GeneralFailure,
+                Address::IPv4([0, 0, 0, 0]),
+                0,
+            )
+            .await?;
+            session_manager
+                .close_session(
+                    &session_id,
+                    Some(format!("UDP relay start failed: {}", e)),
+                    SessionStatus::Failed,
+                )
+                .await;
+            return Err(e);
+        }
+    };
+
+    // Send success response with UDP relay address
+    let bind_addr = match udp_relay_addr {
+        std::net::SocketAddr::V4(addr) => Address::IPv4(addr.ip().octets()),
+        std::net::SocketAddr::V6(addr) => Address::IPv6(addr.ip().octets()),
+    };
+    let bind_port = udp_relay_addr.port();
+
+    send_socks5_response(
+        &mut client_stream,
+        ReplyCode::Succeeded,
+        bind_addr,
+        bind_port,
+    )
+    .await?;
+
+    info!(
+        "UDP ASSOCIATE established: relay on {}, client {}",
+        udp_relay_addr, session_ctx.client_addr
+    );
+
+    // Keep TCP connection alive - when it closes, UDP session ends
+    // Read from stream to detect disconnect
+    let mut buf = [0u8; 1];
+    match tokio::io::AsyncReadExt::read(&mut client_stream, &mut buf).await {
+        Ok(0) | Err(_) => {
+            debug!("TCP control connection closed, terminating UDP session");
+            let _ = shutdown_tx.send(());
+            session_manager
+                .close_session(
+                    &session_id,
+                    Some("TCP control connection closed".to_string()),
+                    SessionStatus::Closed,
+                )
+                .await;
+        }
+        Ok(_) => {
+            debug!("Unexpected data on TCP control connection");
+        }
+    }
+
+    Ok(())
 }

@@ -1,6 +1,6 @@
 # RustSocks - Kompletna Lista Zadań do Implementacji
 
-**Status:** 🟢 Sprint 1 MVP + Sprint 2.1 ACL + Sprint 2.1.5 Hot Reload Ukończone | 🔄 Sprint 2.2 Session Manager (w trakcie)
+**Status:** 🟢 Sprint 1 + Sprint 2.1-2.4 Ukończone | ✨ Sprint 3.1 UDP ASSOCIATE Ukończony | 🔄 Sprint 3.2+ (w trakcie)
 
 ---
 
@@ -248,21 +248,21 @@
 
 ## 📋 Sprint 3: Production Readiness + API (Tydzień 4-6)
 
-### 3.1 UDP ASSOCIATE Command (Tydzień 4)
-- [ ] UDP socket handling
-- [ ] UDP relay implementation
-- [ ] Packet forwarding logic
-- [ ] UDP timeout management
-- [ ] UDP session tracking
-- [ ] Testy UDP flow
-- [ ] UDP + ACL integration
+### 3.1 UDP ASSOCIATE Command (UKOŃCZONY ✅)
+- [x] UDP socket handling ✅
+- [x] UDP relay implementation ✅
+- [x] Packet forwarding logic ✅
+- [x] UDP timeout management ✅
+- [x] UDP session tracking ✅
+- [x] Testy UDP flow ✅
+- [x] UDP + ACL integration ✅
 
-### 3.2 BIND Command (Tydzień 4)
-- [ ] BIND implementation
-- [ ] Port allocation mechanism
-- [ ] Incoming connection handling
-- [ ] BIND + ACL integration
-- [ ] Testy BIND flow
+### 3.2 BIND Command (Tydzień 4) ✅
+- [x] BIND implementation ✅
+- [x] Port allocation mechanism ✅
+- [x] Incoming connection handling ✅
+- [x] BIND + ACL integration ✅
+- [x] Testy BIND flow ✅
 
 ### 3.3 REST API dla Monitoringu (Tydzień 4-5)
 
@@ -595,17 +595,17 @@
 - **Sprint 1 (MVP):** ✅ 100% (Ukończony!)
 - **Sprint 2.1 (ACL Core):** ✅ 100% (Ukończony!)
 - **Sprint 2.1.5 (Hot Reload):** ✅ 100% (Ukończony!)
-- **Sprint 2.2 (Session Manager):** 🔄 ~60% (Data structures, in-memory, DB, batch writer ukończone)
-- **Sprint 2.3-2.4 (Integration & Metrics):** ⏳ 0% (Następny)
-- **Sprint 3 (Production + API):** ⏳ 0% (Planowanie)
+- **Sprint 2.2-2.4 (Session Manager + Integration):** ✅ 100% (Ukończony!)
+- **Sprint 3.1 (UDP ASSOCIATE):** ✅ 100% (Ukończony!) ✨ NOWE!
+- **Sprint 3.2+ (BIND + API):** 🔄 Następny
 - **Sprint 4 (Advanced):** ⏳ 0% (Przyszłość)
 
 ### Statystyki Kodu (Obecne)
-- **Linii kodu:** ~3,200 (+~600 Session Manager)
-- **Plików .rs:** 22 (w tym batch/store dla sesji)
-- **Testy:** 37/37 (domyślnie) · 38/38 (`--features database`)
-- **Coverage:** ~85% (ACL >90%)
-- **Binary size:** ~3.6 MB (release)
+- **Linii kodu:** ~4,000 (+~500 UDP ASSOCIATE)
+- **Plików .rs:** 23 (nowy server/udp.rs)
+- **Testy:** 53/53 unit + integration (domyślnie) · 54/54 (`--features database`)
+- **Coverage:** ~87% (ACL >90%, UDP >85%)
+- **Binary size:** ~3.8 MB (release)
 
 ### Statystyki Docelowe (v1.0)
 - **Linii kodu:** ~8,000-10,000 (oszacowanie)
@@ -626,6 +626,6 @@
 
 ---
 
-**Ostatnia aktualizacja:** 2025-10-25 (12:00)
-**Wersja:** 0.2.2 (Session Manager – core & persistence)
-**Next Target:** 0.3.0 (+ Traffic Tracking & Metrics) → 0.5.0 (Beta + Full Integration)
+**Ostatnia aktualizacja:** 2025-10-25 (13:00)
+**Wersja:** 0.3.1 (Session Manager + UDP ASSOCIATE)
+**Next Target:** 0.3.2 (+ BIND Command) → 0.5.0 (Production + REST API)

@@ -110,6 +110,26 @@ pub struct Socks5Response {
     pub port: u16,
 }
 
+/// UDP packet header for SOCKS5 UDP ASSOCIATE
+/// Format: +----+------+------+----------+----------+----------+
+///         |RSV | FRAG | ATYP | DST.ADDR | DST.PORT |   DATA   |
+///         +----+------+------+----------+----------+----------+
+///         | 2  |  1   |  1   | Variable |    2     | Variable |
+///         +----+------+------+----------+----------+----------+
+#[derive(Debug, Clone)]
+pub struct UdpHeader {
+    pub frag: u8,
+    pub address: Address,
+    pub port: u16,
+}
+
+/// Complete UDP packet with header and data
+#[derive(Debug, Clone)]
+pub struct UdpPacket {
+    pub header: UdpHeader,
+    pub data: Vec<u8>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

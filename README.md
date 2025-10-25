@@ -442,10 +442,10 @@ cargo test -- --nocapture
 - [x] ACL Engine (rules, matching, priorities, hot reload) ✅
 - [x] Session Manager (in-memory) ✅
 - [x] Session persistence (SQLite + batch writer + cleanup) ✅
-- [ ] Traffic tracking (bytes sent/received)
-- [ ] ACL enforcement telemetry integration z Session Manager (rozszerzenie metryk)
-- [ ] BIND command
-- [ ] UDP ASSOCIATE command
+- [x] Traffic tracking (bytes sent/received) ✅
+- [x] ACL enforcement telemetry integration z Session Manager (rozszerzenie metryk) ✅
+- [x] UDP ASSOCIATE command ✅
+- [x] BIND command ✅
 
 ### Sprint 3 - Production & API
 - [ ] REST API dla monitoringu

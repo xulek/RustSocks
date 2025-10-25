@@ -202,6 +202,133 @@ pub async fn send_socks5_response(
     Ok(())
 }
 
+/// Parse UDP packet from raw bytes
+/// Format: RSV(2) + FRAG(1) + ATYP(1) + DST.ADDR(var) + DST.PORT(2) + DATA
+pub fn parse_udp_packet(buf: &[u8]) -> Result<UdpPacket> {
+    if buf.len() < 10 {
+        return Err(RustSocksError::Protocol(
+            "UDP packet too short".to_string(),
+        ));
+    }
+
+    let mut pos = 0;
+
+    // Skip RSV (2 bytes)
+    pos += 2;
+
+    // FRAG
+    let frag = buf[pos];
+    pos += 1;
+
+    // Check if fragmentation is used (we don't support it)
+    if frag != 0 {
+        return Err(RustSocksError::Protocol(
+            "UDP fragmentation not supported".to_string(),
+        ));
+    }
+
+    // Address type
+    let address_type = buf[pos];
+    pos += 1;
+
+    // Parse address
+    let address = match address_type {
+        0x01 => {
+            // IPv4
+            if buf.len() < pos + 4 {
+                return Err(RustSocksError::Protocol("Invalid IPv4 in UDP packet".to_string()));
+            }
+            let addr = [buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]];
+            pos += 4;
+            Address::IPv4(addr)
+        }
+        0x03 => {
+            // Domain
+            if buf.len() < pos + 1 {
+                return Err(RustSocksError::Protocol("Invalid domain in UDP packet".to_string()));
+            }
+            let domain_len = buf[pos] as usize;
+            pos += 1;
+            if buf.len() < pos + domain_len {
+                return Err(RustSocksError::Protocol("Invalid domain in UDP packet".to_string()));
+            }
+            let domain = String::from_utf8(buf[pos..pos + domain_len].to_vec())
+                .map_err(|_| RustSocksError::Protocol("Invalid domain encoding in UDP packet".to_string()))?;
+            pos += domain_len;
+            Address::Domain(domain)
+        }
+        0x04 => {
+            // IPv6
+            if buf.len() < pos + 16 {
+                return Err(RustSocksError::Protocol("Invalid IPv6 in UDP packet".to_string()));
+            }
+            let mut addr = [0u8; 16];
+            addr.copy_from_slice(&buf[pos..pos + 16]);
+            pos += 16;
+            Address::IPv6(addr)
+        }
+        _ => {
+            return Err(RustSocksError::UnsupportedAddressType(address_type));
+        }
+    };
+
+    // Port (big-endian)
+    if buf.len() < pos + 2 {
+        return Err(RustSocksError::Protocol("Invalid port in UDP packet".to_string()));
+    }
+    let port = u16::from_be_bytes([buf[pos], buf[pos + 1]]);
+    pos += 2;
+
+    // Data (rest of packet)
+    let data = buf[pos..].to_vec();
+
+    Ok(UdpPacket {
+        header: UdpHeader {
+            frag,
+            address,
+            port,
+        },
+        data,
+    })
+}
+
+/// Serialize UDP packet to bytes
+/// Format: RSV(2) + FRAG(1) + ATYP(1) + DST.ADDR(var) + DST.PORT(2) + DATA
+pub fn serialize_udp_packet(packet: &UdpPacket) -> Vec<u8> {
+    let mut buf = Vec::new();
+
+    // RSV (2 bytes)
+    buf.extend_from_slice(&[0x00, 0x00]);
+
+    // FRAG
+    buf.push(packet.header.frag);
+
+    // Address type and address
+    match &packet.header.address {
+        Address::IPv4(octets) => {
+            buf.push(0x01);
+            buf.extend_from_slice(octets);
+        }
+        Address::IPv6(octets) => {
+            buf.push(0x04);
+            buf.extend_from_slice(octets);
+        }
+        Address::Domain(domain) => {
+            buf.push(0x03);
+            buf.push(domain.len() as u8);
+            buf.extend_from_slice(domain.as_bytes());
+        }
+    }
+
+    // Port (big-endian)
+    buf.extend_from_slice(&packet.header.port.to_be_bytes());
+
+    // Data
+    buf.extend_from_slice(&packet.data);
+
+    buf
+}
+
 #[cfg(test)]
 mod tests {
     use super::{parse_client_greeting, AuthMethod};
