@@ -1,6 +1,19 @@
 [global]
 default_policy = "block"
 
+# Anonymous user (no authentication) - for load testing
+[[users]]
+username = "anonymous"
+groups = []
+
+  [[users.rules]]
+  action = "allow"
+  description = "Allow all traffic for anonymous user (load testing)"
+  destinations = ["*"]  # Match all
+  ports = ["*"]  # Match all ports
+  protocols = ["both"]  # Match TCP and UDP
+  priority = 100
+
 [[users]]
 username = "alice"
 groups = ["developers"]

@@ -418,15 +418,15 @@
 
 ### 3.9 Load Testing & Optimization (Tydzień 6)
 
-#### 3.9.1 Load Tests
-- [ ] Load test suite (wrk/k6)
-- [ ] Test scenarios
-  - [ ] 1000 concurrent connections
-  - [ ] 5000 concurrent connections
-  - [ ] ACL performance test
-  - [ ] Session tracking overhead
-  - [ ] Database write throughput
-- [ ] Benchmark regression tests
+#### 3.9.1 Load Tests ✅
+- [x] Load test suite (Rust-based + k6) ✅
+- [x] Test scenarios ✅
+  - [x] 1000 concurrent connections ✅
+  - [x] 5000 concurrent connections ✅
+  - [x] ACL performance test ✅
+  - [x] Session tracking overhead ✅
+  - [x] Database write throughput ✅
+- [x] Benchmark regression tests ✅
 
 #### 3.9.2 Performance Profiling
 - [ ] CPU profiling (flamegraph)
@@ -603,13 +603,15 @@
 - **Sprint 3.1 (UDP ASSOCIATE):** ✅ 100% (Ukończony!)
 - **Sprint 3.2 (BIND Command):** ✅ 100% (Ukończony!)
 - **Sprint 3.3 (REST API):** ✅ ~95% (Wszystkie endpointy zaimplementowane ✅, pozostają: CORS, auth, rate limiting, OpenAPI)
+- **Sprint 3.9.1 (Load Tests):** ✅ 100% (Ukończony!)
 - **Sprint 3.4+ (Metrics & Advanced):** 🔄 Następny
 - **Sprint 4 (Advanced):** ⏳ 0% (Przyszłość)
 
 ### Statystyki Kodu (Obecne)
-- **Linii kodu:** ~5,000 (+~1,000 BIND + REST API)
-- **Plików .rs:** 27 (+ api/*, server/bind.rs)
+- **Linii kodu:** ~6,500 (+~1,500 Load Testing)
+- **Plików .rs:** 29 (+ loadtest.rs, echo_server.rs)
 - **Testy:** 65/65 passed (47 unit + 2 ACL + 7 API + 4 BIND + 1 IPv6 + 1 session + 3 UDP)
+- **Load Tests:** 5 scenarios (1000 conn, 5000 conn, ACL perf, session overhead, DB throughput)
 - **Coverage:** ~85% (ACL >90%, API >85%)
 - **Binary size:** ~4.2 MB (release, estimated)
 
@@ -632,6 +634,6 @@
 
 ---
 
-**Ostatnia aktualizacja:** 2025-10-25 (17:30)
-**Wersja:** 0.4.0 (Session Manager + UDP ASSOCIATE + BIND Command + REST API Core)
-**Next Target:** 0.5.0 (REST API完成 + Extended Metrics + systemd)
+**Ostatnia aktualizacja:** 2025-10-26 (21:00)
+**Wersja:** 0.4.1 (Load Testing Suite Complete)
+**Next Target:** 0.5.0 (Performance Profiling + Extended Metrics + systemd)

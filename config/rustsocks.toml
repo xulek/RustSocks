@@ -1,10 +1,10 @@
 [server]
 bind_address = "127.0.0.1"
 bind_port = 1080
-max_connections = 1000
+max_connections = 10000
 
 [auth]
-method = "userpass"  # Options: "none", "userpass"
+method = "none"  # Options: "none", "userpass" - For load testing use "none"
 
 # For userpass authentication, add users:
  [[auth.users]]
@@ -65,8 +65,8 @@ rebalance_interval_ms = 100
 idle_timeout_secs = 5
 
 [qos.connection_limits]
-# Maximum connections per user
-max_connections_per_user = 20
+# Maximum connections per user (set high for load testing)
+max_connections_per_user = 10000
 
 # Maximum total connections (global)
 max_connections_global = 10000

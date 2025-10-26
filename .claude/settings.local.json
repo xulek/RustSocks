@@ -56,7 +56,11 @@
       "Bash(/root/.cargo/bin/cargo test --release acl_performance_under_seven_ms -- --ignored --nocapture)",
       "Bash(/root/.cargo/bin/cargo test --release --test acl_unit many_rules_performance -- --nocapture)",
       "Bash(/root/.cargo/bin/cargo test --release acl_handles_thousand_concurrent_connections -- --ignored --nocapture)",
-      "Bash(/root/.cargo/bin/cargo test --release --test acl_integration acl_handles_thousand_concurrent_connections -- --ignored --nocapture)"
+      "Bash(/root/.cargo/bin/cargo test --release --test acl_integration acl_handles_thousand_concurrent_connections -- --ignored --nocapture)",
+      "Bash(chmod:*)",
+      "Bash(./target/release/examples/loadtest:*)",
+      "Bash(./target/release/examples/echo_server:*)",
+      "Bash(ulimit -n:*)"
     ],
     "deny": [],
     "ask": []
