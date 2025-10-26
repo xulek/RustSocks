@@ -46,7 +46,9 @@
       "Bash(/dev/null echo \"\" echo \"=== /metrics endpoint (first 10 lines) ===\" curl http://127.0.0.1:9090/metrics)",
       "Bash(do curl -s http://127.0.0.1:9090/swagger-ui/)",
       "Bash(break done)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(/root/.cargo/bin/cargo test --all-features --test acl_unit)",
+      "Bash(/root/.cargo/bin/cargo test --all-features --test acl_unit -- --test-threads=1)"
     ],
     "deny": [],
     "ask": []

@@ -395,7 +395,7 @@ pub async fn start_api_server(
 ) -> Result<JoinHandle<()>> {
     if !config.enable_api {
         info!("API server disabled");
-        return Err(RustSocksError::Config("API server disabled".to_string()).into());
+        return Err(RustSocksError::Config("API server disabled".to_string()));
     }
 
     let state = ApiState {

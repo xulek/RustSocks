@@ -1,4 +1,5 @@
 use crate::protocol::{Address, ReplyCode};
+use crate::qos::QosEngine;
 use crate::server::proxy::{proxy_data, TrafficUpdateConfig};
 use crate::session::{ConnectionInfo, SessionManager, SessionProtocol, SessionStatus};
 use crate::utils::error::{Result, RustSocksError};
@@ -18,6 +19,7 @@ pub struct BindContext {
     pub client_addr: SocketAddr,
     pub acl_decision: String,
     pub acl_rule: Option<String>,
+    pub qos_engine: QosEngine,
 }
 
 /// Handle BIND command
@@ -84,6 +86,8 @@ pub async fn handle_bind(
                 session_id,
                 cancel_token,
                 TrafficUpdateConfig::default(),
+                bind_ctx.qos_engine.clone(),
+                bind_ctx.user.clone(),
             )
             .await
             {

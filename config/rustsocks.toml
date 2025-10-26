@@ -34,3 +34,39 @@ stats_window_hours = 24
 stats_api_enabled = true
 stats_api_bind_address = "127.0.0.1"
 stats_api_port = 9090
+
+[qos]
+enabled = true  # Enable QoS (Quality of Service) / Rate Limiting
+algorithm = "htb"  # Options: "htb" (Hierarchical Token Bucket with fair sharing)
+
+[qos.htb]
+# Global bandwidth limit (1 Gbps = 125 MB/s = 125000000 bytes/sec)
+global_bandwidth_bytes_per_sec = 125000000
+
+# Per-user guaranteed minimum bandwidth (1 Mbps = 131072 bytes/sec)
+guaranteed_bandwidth_bytes_per_sec = 131072
+
+# Per-user maximum bandwidth when borrowing (100 Mbps = 12500000 bytes/sec)
+max_bandwidth_bytes_per_sec = 12500000
+
+# Burst size (how much can be transferred instantly)
+burst_size_bytes = 1048576  # 1 MB
+
+# Token bucket refill interval (milliseconds)
+refill_interval_ms = 50
+
+# Fair sharing - dynamically allocate unused bandwidth to active users
+fair_sharing_enabled = true
+
+# How often to recalculate fair shares (milliseconds)
+rebalance_interval_ms = 100
+
+# User inactivity timeout (seconds) - user considered idle after this period
+idle_timeout_secs = 5
+
+[qos.connection_limits]
+# Maximum connections per user
+max_connections_per_user = 20
+
+# Maximum total connections (global)
+max_connections_global = 10000

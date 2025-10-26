@@ -591,7 +591,7 @@ mod tests {
         let session_b = manager.new_session("bob", conn_b, "allow", None).await;
         if let Some(handle) = manager.get_session(&session_b) {
             let mut guard = handle.write().await;
-            guard.start_time = guard.start_time - ChronoDuration::hours(48);
+            guard.start_time -= ChronoDuration::hours(48);
         }
 
         let conn_carol = ConnectionInfo {
@@ -618,7 +618,7 @@ mod tests {
             .collect();
         assert_eq!(users.get("alice"), Some(&1));
         assert_eq!(users.get("carol"), Some(&1));
-        assert!(users.get("bob").is_none());
+        assert!(!users.contains_key("bob"));
 
         let destinations: HashMap<_, _> = stats
             .top_destinations
@@ -627,7 +627,7 @@ mod tests {
             .collect();
         assert_eq!(destinations.get("app.internal"), Some(&1));
         assert_eq!(destinations.get("blocked.internal"), Some(&1));
-        assert!(destinations.get("api.internal").is_none());
+        assert!(!destinations.contains_key("api.internal"));
 
         assert_eq!(stats.acl.allowed, 1);
         assert_eq!(stats.acl.blocked, 1);
@@ -729,30 +729,45 @@ mod tests {
     #[cfg(feature = "metrics")]
     #[tokio::test]
     async fn session_metrics_update_counters() {
-        let _guard = METRICS_TEST_GUARD.lock().unwrap();
-
-        let base_total = TOTAL_SESSIONS.get();
-        let base_rejected = REJECTED_SESSIONS.get();
-        let base_bytes_sent = TOTAL_BYTES_SENT.get();
-        let base_bytes_received = TOTAL_BYTES_RECEIVED.get();
-        let base_duration_count = SESSION_DURATION.get_sample_count();
-        let base_user_alice = USER_SESSIONS.with_label_values(&["alice"]).get();
-        let base_user_bob = USER_SESSIONS.with_label_values(&["bob"]).get();
-        let base_user_send = USER_BANDWIDTH.with_label_values(&["alice", "sent"]).get();
-        let base_user_recv = USER_BANDWIDTH
-            .with_label_values(&["alice", "received"])
-            .get();
+        let (
+            base_total,
+            base_rejected,
+            base_bytes_sent,
+            base_bytes_received,
+            base_duration_count,
+            base_user_alice,
+            base_user_bob,
+            base_user_send,
+            base_user_recv,
+        ) = {
+            let _guard = METRICS_TEST_GUARD.lock().unwrap();
+            (
+                TOTAL_SESSIONS.get(),
+                REJECTED_SESSIONS.get(),
+                TOTAL_BYTES_SENT.get(),
+                TOTAL_BYTES_RECEIVED.get(),
+                SESSION_DURATION.get_sample_count(),
+                USER_SESSIONS.with_label_values(&["alice"]).get(),
+                USER_SESSIONS.with_label_values(&["bob"]).get(),
+                USER_BANDWIDTH
+                    .with_label_values(&["alice", "sent"])
+                    .get(),
+                USER_BANDWIDTH
+                    .with_label_values(&["alice", "received"])
+                    .get(),
+            )
+        };
 
         let manager = SessionManager::new();
         let conn = sample_connection();
         let session_id = manager.new_session("alice", conn, "allow", None).await;
 
         assert!(
-            TOTAL_SESSIONS.get() >= base_total + 1,
+            TOTAL_SESSIONS.get() > base_total,
             "total sessions should increase"
         );
         assert!(
-            USER_SESSIONS.with_label_values(&["alice"]).get() >= base_user_alice + 1,
+            USER_SESSIONS.with_label_values(&["alice"]).get() > base_user_alice,
             "user sessions counter should increase"
         );
 
@@ -787,7 +802,7 @@ mod tests {
             .await;
 
         assert!(
-            SESSION_DURATION.get_sample_count() >= base_duration_count + 1,
+            SESSION_DURATION.get_sample_count() > base_duration_count,
             "duration histogram should record the session"
         );
 
@@ -803,11 +818,11 @@ mod tests {
             .await;
 
         assert!(
-            REJECTED_SESSIONS.get() >= base_rejected + 1,
+            REJECTED_SESSIONS.get() > base_rejected,
             "rejected sessions counter should increase"
         );
         assert!(
-            USER_SESSIONS.with_label_values(&["bob"]).get() >= base_user_bob + 1,
+            USER_SESSIONS.with_label_values(&["bob"]).get() > base_user_bob,
             "user sessions counter should track rejected users"
         );
     }

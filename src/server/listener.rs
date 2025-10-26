@@ -3,6 +3,7 @@ use crate::api::types::ApiConfig;
 use crate::api::start_api_server;
 use crate::auth::AuthManager;
 use crate::config::Config;
+use crate::qos::QosEngine;
 use crate::server::handler::{handle_client, ClientHandlerContext};
 use crate::server::proxy::TrafficUpdateConfig;
 use crate::session::SessionManager;
@@ -26,6 +27,7 @@ pub struct SocksServer {
     traffic_config: TrafficUpdateConfig,
     stats_handle: Option<JoinHandle<()>>,
     acl_watcher: Option<Mutex<AclWatcher>>,
+    qos_engine: QosEngine,
 }
 
 impl SocksServer {
@@ -169,6 +171,12 @@ impl SocksServer {
             }
         }
 
+        // Initialize QoS engine
+        let qos_engine = QosEngine::from_config(config.qos.clone()).await?;
+        if qos_engine.is_enabled() {
+            info!("QoS engine initialized and started");
+        }
+
         Ok(Self {
             config,
             auth_manager,
@@ -179,6 +187,7 @@ impl SocksServer {
             traffic_config,
             stats_handle,
             acl_watcher,
+            qos_engine,
         })
     }
 
@@ -208,6 +217,8 @@ impl SocksServer {
             anonymous_user: self.anonymous_user.clone(),
             session_manager: self.session_manager.clone(),
             traffic_config: self.traffic_config,
+            qos_engine: self.qos_engine.clone(),
+            connection_limits: self.config.qos.connection_limits.clone(),
         });
 
         loop {

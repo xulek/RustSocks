@@ -291,7 +291,7 @@
 - [x] POST /api/acl/test (Test ACL decision) ✅
 
 #### 3.3.4 API Documentation
-- [ ] OpenAPI/Swagger spec
+- [x] OpenAPI/Swagger spec ✅
 - [x] API request/response types ✅
 - [x] Error response formats ✅
 - [ ] Example requests
@@ -304,7 +304,7 @@
 ### 3.4 Extended Metrics & Dashboards (Tydzień 5)
 
 #### 3.4.1 Prometheus Metrics
-- [ ] Per-user bandwidth metrics
+- [x] Per-user bandwidth metrics ✅
 - [ ] Per-destination metrics
 - [ ] ACL decision metrics (allow/block)
 - [ ] Session duration histograms
@@ -367,14 +367,17 @@
 - [ ] RAII PrivilegeGuard
 
 ### 3.6 Rate Limiting (Tydzień 5)
-- [ ] Token bucket algorithm
-- [ ] Per-IP rate limiting
-- [ ] Per-user bandwidth limits
-- [ ] Per-user connection limits
-- [ ] Backpressure handling
-- [ ] Rate limiting metrics
-- [ ] Configuration
-- [ ] Tests
+- [x] Token bucket algorithm ✅
+- [x] Per-IP rate limiting ✅
+- [x] Per-user bandwidth limits ✅
+- [x] Per-user connection limits ✅
+- [x] Backpressure handling ✅
+- [x] Rate limiting metrics ✅
+  - [x] rustsocks_qos_active_users gauge ✅
+  - [x] rustsocks_qos_bandwidth_allocated_bytes_total counter ✅
+  - [x] rustsocks_qos_allocation_wait_seconds histogram ✅
+- [x] Configuration ✅
+- [x] Tests ✅
 
 ### 3.7 Hot Reload - Extended (Tydzień 6)
 - [ ] SIGHUP handler dla wszystkich configs
@@ -452,10 +455,10 @@
 - [ ] Resource cleanup optimization
 
 ### 4.2 Traffic Shaping (Zaawansowane)
-- [ ] Bandwidth limiting per-user
+- [x] Bandwidth limiting per-user ✅
 - [ ] Traffic prioritization
-- [ ] QoS policies
-- [ ] Burst handling
+- [x] QoS policies (HTB hierarchy) ✅
+- [x] Burst handling ✅
 
 ### 4.3 Geo-Blocking
 - [ ] MaxMind GeoIP integration

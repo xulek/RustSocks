@@ -1,3 +1,4 @@
+use rustsocks::qos::QosEngine;
 use rustsocks::server::proxy::{proxy_data, TrafficUpdateConfig};
 use rustsocks::session::{ConnectionInfo, SessionManager, SessionProtocol, SessionStatus};
 use std::sync::Arc;
@@ -54,6 +55,8 @@ async fn proxy_updates_session_traffic_on_shutdown_flush() {
         session_id,
         cancel_token,
         TrafficUpdateConfig::new(10),
+        QosEngine::None,
+        "integration-user".to_string(),
     ));
 
     // Client -> Upstream payload (forces flush on close, not threshold)

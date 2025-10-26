@@ -1,6 +1,7 @@
 use crate::acl::{AclDecision, AclEngine, AclStats, Protocol};
 use crate::auth::AuthManager;
 use crate::protocol::*;
+use crate::qos::{ConnectionLimits, QosEngine};
 use crate::server::bind::handle_bind as handle_bind_relay;
 use crate::server::proxy::{proxy_data, TrafficUpdateConfig};
 use crate::server::resolver::resolve_address;
@@ -30,6 +31,8 @@ pub struct ClientHandlerContext {
     pub anonymous_user: Arc<String>,
     pub session_manager: Arc<SessionManager>,
     pub traffic_config: TrafficUpdateConfig,
+    pub qos_engine: QosEngine,
+    pub connection_limits: ConnectionLimits,
 }
 
 pub async fn handle_client(
@@ -71,6 +74,32 @@ pub async fn handle_client(
     let acl_user = user
         .clone()
         .unwrap_or_else(|| ctx.anonymous_user.as_ref().clone());
+
+    // Step 2b: Check connection limits (QoS)
+    if let Err(e) = ctx
+        .qos_engine
+        .check_and_inc_connection(&acl_user, &ctx.connection_limits)
+    {
+        warn!(
+            user = %acl_user,
+            error = %e,
+            "Connection limit exceeded"
+        );
+        send_socks5_response(
+            &mut client_stream,
+            ReplyCode::ConnectionNotAllowed,
+            Address::IPv4([0, 0, 0, 0]),
+            0,
+        )
+        .await?;
+        return Err(e);
+    }
+
+    // Ensure connection is decremented on drop
+    let _connection_guard = ConnectionGuard {
+        qos_engine: ctx.qos_engine.clone(),
+        user: acl_user.clone(),
+    };
 
     // Step 3: SOCKS5 request
     let request = parse_socks5_request(&mut client_stream).await?;
@@ -162,11 +191,12 @@ pub async fn handle_client(
     match request.command {
         Command::Connect => {
             let session_ctx = SessionContext {
-                user: acl_user,
+                user: acl_user.clone(),
                 client_addr,
                 acl_decision,
                 acl_rule: acl_rule_match,
                 protocol: session_protocol,
+                qos_engine: ctx.qos_engine.clone(),
             };
             handle_connect(
                 client_stream,
@@ -184,6 +214,7 @@ pub async fn handle_client(
                 client_addr,
                 acl_decision,
                 acl_rule: acl_rule_match,
+                qos_engine: ctx.qos_engine.clone(),
             };
 
             handle_bind_relay(
@@ -202,6 +233,7 @@ pub async fn handle_client(
                 acl_decision,
                 acl_rule: acl_rule_match,
                 protocol: session_protocol,
+                qos_engine: ctx.qos_engine.clone(),
             };
             handle_udp_associate(
                 client_stream,
@@ -223,6 +255,7 @@ struct SessionContext {
     acl_decision: String,
     acl_rule: Option<String>,
     protocol: SessionProtocol,
+    qos_engine: QosEngine,
 }
 
 async fn handle_connect(
@@ -347,6 +380,8 @@ async fn handle_connect(
         session_id,
         cancel_token,
         traffic_config,
+        session_ctx.qos_engine.clone(),
+        session_ctx.user.clone(),
     )
     .await
     {
@@ -483,4 +518,16 @@ async fn handle_udp_associate(
     }
 
     Ok(())
+}
+
+/// RAII guard to ensure connection count is decremented on drop
+struct ConnectionGuard {
+    qos_engine: QosEngine,
+    user: String,
+}
+
+impl Drop for ConnectionGuard {
+    fn drop(&mut self) {
+        self.qos_engine.dec_user_connection(&self.user);
+    }
 }

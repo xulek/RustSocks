@@ -1,6 +1,7 @@
 use rustsocks::acl::{load_acl_config_sync, AclEngine, AclStats};
 use rustsocks::auth::AuthManager;
 use rustsocks::config::AuthConfig;
+use rustsocks::qos::{ConnectionLimits, QosEngine};
 use rustsocks::server::{handle_client, ClientHandlerContext, TrafficUpdateConfig};
 use rustsocks::session::SessionManager;
 use std::sync::Arc;
@@ -26,6 +27,8 @@ async fn bind_basic_handshake() {
         anonymous_user: anonymous_user.clone(),
         session_manager: session_manager.clone(),
         traffic_config: TrafficUpdateConfig::default(),
+        qos_engine: QosEngine::None,
+        connection_limits: ConnectionLimits::default(),
     });
 
     // Start SOCKS5 server
@@ -105,6 +108,8 @@ async fn bind_with_incoming_connection() {
         anonymous_user: anonymous_user.clone(),
         session_manager: session_manager.clone(),
         traffic_config: TrafficUpdateConfig::default(),
+        qos_engine: QosEngine::None,
+        connection_limits: ConnectionLimits::default(),
     });
 
     // Start SOCKS5 server
@@ -224,6 +229,8 @@ username = "anonymous"
         anonymous_user: anonymous_user.clone(),
         session_manager: session_manager.clone(),
         traffic_config: TrafficUpdateConfig::default(),
+        qos_engine: QosEngine::None,
+        connection_limits: ConnectionLimits::default(),
     });
 
     // Start SOCKS5 server
@@ -304,6 +311,8 @@ username = "anonymous"
         anonymous_user: anonymous_user.clone(),
         session_manager: session_manager.clone(),
         traffic_config: TrafficUpdateConfig::default(),
+        qos_engine: QosEngine::None,
+        connection_limits: ConnectionLimits::default(),
     });
 
     // Start SOCKS5 server

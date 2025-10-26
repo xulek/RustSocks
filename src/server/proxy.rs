@@ -1,3 +1,4 @@
+use crate::qos::{QosEngine, QosMetrics};
 use crate::session::SessionManager;
 use crate::utils::error::{Result, RustSocksError};
 use std::io;
@@ -43,6 +44,15 @@ enum TrafficDirection {
     Download,
 }
 
+impl TrafficDirection {
+    fn metric_label(&self) -> &'static str {
+        match self {
+            TrafficDirection::Upload => "upload",
+            TrafficDirection::Download => "download",
+        }
+    }
+}
+
 #[derive(Debug, Default)]
 struct TrafficTotals {
     bytes: u64,
@@ -50,6 +60,7 @@ struct TrafficTotals {
 }
 
 /// Proxy data bidirectionally between client and upstream server while tracking traffic.
+#[allow(clippy::too_many_arguments)]
 pub async fn proxy_data(
     client: TcpStream,
     upstream: TcpStream,
@@ -57,6 +68,8 @@ pub async fn proxy_data(
     session_id: Uuid,
     cancel_token: CancellationToken,
     update_config: TrafficUpdateConfig,
+    qos_engine: QosEngine,
+    user: String,
 ) -> Result<()> {
     let (client_read, client_write) = client.into_split();
     let (upstream_read, upstream_write) = upstream.into_split();
@@ -69,6 +82,8 @@ pub async fn proxy_data(
         cancel_token.clone(),
         update_config,
         TrafficDirection::Upload,
+        qos_engine.clone(),
+        user.clone(),
     ));
 
     let download_handle = tokio::spawn(proxy_direction(
@@ -79,6 +94,8 @@ pub async fn proxy_data(
         cancel_token,
         update_config,
         TrafficDirection::Download,
+        qos_engine,
+        user,
     ));
 
     let (upload_result, download_result) = tokio::join!(upload_handle, download_handle);
@@ -117,6 +134,7 @@ fn join_error_to_rustsocks(err: tokio::task::JoinError) -> RustSocksError {
     RustSocksError::Io(io::Error::other(format!("proxy task join error: {}", err)))
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn proxy_direction(
     mut reader: OwnedReadHalf,
     mut writer: OwnedWriteHalf,
@@ -125,6 +143,8 @@ async fn proxy_direction(
     cancel_token: CancellationToken,
     update_config: TrafficUpdateConfig,
     direction: TrafficDirection,
+    qos_engine: QosEngine,
+    user: String,
 ) -> Result<TrafficTotals> {
     let mut buffer = [0u8; BUFFER_SIZE];
     let mut totals = TrafficTotals::default();
@@ -164,6 +184,13 @@ async fn proxy_direction(
                 return Err(RustSocksError::Io(e));
             }
         };
+
+        qos_engine
+            .allocate_bandwidth(&user, bytes_read as u64)
+            .await?;
+        if bytes_read > 0 {
+            QosMetrics::record_allocation(&user, direction.metric_label(), bytes_read as u64);
+        }
 
         if let Err(e) = writer.write_all(&buffer[..bytes_read]).await {
             error!("Write error on {:?}: {}", direction, e);

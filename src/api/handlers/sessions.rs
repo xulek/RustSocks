@@ -71,7 +71,7 @@ pub async fn get_session_history(
 
     // Pagination
     let total = sessions.len() as u64;
-    let page_size = params.page_size.max(1).min(1000) as usize;
+    let page_size = params.page_size.clamp(1, 1000) as usize;
     let page = params.page.max(1);
     let offset = ((page - 1) as usize) * page_size;
     let total_pages = ((total as f32) / (page_size as f32)).ceil() as u32;

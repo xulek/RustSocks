@@ -4,6 +4,7 @@ use rustsocks::auth::AuthManager;
 use rustsocks::config::AuthConfig;
 use rustsocks::protocol::ReplyCode;
 use rustsocks::server::proxy::TrafficUpdateConfig;
+use rustsocks::qos::{ConnectionLimits, QosEngine};
 use rustsocks::server::{handle_client, ClientHandlerContext};
 use rustsocks::session::{SessionManager, SessionStatus};
 use std::net::{IpAddr, SocketAddr};
@@ -72,6 +73,8 @@ async fn acl_blocks_connection_and_tracks_stats() {
             anonymous_user: anonymous_user.clone(),
             session_manager: session_manager.clone(),
             traffic_config: TrafficUpdateConfig::default(),
+            qos_engine: QosEngine::None,
+            connection_limits: ConnectionLimits::default(),
         });
 
         tokio::spawn(async move {
@@ -196,6 +199,8 @@ async fn spawn_allow_env(expected: usize) -> AllowEnv {
             anonymous_user: anonymous_user.clone(),
             session_manager: session_manager.clone(),
             traffic_config: TrafficUpdateConfig::default(),
+            qos_engine: QosEngine::None,
+            connection_limits: ConnectionLimits::default(),
         });
 
         tokio::spawn(async move {
@@ -240,20 +245,16 @@ async fn perform_handshake(
     let mut response = [0u8; 2];
     client.read_exact(&mut response).await?;
     if response != [0x05, 0x00] {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::Other,
+        return Err(std::io::Error::other(
             "unexpected method selection reply",
         ));
     }
 
     let ip = match upstream_addr.ip() {
         IpAddr::V4(ip) => ip,
-        IpAddr::V6(_) => {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                "IPv6 upstream not supported in this test",
-            ))
-        }
+        IpAddr::V6(_) => return Err(std::io::Error::other(
+            "IPv6 upstream not supported in this test",
+        )),
     };
 
     let mut request = Vec::new();
@@ -265,8 +266,7 @@ async fn perform_handshake(
     let mut reply = [0u8; 10];
     client.read_exact(&mut reply).await?;
     if reply[1] != ReplyCode::Succeeded as u8 {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::Other,
+        return Err(std::io::Error::other(
             "connect reply not succeeded",
         ));
     }

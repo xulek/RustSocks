@@ -141,6 +141,15 @@
   - Rozszerzony test integracyjny (`tests/acl_integration.rs`) obejmuje zarówno odrzucenie, jak i udany przepływ (sesja + połączenie upstream)
   - Dedykowane scenariusze `#[ignore]`: pomiar średniego narzutu <7 ms oraz stress test 1000 równoległych połączeń
 
+### Sprint 3.6 - QoS & Rate Limiting (UKOŃCZONY) ✅
+
+- ✅ Silnik HTB (`QosEngine`) z kubełkiem globalnym i kubełkami per użytkownik (token bucket)
+- ✅ Limity pasma: gwarantowane, maksymalne oraz `burst_size` z konfiguracji TOML
+- ✅ Fair sharing – rebalanser przesuwający niewykorzystane pasmo do aktywnych użytkowników
+- ✅ Limity połączeń per użytkownik i globalne + automatyczne zwalnianie (`ConnectionGuard`)
+- ✅ Nowe metryki Prometheus: `rustsocks_qos_active_users`, `rustsocks_qos_bandwidth_allocated_bytes_total`, `rustsocks_qos_allocation_wait_seconds`
+- ✅ Testy: jednostkowe (`src/qos/htb.rs`) i integracyjne (`tests/qos_integration.rs`) potwierdzające throttling oraz równy podział pasma
+
 ## 🎯 Weryfikacja Działania
 
 Serwer został **pomyślnie przetestowany** z curl:
@@ -156,7 +165,7 @@ curl -x socks5://127.0.0.1:1080 http://example.com
 
 **Logi serwera:**
 ```
-INFO RustSocks v0.1.0 starting
+INFO RustSocks v0.2.0 starting
 INFO RustSocks server listening on 127.0.0.1:1080
 INFO Authentication method: none
 INFO New connection from 127.0.0.1:47554
@@ -246,6 +255,9 @@ RustSocks rejestruje metryki sesji w globalnym rejestrze Prometheusa (`prometheu
 - `rustsocks_bytes_sent_total` / `rustsocks_bytes_received_total` (`IntCounter`) – łączny ruch
 - `rustsocks_user_sessions_total` (`IntCounterVec{user}`) – sesje per użytkownik
 - `rustsocks_user_bandwidth_bytes_total` (`IntCounterVec{user,direction}`) – transfer per użytkownik i kierunek
+- `rustsocks_qos_active_users` (`IntGauge`) – liczba użytkowników z aktywnymi limitami QoS
+- `rustsocks_qos_bandwidth_allocated_bytes_total` (`IntCounterVec{user,direction}`) – ile bajtów zostało przydzielonych przez silnik QoS
+- `rustsocks_qos_allocation_wait_seconds` (`Histogram`) – czas oczekiwania na tokeny (w sekundach) przy throttlowaniu
 
 Eksport HTTP można zrealizować w dowolnym handlerze, np.:
 
@@ -528,7 +540,7 @@ cargo test --features database
 cargo test -- --nocapture
 ```
 
-**Status testów:** ✅ 65/65 passed (47 unit + 2 ACL + 7 API + 4 BIND + 1 IPv6 + 1 session + 3 UDP)
+**Status testów:** ✅ 69/69 passed (49 unit + 2 ACL + 7 API + 4 BIND + 1 IPv6 + 1 session + 3 UDP + 2 QoS integration)
 
 **Zakres pokrycia:**
 - Protocol/Auth/Config – testy jednostkowe ✅
@@ -537,7 +549,50 @@ cargo test -- --nocapture
 - REST API – 7 endpoint tests (health, metrics, sessions, stats, history, pagination) ✅
 - BIND Command – 4 integration tests ✅
 - UDP ASSOCIATE – 3 integration tests ✅
-- Integracje: `tests/acl_integration.rs`, `tests/api_endpoints.rs`, `tests/bind_command.rs`, `tests/udp_associate.rs` ✅
+- QoS / Rate limiting – testy HTB, throttling i fair sharing (2 unit + 2 integration) ✅
+- Integracje: `tests/acl_integration.rs`, `tests/api_endpoints.rs`, `tests/bind_command.rs`, `tests/udp_associate.rs`, `tests/qos_integration.rs` ✅
+
+## ⚙️ QoS & HTB Rate Limiting (Sprint 3.6 ✅)
+
+Zaawansowana warstwa kontroli ruchu zapewnia gwarantowane pasmo dla każdego użytkownika, sprawiedliwe współdzielenie niewykorzystanej przepustowości oraz limity połączeń w ramach jednego silnika QoS.
+
+### Kluczowe funkcje
+- **Hierarchical Token Bucket (HTB)** – globalny kubełek + kubełki per użytkownik z parametrami: `guaranteed_bandwidth`, `max_bandwidth`, `burst_size`, `refill_interval_ms`.
+- **Integracja z pętlą proxy** – `proxy_direction` synchronizuje się z `QosEngine::allocate_bandwidth`, dzięki czemu każde odczytane pakiety są throttlowane zanim trafią do drugiej strony.
+- **Sprawiedliwe współdzielenie** – okresowy rebalanser (`rebalance_interval_ms`) monitoruje aktywność użytkowników i dynamicznie przekierowuje niewykorzystane pasmo do najbardziej obciążonych klientów, respektując limity maksymalne.
+- **Limity połączeń** – `check_and_inc_connection`/`dec_user_connection` egzekwują globalne i per‑użytkownik limity jednoczesnych połączeń (zabezpieczenie anty-DDOS).
+- **Obserwowalność** – metryki Prometheusa (`rustsocks_qos_active_users`, `rustsocks_qos_bandwidth_allocated_bytes_total`, `rustsocks_qos_allocation_wait_seconds`) śledzą aktywnych użytkowników QoS, przydzielone bajty oraz czasy oczekiwania na tokeny.
+- **Testy jakości** – testy jednostkowe weryfikują HTB, throttling i rebalans, a testy integracyjne potwierdzają realne ograniczanie przepustowości oraz równe dzielenie pasma między wielu użytkowników.
+
+### Konfiguracja QoS (przykład)
+
+```toml
+[qos]
+enabled = true
+algorithm = "htb"
+
+[qos.htb]
+global_bandwidth_bytes_per_sec = 125_000_000    # 1 Gbps
+guaranteed_bandwidth_bytes_per_sec = 1_048_576  # 1 MB/s na użytkownika
+max_bandwidth_bytes_per_sec = 12_500_000        # 100 Mbps przy pożyczaniu
+burst_size_bytes = 1_048_576                    # 1 MB natychmiastowego transferu
+refill_interval_ms = 50                         # częstotliwość uzupełniania tokenów
+fair_sharing_enabled = true                     # dynamiczne współdzielenie pasma
+rebalance_interval_ms = 100                     # jak często liczyć fair-share
+idle_timeout_secs = 5                           # po tylu sekundach user uznany za nieaktywny
+
+[qos.connection_limits]
+max_connections_per_user = 20
+max_connections_global = 10_000
+```
+
+Parametry można dostosować do przepustowości środowiska (np. mniejsze `burst_size` dla łączy o ograniczonej pojemności lub wyższe `max_connections_global` w przypadku klastrów).
+
+### Jak działa fair sharing?
+1. Każdy aktywny użytkownik otrzymuje gwarantowane minimum (`guaranteed_bandwidth`).
+2. Niewykorzystane pasmo z kubełka globalnego jest proporcjonalnie dzielone pomiędzy użytkowników o największym zapotrzebowaniu, ale nigdy nie przekracza `max_bandwidth`.
+3. Rebalanser ignoruje nieaktywnych klientów po `idle_timeout_secs`, dzięki czemu zasoby trafiają do realnie korzystających.
+4. Wyniki rebalancingu można obserwować przez `QosEngine::get_user_allocations()` lub nowe metryki Prometheusa.
 
 ## 🎯 Roadmap
 
@@ -582,6 +637,13 @@ cargo test -- --nocapture
     - `POST /api/acl/test` - Test ACL decision for user/dest/port/protocol ✅
   - **7 integration tests** for API endpoints
   - JSON request/response types with proper error handling
+
+- ✅ **Sprint 3.6 - QoS & Rate Limiting** ✅
+  - HTB silnik z kubełkami globalnymi i per użytkownik (token bucket)
+  - Ograniczanie pasma w `proxy_direction` + sprawiedliwe dzielenie niewykorzystanego pasma
+  - Limity połączeń (globalne i per-user) z automatycznym zwalnianiem (`ConnectionGuard`)
+  - Metryki Prometheus: `rustsocks_qos_active_users`, `rustsocks_qos_bandwidth_allocated_bytes_total`, `rustsocks_qos_allocation_wait_seconds`
+  - Testy: jednostkowe (`src/qos/htb.rs`) oraz integracyjne (`tests/qos_integration.rs`) pokrywające throttling i fair sharing
 
 - [ ] **Sprint 3.4+ - Pozostałe**
   - [ ] Extended Prometheus metrics & dashboards
