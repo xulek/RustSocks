@@ -11,6 +11,7 @@ pub struct CompiledDestinationMatcher {
 
 #[derive(Debug, Clone)]
 enum DestinationMatcherType {
+    MatchAll,  // "*" - matches everything (IPs, domains, all)
     Ip(IpAddr),
     Cidr(ipnet::IpNet),
     Domain(String),
@@ -25,8 +26,11 @@ struct WildcardPattern {
 impl CompiledDestinationMatcher {
     /// Compile from string
     pub fn compile(s: &str) -> Result<Self, String> {
-        let matcher_type = if s.contains('*') {
-            // Wildcard domain - convert to regex
+        let matcher_type = if s == "*" {
+            // Special case: "*" matches everything (all IPs, domains, etc.)
+            DestinationMatcherType::MatchAll
+        } else if s.contains('*') {
+            // Wildcard domain pattern - convert to regex
             let pattern = wildcard_to_regex(s)?;
             DestinationMatcherType::WildcardDomain(WildcardPattern {
                 regex: Regex::new(&pattern)
@@ -49,6 +53,7 @@ impl CompiledDestinationMatcher {
     /// Check if address matches this matcher
     pub fn matches(&self, addr: &Address) -> bool {
         match &self.matcher {
+            DestinationMatcherType::MatchAll => true,  // "*" matches everything
             DestinationMatcherType::Ip(ip) => Self::match_ip(ip, addr),
             DestinationMatcherType::Cidr(cidr) => Self::match_cidr(cidr, addr),
             DestinationMatcherType::Domain(domain) => Self::match_domain(domain, addr),
@@ -227,12 +232,15 @@ impl CompiledAclRule {
             return false;
         }
 
-        // Check destination (empty list means match all)
-        let dest_match =
-            self.destinations.is_empty() || self.destinations.iter().any(|d| d.matches(addr));
+        // Check destination
+        // Empty list = match nothing
+        // Use ["*"] to match all destinations
+        let dest_match = self.destinations.iter().any(|d| d.matches(addr));
 
-        // Check port (empty list means match all)
-        let port_match = self.ports.is_empty() || self.ports.iter().any(|p| p.matches(port));
+        // Check port
+        // Empty list = match nothing
+        // Use ["*"] to match all ports
+        let port_match = self.ports.iter().any(|p| p.matches(port));
 
         dest_match && port_match
     }

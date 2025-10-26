@@ -26,7 +26,7 @@ mod ip_matcher_tests {
             action: Action::Allow,
             description: "Allow specific IPv4".to_string(),
             destinations: vec!["192.168.1.100".to_string()],
-            ports: vec![], // Empty = match all
+            ports: vec!["*".to_string()], // Empty = match all
             protocols: vec![Protocol::Both],
             priority: 100,
         };
@@ -53,7 +53,7 @@ mod ip_matcher_tests {
             action: Action::Allow,
             description: "Allow specific IPv6".to_string(),
             destinations: vec!["2001:db8::1".to_string()],
-            ports: vec![], // Empty = match all
+            ports: vec!["*".to_string()], // Empty = match all
             protocols: vec![Protocol::Both],
             priority: 100,
         };
@@ -90,7 +90,7 @@ mod ip_matcher_tests {
             action: Action::Allow,
             description: "Allow IPv4".to_string(),
             destinations: vec!["192.168.1.1".to_string()],
-            ports: vec![], // Empty = match all
+            ports: vec!["*".to_string()], // Empty = match all
             protocols: vec![Protocol::Both],
             priority: 100,
         };
@@ -124,7 +124,7 @@ mod cidr_matcher_tests {
             action: Action::Allow,
             description: "Allow 10.0.0.0/8".to_string(),
             destinations: vec!["10.0.0.0/8".to_string()],
-            ports: vec![], // Empty = match all
+            ports: vec!["*".to_string()], // Empty = match all
             protocols: vec![Protocol::Both],
             priority: 100,
         };
@@ -161,7 +161,7 @@ mod cidr_matcher_tests {
             action: Action::Block,
             description: "Block 192.168.0.0/16".to_string(),
             destinations: vec!["192.168.0.0/16".to_string()],
-            ports: vec![], // Empty = match all
+            ports: vec!["*".to_string()], // Empty = match all
             protocols: vec![Protocol::Both],
             priority: 100,
         };
@@ -198,7 +198,7 @@ mod cidr_matcher_tests {
             action: Action::Allow,
             description: "Allow 172.16.50.0/24".to_string(),
             destinations: vec!["172.16.50.0/24".to_string()],
-            ports: vec![], // Empty = match all
+            ports: vec!["*".to_string()], // Empty = match all
             protocols: vec![Protocol::Both],
             priority: 100,
         };
@@ -235,7 +235,7 @@ mod cidr_matcher_tests {
             action: Action::Allow,
             description: "Allow 10.0.0.1/32".to_string(),
             destinations: vec!["10.0.0.1/32".to_string()],
-            ports: vec![], // Empty = match all
+            ports: vec!["*".to_string()], // Empty = match all
             protocols: vec![Protocol::Both],
             priority: 100,
         };
@@ -261,7 +261,7 @@ mod cidr_matcher_tests {
             action: Action::Allow,
             description: "Allow 2001:db8::/32".to_string(),
             destinations: vec!["2001:db8::/32".to_string()],
-            ports: vec![], // Empty = match all
+            ports: vec!["*".to_string()], // Empty = match all
             protocols: vec![Protocol::Both],
             priority: 100,
         };
@@ -312,7 +312,7 @@ mod cidr_matcher_tests {
                 "172.16.0.0/12".to_string(),
                 "192.168.0.0/16".to_string(),
             ],
-            ports: vec![], // Empty = match all
+            ports: vec!["*".to_string()], // Empty = match all
             protocols: vec![Protocol::Both],
             priority: 100,
         };
@@ -357,7 +357,7 @@ mod domain_matcher_tests {
             action: Action::Allow,
             description: "Allow example.com".to_string(),
             destinations: vec!["example.com".to_string()],
-            ports: vec![], // Empty = match all
+            ports: vec!["*".to_string()], // Empty = match all
             protocols: vec![Protocol::Both],
             priority: 100,
         };
@@ -415,7 +415,7 @@ mod domain_matcher_tests {
             action: Action::Block,
             description: "Block *.malware.com".to_string(),
             destinations: vec!["*.malware.com".to_string()],
-            ports: vec![], // Empty = match all
+            ports: vec!["*".to_string()], // Empty = match all
             protocols: vec![Protocol::Both],
             priority: 100,
         };
@@ -459,7 +459,7 @@ mod domain_matcher_tests {
             action: Action::Allow,
             description: "Allow api.*.company.com".to_string(),
             destinations: vec!["api.*.company.com".to_string()],
-            ports: vec![], // Empty = match all
+            ports: vec!["*".to_string()], // Empty = match all
             protocols: vec![Protocol::Both],
             priority: 100,
         };
@@ -501,7 +501,7 @@ mod domain_matcher_tests {
             action: Action::Allow,
             description: "Allow *.*.example.com".to_string(),
             destinations: vec!["*.*.example.com".to_string()],
-            ports: vec![], // Empty = match all
+            ports: vec!["*".to_string()], // Empty = match all
             protocols: vec![Protocol::Both],
             priority: 100,
         };
@@ -552,7 +552,7 @@ mod domain_matcher_tests {
                 "server123.test.com".to_string(),
                 "my-app-v2.example.org".to_string(),
             ],
-            ports: vec![], // Empty = match all
+            ports: vec!["*".to_string()], // Empty = match all
             protocols: vec![Protocol::Both],
             priority: 100,
         };
@@ -601,7 +601,7 @@ mod port_matcher_tests {
         let rule = AclRule {
             action: Action::Allow,
             description: "Allow HTTPS only".to_string(),
-            destinations: vec![], // Empty = match all
+            destinations: vec!["*".to_string()], // Empty = match all
             ports: vec!["443".to_string()],
             protocols: vec![Protocol::Both],
             priority: 100,
@@ -626,7 +626,7 @@ mod port_matcher_tests {
         let rule = AclRule {
             action: Action::Block,
             description: "Block high ports".to_string(),
-            destinations: vec![], // Empty = match all
+            destinations: vec!["*".to_string()], // Empty = match all
             ports: vec!["49152-65535".to_string()],
             protocols: vec![Protocol::Both],
             priority: 100,
@@ -668,7 +668,7 @@ mod port_matcher_tests {
         let rule = AclRule {
             action: Action::Allow,
             description: "Allow common web ports".to_string(),
-            destinations: vec![], // Empty = match all
+            destinations: vec!["*".to_string()], // Empty = match all
             ports: vec!["80,443,8080,8443".to_string()],
             protocols: vec![Protocol::Both],
             priority: 100,
@@ -712,7 +712,7 @@ mod port_matcher_tests {
             action: Action::Allow,
             description: "Allow all ports".to_string(),
             destinations: vec!["example.com".to_string()],
-            ports: vec![], // Empty = match all
+            ports: vec!["*".to_string()], // Empty = match all
             protocols: vec![Protocol::Both],
             priority: 100,
         };
@@ -740,7 +740,7 @@ mod port_matcher_tests {
             AclRule {
                 action: Action::Block,
                 description: "Block SSH".to_string(),
-                destinations: vec![], // Empty = match all
+                destinations: vec!["*".to_string()], // Empty = match all
                 ports: vec!["22".to_string()],
                 protocols: vec![Protocol::Both],
                 priority: 200,
@@ -748,7 +748,7 @@ mod port_matcher_tests {
             AclRule {
                 action: Action::Allow,
                 description: "Allow web ports".to_string(),
-                destinations: vec![], // Empty = match all
+                destinations: vec!["*".to_string()], // Empty = match all
                 ports: vec!["80,443".to_string()],
                 protocols: vec![Protocol::Both],
                 priority: 100,
@@ -792,8 +792,8 @@ mod protocol_matcher_tests {
         let rule = AclRule {
             action: Action::Allow,
             description: "TCP only".to_string(),
-            destinations: vec![], // Empty = match all
-            ports: vec![], // Empty = match all
+            destinations: vec!["*".to_string()], // Empty = match all
+            ports: vec!["*".to_string()], // Empty = match all
             protocols: vec![Protocol::Tcp],
             priority: 100,
         };
@@ -827,8 +827,8 @@ mod protocol_matcher_tests {
         let rule = AclRule {
             action: Action::Allow,
             description: "UDP only".to_string(),
-            destinations: vec![], // Empty = match all
-            ports: vec![], // Empty = match all
+            destinations: vec!["*".to_string()], // Empty = match all
+            ports: vec!["*".to_string()], // Empty = match all
             protocols: vec![Protocol::Udp],
             priority: 100,
         };
@@ -862,8 +862,8 @@ mod protocol_matcher_tests {
         let rule = AclRule {
             action: Action::Allow,
             description: "Both protocols".to_string(),
-            destinations: vec![], // Empty = match all
-            ports: vec![], // Empty = match all
+            destinations: vec!["*".to_string()], // Empty = match all
+            ports: vec!["*".to_string()], // Empty = match all
             protocols: vec![Protocol::Both],
             priority: 100,
         };
@@ -893,12 +893,87 @@ mod protocol_matcher_tests {
     }
 
     #[tokio::test]
+    async fn star_protocol_matches_all() {
+        // Test that "*" in TOML is parsed as Protocol::Both
+        let rule = AclRule {
+            action: Action::Allow,
+            description: "Star protocol".to_string(),
+            destinations: vec!["*".to_string()],
+            ports: vec!["*".to_string()],
+            protocols: vec![Protocol::Both],  // "*" is alias for "both"
+            priority: 100,
+        };
+
+        let config = create_test_config("alice", vec![rule]);
+        let engine = AclEngine::new(config).unwrap();
+
+        // Should match TCP
+        let (decision, _) = engine
+            .evaluate(
+                "alice",
+                &Address::Domain("example.com".to_string()),
+                80,
+                &Protocol::Tcp,
+            )
+            .await;
+        assert_eq!(decision, AclDecision::Allow);
+
+        // Should match UDP
+        let (decision, _) = engine
+            .evaluate(
+                "alice",
+                &Address::Domain("example.com".to_string()),
+                53,
+                &Protocol::Udp,
+            )
+            .await;
+        assert_eq!(decision, AclDecision::Allow);
+    }
+
+    #[tokio::test]
+    async fn empty_protocol_list_matches_nothing() {
+        let rule = AclRule {
+            action: Action::Allow,
+            description: "Empty protocols".to_string(),
+            destinations: vec!["*".to_string()],
+            ports: vec!["*".to_string()],
+            protocols: vec![],  // Empty = match nothing
+            priority: 100,
+        };
+
+        let config = create_test_config_with_policy("alice", vec![rule], Action::Block);
+        let engine = AclEngine::new(config).unwrap();
+
+        // Should NOT match TCP (falls back to default Block)
+        let (decision, _) = engine
+            .evaluate(
+                "alice",
+                &Address::Domain("example.com".to_string()),
+                80,
+                &Protocol::Tcp,
+            )
+            .await;
+        assert_eq!(decision, AclDecision::Block);
+
+        // Should NOT match UDP (falls back to default Block)
+        let (decision, _) = engine
+            .evaluate(
+                "alice",
+                &Address::Domain("example.com".to_string()),
+                53,
+                &Protocol::Udp,
+            )
+            .await;
+        assert_eq!(decision, AclDecision::Block);
+    }
+
+    #[tokio::test]
     async fn protocol_specific_rules() {
         let rules = vec![
             AclRule {
                 action: Action::Block,
                 description: "Block UDP DNS".to_string(),
-                destinations: vec![], // Empty = match all
+                destinations: vec!["*".to_string()], // Empty = match all
                 ports: vec!["53".to_string()],
                 protocols: vec![Protocol::Udp],
                 priority: 200,
@@ -906,8 +981,8 @@ mod protocol_matcher_tests {
             AclRule {
                 action: Action::Allow,
                 description: "Allow all TCP".to_string(),
-                destinations: vec![], // Empty = match all
-                ports: vec![], // Empty = match all
+                destinations: vec!["*".to_string()], // Empty = match all
+                ports: vec!["*".to_string()], // Empty = match all
                 protocols: vec![Protocol::Tcp],
                 priority: 100,
             },
@@ -954,7 +1029,7 @@ mod priority_tests {
                 action: Action::Block,
                 description: "High priority block".to_string(),
                 destinations: vec!["evil.com".to_string()],
-                ports: vec![], // Empty = match all
+                ports: vec!["*".to_string()], // Empty = match all
                 protocols: vec![Protocol::Both],
                 priority: 1000,
             },
@@ -962,7 +1037,7 @@ mod priority_tests {
                 action: Action::Allow,
                 description: "Low priority allow".to_string(),
                 destinations: vec!["*.com".to_string()],
-                ports: vec![], // Empty = match all
+                ports: vec!["*".to_string()], // Empty = match all
                 protocols: vec![Protocol::Both],
                 priority: 100,
             },
@@ -990,8 +1065,8 @@ mod priority_tests {
             AclRule {
                 action: Action::Allow,
                 description: "Allow all".to_string(),
-                destinations: vec![], // Empty = match all
-                ports: vec![], // Empty = match all
+                destinations: vec!["*".to_string()], // Empty = match all
+                ports: vec!["*".to_string()], // Empty = match all
                 protocols: vec![Protocol::Both],
                 priority: 100,
             },
@@ -999,7 +1074,7 @@ mod priority_tests {
                 action: Action::Block,
                 description: "Block specific".to_string(),
                 destinations: vec!["blocked.com".to_string()],
-                ports: vec![], // Empty = match all
+                ports: vec!["*".to_string()], // Empty = match all
                 protocols: vec![Protocol::Both],
                 priority: 100,
             },
@@ -1066,7 +1141,7 @@ mod priority_tests {
                 action: Action::Allow,
                 description: "Priority 50".to_string(),
                 destinations: vec!["low.example.com".to_string()],
-                ports: vec![], // Empty = match all
+                ports: vec!["*".to_string()], // Empty = match all
                 protocols: vec![Protocol::Both],
                 priority: 50,
             },
@@ -1074,7 +1149,7 @@ mod priority_tests {
                 action: Action::Block,
                 description: "Priority 500".to_string(),
                 destinations: vec!["high.example.com".to_string()],
-                ports: vec![], // Empty = match all
+                ports: vec!["*".to_string()], // Empty = match all
                 protocols: vec![Protocol::Both],
                 priority: 500,
             },
@@ -1082,7 +1157,7 @@ mod priority_tests {
                 action: Action::Allow,
                 description: "Priority 100".to_string(),
                 destinations: vec!["mid.example.com".to_string()],
-                ports: vec![], // Empty = match all
+                ports: vec!["*".to_string()], // Empty = match all
                 protocols: vec![Protocol::Both],
                 priority: 100,
             },
@@ -1129,7 +1204,7 @@ mod group_inheritance_tests {
                     action: Action::Allow,
                     description: "Devs can access dev servers".to_string(),
                     destinations: vec!["*.dev.company.com".to_string()],
-                    ports: vec![], // Empty = match all
+                    ports: vec!["*".to_string()], // Empty = match all
                     protocols: vec![Protocol::Both],
                     priority: 100,
                 }],
@@ -1162,7 +1237,7 @@ mod group_inheritance_tests {
                     action: Action::Block,
                     description: "Alice blocks social media".to_string(),
                     destinations: vec!["*.facebook.com".to_string(), "*.twitter.com".to_string()],
-                    ports: vec![], // Empty = match all
+                    ports: vec!["*".to_string()], // Empty = match all
                     protocols: vec![Protocol::Both],
                     priority: 500,
                 }],
@@ -1172,8 +1247,8 @@ mod group_inheritance_tests {
                 rules: vec![AclRule {
                     action: Action::Allow,
                     description: "Allow all internet".to_string(),
-                    destinations: vec![], // Empty = match all
-                    ports: vec![], // Empty = match all
+                    destinations: vec!["*".to_string()], // Empty = match all
+                    ports: vec!["*".to_string()], // Empty = match all
                     protocols: vec![Protocol::Both],
                     priority: 100,
                 }],
@@ -1223,7 +1298,7 @@ mod group_inheritance_tests {
                         action: Action::Allow,
                         description: "Dev access".to_string(),
                         destinations: vec!["*.dev.company.com".to_string()],
-                        ports: vec![], // Empty = match all
+                        ports: vec!["*".to_string()], // Empty = match all
                         protocols: vec![Protocol::Both],
                         priority: 100,
                     }],
@@ -1234,7 +1309,7 @@ mod group_inheritance_tests {
                         action: Action::Allow,
                         description: "Admin access".to_string(),
                         destinations: vec!["*.prod.company.com".to_string()],
-                        ports: vec![], // Empty = match all
+                        ports: vec!["*".to_string()], // Empty = match all
                         protocols: vec![Protocol::Both],
                         priority: 100,
                     }],
@@ -1346,7 +1421,7 @@ mod default_policy_tests {
                     action: Action::Allow,
                     description: "Alice can access".to_string(),
                     destinations: vec!["*.com".to_string()],
-                    ports: vec![], // Empty = match all
+                    ports: vec!["*".to_string()], // Empty = match all
                     protocols: vec![Protocol::Both],
                     priority: 100,
                 }],
@@ -1570,7 +1645,7 @@ mod complex_scenarios {
                             action: Action::Allow,
                             description: "Access dev environment".to_string(),
                             destinations: vec!["*.dev.company.com".to_string()],
-                            ports: vec![], // Empty = match all
+                            ports: vec!["*".to_string()], // Empty = match all
                             protocols: vec![Protocol::Both],
                             priority: 100,
                         },
@@ -1593,7 +1668,7 @@ mod complex_scenarios {
                             "*.prod.company.com".to_string(),
                             "prod-db.company.com".to_string(), // Exact match for prod DB
                         ],
-                        ports: vec![], // Empty = match all
+                        ports: vec!["*".to_string()], // Empty = match all
                         protocols: vec![Protocol::Both],
                         priority: 200,
                     }],
@@ -1661,7 +1736,7 @@ mod complex_scenarios {
                     "*.instagram.com".to_string(),
                     "*.tiktok.com".to_string(),
                 ],
-                ports: vec![], // Empty = match all
+                ports: vec!["*".to_string()], // Empty = match all
                 protocols: vec![Protocol::Both],
                 priority: 900,
             },
@@ -1669,7 +1744,7 @@ mod complex_scenarios {
             AclRule {
                 action: Action::Block,
                 description: "Block torrents".to_string(),
-                destinations: vec![], // Empty = match all
+                destinations: vec!["*".to_string()], // Empty = match all
                 ports: vec!["6881-6889".to_string()],
                 protocols: vec![Protocol::Both],
                 priority: 800,
@@ -1678,7 +1753,7 @@ mod complex_scenarios {
             AclRule {
                 action: Action::Allow,
                 description: "Allow HTTPS".to_string(),
-                destinations: vec![], // Empty = match all
+                destinations: vec!["*".to_string()], // Empty = match all
                 ports: vec!["443".to_string()],
                 protocols: vec![Protocol::Tcp],
                 priority: 100,
@@ -1687,7 +1762,7 @@ mod complex_scenarios {
             AclRule {
                 action: Action::Allow,
                 description: "Allow HTTP".to_string(),
-                destinations: vec![], // Empty = match all
+                destinations: vec!["*".to_string()], // Empty = match all
                 ports: vec!["80".to_string()],
                 protocols: vec![Protocol::Tcp],
                 priority: 100,
@@ -1741,7 +1816,7 @@ mod complex_scenarios {
                     "1.0.1.0/24".to_string(),
                     "1.0.2.0/23".to_string(),
                 ],
-                ports: vec![], // Empty = match all
+                ports: vec!["*".to_string()], // Empty = match all
                 protocols: vec![Protocol::Both],
                 priority: 500,
             },
@@ -1751,15 +1826,15 @@ mod complex_scenarios {
                 destinations: vec![
                     "5.8.0.0/16".to_string(),
                 ],
-                ports: vec![], // Empty = match all
+                ports: vec!["*".to_string()], // Empty = match all
                 protocols: vec![Protocol::Both],
                 priority: 500,
             },
             AclRule {
                 action: Action::Allow,
                 description: "Allow all other IPs".to_string(),
-                destinations: vec![], // Empty = match all
-                ports: vec![], // Empty = match all
+                destinations: vec!["*".to_string()], // Empty = match all
+                ports: vec!["*".to_string()], // Empty = match all
                 protocols: vec![Protocol::Both],
                 priority: 100,
             },
@@ -1796,11 +1871,11 @@ mod edge_cases {
     use super::*;
 
     #[tokio::test]
-    async fn empty_destination_list_matches_all() {
+    async fn star_destination_matches_all() {
         let rule = AclRule {
             action: Action::Allow,
-            description: "Empty destinations".to_string(),
-            destinations: vec![],
+            description: "Star matches all".to_string(),
+            destinations: vec!["*".to_string()],  // "*" = match all
             ports: vec!["443".to_string()],
             protocols: vec![Protocol::Both],
             priority: 100,
@@ -1827,12 +1902,43 @@ mod edge_cases {
     }
 
     #[tokio::test]
-    async fn empty_port_list_matches_all() {
+    async fn empty_destination_list_matches_nothing() {
+        let rule = AclRule {
+            action: Action::Allow,
+            description: "Empty destinations".to_string(),
+            destinations: vec![],  // Empty = match nothing
+            ports: vec!["443".to_string()],
+            protocols: vec![Protocol::Both],
+            priority: 100,
+        };
+
+        let config = create_test_config_with_policy("alice", vec![rule], Action::Block);
+        let engine = AclEngine::new(config).unwrap();
+
+        // Should NOT match anything (empty list = match nothing)
+        let (decision, _) = engine
+            .evaluate(
+                "alice",
+                &Address::Domain("anything.com".to_string()),
+                443,
+                &Protocol::Tcp,
+            )
+            .await;
+        assert_eq!(decision, AclDecision::Block);  // Falls back to default policy
+
+        let (decision, _) = engine
+            .evaluate("alice", &Address::IPv4([1, 2, 3, 4]), 443, &Protocol::Tcp)
+            .await;
+        assert_eq!(decision, AclDecision::Block);  // Falls back to default policy
+    }
+
+    #[tokio::test]
+    async fn star_port_matches_all() {
         let rule = AclRule {
             action: Action::Block,
-            description: "Empty ports".to_string(),
+            description: "Star ports".to_string(),
             destinations: vec!["blocked.com".to_string()],
-            ports: vec![],
+            ports: vec!["*".to_string()],  // "*" = match all
             protocols: vec![Protocol::Both],
             priority: 100,
         };
@@ -1855,12 +1961,40 @@ mod edge_cases {
     }
 
     #[tokio::test]
+    async fn empty_port_list_matches_nothing() {
+        let rule = AclRule {
+            action: Action::Block,
+            description: "Empty ports".to_string(),
+            destinations: vec!["blocked.com".to_string()],
+            ports: vec![],  // Empty = match nothing
+            protocols: vec![Protocol::Both],
+            priority: 100,
+        };
+
+        let config = create_test_config_with_policy("alice", vec![rule], Action::Allow);
+        let engine = AclEngine::new(config).unwrap();
+
+        // Should NOT match any port (empty list = match nothing)
+        for port in [80, 443, 8080, 65535] {
+            let (decision, _) = engine
+                .evaluate(
+                    "alice",
+                    &Address::Domain("blocked.com".to_string()),
+                    port,
+                    &Protocol::Tcp,
+                )
+                .await;
+            assert_eq!(decision, AclDecision::Allow, "Port {} should not match, falls back to default Allow", port);
+        }
+    }
+
+    #[tokio::test]
     async fn case_insensitive_domain_matching() {
         let rule = AclRule {
             action: Action::Allow,
             description: "Domain".to_string(),
             destinations: vec!["ExAmPlE.cOm".to_string()],
-            ports: vec![], // Empty = match all
+            ports: vec!["*".to_string()], // Empty = match all
             protocols: vec![Protocol::Both],
             priority: 100,
         };
@@ -1894,7 +2028,7 @@ mod edge_cases {
             action: Action::Allow,
             description: "Wildcard".to_string(),
             destinations: vec!["*.example.com".to_string()],
-            ports: vec![], // Empty = match all
+            ports: vec!["*".to_string()], // Empty = match all
             protocols: vec![Protocol::Both],
             priority: 100,
         };
@@ -1931,7 +2065,7 @@ mod edge_cases {
             action: Action::Allow,
             description: "Any port".to_string(),
             destinations: vec!["example.com".to_string()],
-            ports: vec![], // Empty = match all
+            ports: vec!["*".to_string()], // Empty = match all
             protocols: vec![Protocol::Both],
             priority: 100,
         };
@@ -1956,7 +2090,7 @@ mod edge_cases {
         let rule = AclRule {
             action: Action::Block,
             description: "Block max port".to_string(),
-            destinations: vec![], // Empty = match all
+            destinations: vec!["*".to_string()], // Empty = match all
             ports: vec!["65535".to_string()],
             protocols: vec![Protocol::Both],
             priority: 100,
@@ -1992,7 +2126,7 @@ mod edge_cases {
             action: Action::Block,
             description: "Block private IPs".to_string(),
             destinations: vec!["192.168.0.0/16".to_string()],
-            ports: vec![], // Empty = match all
+            ports: vec!["*".to_string()], // Empty = match all
             protocols: vec![Protocol::Both],
             priority: 100,
         };
@@ -2019,7 +2153,7 @@ mod edge_cases {
             action: Action::Allow,
             description: "Long domain".to_string(),
             destinations: vec![long_domain.clone()],
-            ports: vec![], // Empty = match all
+            ports: vec!["*".to_string()], // Empty = match all
             protocols: vec![Protocol::Both],
             priority: 100,
         };
@@ -2047,7 +2181,7 @@ mod edge_cases {
                 action: if i % 2 == 0 { Action::Allow } else { Action::Block },
                 description: format!("Rule {}", i),
                 destinations: vec![format!("domain{}.com", i)],
-                ports: vec![], // Empty = match all
+                ports: vec!["*".to_string()], // Empty = match all
                 protocols: vec![Protocol::Both],
                 priority: i as u32,
             });
@@ -2073,6 +2207,298 @@ mod edge_cases {
 
         let elapsed = start.elapsed();
         assert!(elapsed.as_millis() < 100, "100 evaluations took {:?}", elapsed);
+    }
+
+    #[tokio::test]
+    async fn empty_destinations_and_ports_allows_all_ips() {
+        // Exact scenario from user: default_policy = Block, but Allow rule with ["*"] should work
+        let rule = AclRule {
+            action: Action::Allow,
+            description: "Allow all destinations and ports".to_string(),
+            destinations: vec!["*".to_string()], // "*" = match all
+            ports: vec!["*".to_string()],        // "*" = match all
+            protocols: vec![Protocol::Both],
+            priority: 100,
+        };
+
+        let config = create_test_config_with_policy("alice", vec![rule], Action::Block);
+        let engine = AclEngine::new(config).unwrap();
+
+        // Test various IP addresses that should all be allowed
+        // This is the exact scenario from user: 192.168.55.220:22
+        let (decision, rule_desc) = engine
+            .evaluate(
+                "alice",
+                &Address::IPv4([192, 168, 55, 220]),
+                22,
+                &Protocol::Tcp,
+            )
+            .await;
+        assert_eq!(
+            decision,
+            AclDecision::Allow,
+            "Star destinations should match IPv4 192.168.55.220:22, got {:?}",
+            rule_desc
+        );
+
+        // Test more IPv4 addresses
+        let (decision, _) = engine
+            .evaluate("alice", &Address::IPv4([10, 0, 0, 1]), 80, &Protocol::Tcp)
+            .await;
+        assert_eq!(decision, AclDecision::Allow);
+
+        let (decision, _) = engine
+            .evaluate(
+                "alice",
+                &Address::IPv4([172, 16, 0, 1]),
+                443,
+                &Protocol::Tcp,
+            )
+            .await;
+        assert_eq!(decision, AclDecision::Allow);
+
+        // Test IPv6
+        let (decision, _) = engine
+            .evaluate(
+                "alice",
+                &Address::IPv6([
+                    0x20, 0x01, 0x0d, 0xb8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                    0x00, 0x00, 0x01,
+                ]),
+                22,
+                &Protocol::Tcp,
+            )
+            .await;
+        assert_eq!(decision, AclDecision::Allow);
+
+        // Test domain
+        let (decision, _) = engine
+            .evaluate(
+                "alice",
+                &Address::Domain("example.com".to_string()),
+                8080,
+                &Protocol::Tcp,
+            )
+            .await;
+        assert_eq!(decision, AclDecision::Allow);
+
+        // Test UDP protocol
+        let (decision, _) = engine
+            .evaluate(
+                "alice",
+                &Address::IPv4([8, 8, 8, 8]),
+                53,
+                &Protocol::Udp,
+            )
+            .await;
+        assert_eq!(decision, AclDecision::Allow);
+    }
+
+    #[tokio::test]
+    async fn toml_config_with_empty_destinations_works() {
+        // Test that TOML parsing handles ["*"] correctly (match all)
+        use rustsocks::acl::loader::load_acl_config;
+        use tempfile::NamedTempFile;
+        use std::io::Write;
+
+        let toml_content = r#"
+[global]
+default_policy = "block"
+
+[[users]]
+username = "alice"
+groups = []
+
+  [[users.rules]]
+  action = "allow"
+  description = "Allow all"
+  destinations = ["*"]  # "*" = match all
+  ports = ["*"]         # "*" = match all
+  protocols = ["both"]
+  priority = 100
+"#;
+
+        let mut temp_file = NamedTempFile::new().expect("create temp file");
+        temp_file
+            .write_all(toml_content.as_bytes())
+            .expect("write TOML");
+        temp_file.flush().expect("flush");
+
+        let config = load_acl_config(temp_file.path())
+            .await
+            .expect("load ACL config from TOML");
+
+        let engine = AclEngine::new(config).unwrap();
+
+        // Test the exact scenario from user
+        let (decision, rule_desc) = engine
+            .evaluate(
+                "alice",
+                &Address::IPv4([192, 168, 55, 220]),
+                22,
+                &Protocol::Tcp,
+            )
+            .await;
+
+        assert_eq!(
+            decision,
+            AclDecision::Allow,
+            "TOML with [\"*\"] destinations should allow all IPs, got {:?}",
+            rule_desc
+        );
+    }
+
+    #[tokio::test]
+    async fn toml_config_with_omitted_destinations_matches_nothing() {
+        // Test that TOML parsing handles omitted destinations correctly (serde default = empty list = match nothing)
+        use rustsocks::acl::loader::load_acl_config;
+        use tempfile::NamedTempFile;
+        use std::io::Write;
+
+        let toml_content = r#"
+[global]
+default_policy = "block"
+
+[[users]]
+username = "alice"
+groups = []
+
+  [[users.rules]]
+  action = "allow"
+  description = "Allow nothing (omitted fields)"
+  # destinations field omitted - defaults to empty list = match nothing
+  # ports field omitted - defaults to empty list = match nothing
+  protocols = ["both"]
+  priority = 100
+"#;
+
+        let mut temp_file = NamedTempFile::new().expect("create temp file");
+        temp_file
+            .write_all(toml_content.as_bytes())
+            .expect("write TOML");
+        temp_file.flush().expect("flush");
+
+        let config = load_acl_config(temp_file.path())
+            .await
+            .expect("load ACL config from TOML");
+
+        let engine = AclEngine::new(config).unwrap();
+
+        // Test the exact scenario from user
+        let (decision, rule_desc) = engine
+            .evaluate(
+                "alice",
+                &Address::IPv4([192, 168, 55, 220]),
+                22,
+                &Protocol::Tcp,
+            )
+            .await;
+
+        assert_eq!(
+            decision,
+            AclDecision::Block,
+            "TOML with omitted destinations should match nothing (falls back to default Block), got {:?}",
+            rule_desc
+        );
+    }
+
+    #[tokio::test]
+    async fn toml_config_with_star_protocol() {
+        // Test that "*" in TOML is parsed correctly for protocols
+        use rustsocks::acl::loader::load_acl_config;
+        use tempfile::NamedTempFile;
+        use std::io::Write;
+
+        let toml_content = r#"
+[global]
+default_policy = "block"
+
+[[users]]
+username = "alice"
+groups = []
+
+  [[users.rules]]
+  action = "allow"
+  description = "Allow all with star protocol"
+  destinations = ["*"]
+  ports = ["*"]
+  protocols = ["*"]  # "*" = alias for "both"
+  priority = 100
+"#;
+
+        let mut temp_file = NamedTempFile::new().expect("create temp file");
+        temp_file
+            .write_all(toml_content.as_bytes())
+            .expect("write TOML");
+        temp_file.flush().expect("flush");
+
+        let config = load_acl_config(temp_file.path())
+            .await
+            .expect("load ACL config from TOML");
+
+        let engine = AclEngine::new(config).unwrap();
+
+        // Should match TCP
+        let (decision, _) = engine
+            .evaluate(
+                "alice",
+                &Address::IPv4([192, 168, 1, 1]),
+                80,
+                &Protocol::Tcp,
+            )
+            .await;
+        assert_eq!(decision, AclDecision::Allow);
+
+        // Should match UDP
+        let (decision, _) = engine
+            .evaluate(
+                "alice",
+                &Address::IPv4([192, 168, 1, 1]),
+                53,
+                &Protocol::Udp,
+            )
+            .await;
+        assert_eq!(decision, AclDecision::Allow);
+    }
+
+    #[tokio::test]
+    async fn cidr_ranges_allow_all_ips() {
+        // Compare: using CIDR ranges 0.0.0.0/0 and ::/0 should also work
+        let rule = AclRule {
+            action: Action::Allow,
+            description: "Allow all via CIDR".to_string(),
+            destinations: vec!["0.0.0.0/0".to_string(), "::/0".to_string()],
+            ports: vec!["*".to_string()],
+            protocols: vec![Protocol::Both],
+            priority: 100,
+        };
+
+        let config = create_test_config_with_policy("alice", vec![rule], Action::Block);
+        let engine = AclEngine::new(config).unwrap();
+
+        // Same tests as above
+        let (decision, _) = engine
+            .evaluate(
+                "alice",
+                &Address::IPv4([192, 168, 55, 220]),
+                22,
+                &Protocol::Tcp,
+            )
+            .await;
+        assert_eq!(decision, AclDecision::Allow);
+
+        let (decision, _) = engine
+            .evaluate(
+                "alice",
+                &Address::IPv6([
+                    0x20, 0x01, 0x0d, 0xb8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                    0x00, 0x00, 0x01,
+                ]),
+                22,
+                &Protocol::Tcp,
+            )
+            .await;
+        assert_eq!(decision, AclDecision::Allow);
     }
 }
 

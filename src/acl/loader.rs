@@ -60,7 +60,7 @@ groups = ["developers", "ssh-users"]
   action = "block"
   description = "Block access to admin panel"
   destinations = ["admin.company.com", "192.168.100.10"]
-  ports = ["*"]
+  ports = ["*"]  # Match all ports
   protocols = ["both"]
   priority = 1000
 
@@ -71,6 +71,15 @@ groups = ["developers", "ssh-users"]
   ports = ["443", "8000-9000"]
   protocols = ["tcp"]
   priority = 100
+
+  # Example: Allow everything with ["*"]
+  # [[users.rules]]
+  # action = "allow"
+  # description = "Allow all traffic"
+  # destinations = ["*"]  # All IPs and domains
+  # ports = ["*"]  # All ports
+  # protocols = ["*"]  # TCP and UDP (same as ["both"])
+  # priority = 50
 
   [[users.rules]]
   action = "allow"
@@ -96,7 +105,7 @@ groups = ["readonly"]
   action = "block"
   description = "Block write operations"
   destinations = ["db-master.company.com"]
-  ports = ["*"]
+  ports = ["*"]  # Match all ports
   protocols = ["both"]
   priority = 1000
 
@@ -108,7 +117,7 @@ name = "developers"
   action = "allow"
   description = "Access to dev environments"
   destinations = ["*.dev.company.com", "10.1.0.0/16"]
-  ports = ["*"]
+  ports = ["*"]  # Match all ports
   protocols = ["both"]
   priority = 50
 
@@ -117,7 +126,15 @@ name = "ssh-users"
 
   [[groups.rules]]
   action = "allow"
-  description = "SSH access"
+  description = "SSH access to all destinations"
+  # IMPORTANT: Use ["*"] to match all
+  # Examples:
+  #   destinations = ["*"]  - matches all IPs and domains
+  #   destinations = []  - matches NOTHING (rule never applies!)
+  #   ports = ["*"]  - matches all ports
+  #   ports = []  - matches NOTHING
+  #   protocols = ["*"]  - matches TCP and UDP (same as ["both"])
+  #   protocols = []  - matches NOTHING
   destinations = ["*"]
   ports = ["22"]
   protocols = ["tcp"]
@@ -128,8 +145,8 @@ name = "readonly"
 
   [[groups.rules]]
   action = "block"
-  description = "Block SSH access"
-  destinations = ["*"]
+  description = "Block SSH access to all destinations"
+  destinations = ["*"]  # Match all
   ports = ["22"]
   protocols = ["tcp"]
   priority = 500

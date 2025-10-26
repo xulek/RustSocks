@@ -16,6 +16,7 @@ pub enum Action {
 pub enum Protocol {
     Tcp,
     Udp,
+    #[serde(alias = "*")]  // Allow "*" as alias for "both"
     Both,
 }
 

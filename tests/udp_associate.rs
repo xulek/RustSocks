@@ -181,8 +181,8 @@ username = "anonymous"
   [[users.rules]]
   action = "block"
   description = "Block all UDP"
-  destinations = ["*"]
-  ports = ["*"]
+  destinations = ["*"]  # Match all
+  ports = ["*"]  # Match all
   protocols = ["udp"]
   priority = 100
 "#;

@@ -48,7 +48,10 @@
       "Bash(break done)",
       "Bash(cat:*)",
       "Bash(/root/.cargo/bin/cargo test --all-features --test acl_unit)",
-      "Bash(/root/.cargo/bin/cargo test --all-features --test acl_unit -- --test-threads=1)"
+      "Bash(/root/.cargo/bin/cargo test --all-features --test acl_unit -- --test-threads=1)",
+      "Bash(/root/.cargo/bin/cargo test --lib acl)",
+      "Bash(/root/.cargo/bin/cargo test --test acl_unit)",
+      "Bash(/root/.cargo/bin/cargo test --all-features)"
     ],
     "deny": [],
     "ask": []

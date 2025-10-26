@@ -281,8 +281,8 @@ username = "anonymous"
   [[users.rules]]
   action = "block"
   description = "Block all BIND"
-  destinations = ["*"]
-  ports = ["*"]
+  destinations = ["*"]  # Match all
+  ports = ["*"]  # Match all
   protocols = ["tcp"]
   priority = 100
 "#;

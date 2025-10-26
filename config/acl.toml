@@ -1,23 +1,33 @@
-  [global]
-  default_policy = "block"
+[global]
+default_policy = "block"
 
-  [[users]]
-  username = "alice"
-  groups = ["developers"]
+[[users]]
+username = "alice"
+groups = ["developers"]
 
-    [[users.rules]]
-    action = "allow"
-    description = "Allow HTTPS"
-    destinations = ["0.0.0.0/0", "::/0"]
-    ports = ["*"]
-    protocols = ["tcp"]
-    priority = 100
+  [[users.rules]]
+  action = "allow"
+  description = "Allow HTTP/HTTPS to all destinations"
+  # IMPORTANT: Use ["*"] to match all
+  # Examples:
+  #   destinations = ["*"]  - matches all IPs and domains
+  #   destinations = []  - matches NOTHING (rule will never apply!)
+  #   ports = ["*"]  - matches all ports
+  #   ports = []  - matches NOTHING
+  #   protocols = ["*"]  - matches TCP and UDP (same as ["both"])
+  #   protocols = []  - matches NOTHING
+  destinations = ["*"]  # Match all
+  ports = ["443", "80"]
+  protocols = ["tcp"]
+  priority = 100
 
-  [[groups]]
-  name = "developers"
-    [[groups.rules]]
-    action = "allow"
-    description = "Dev servers"
-    destinations = ["*.dev.company.com"]
-    ports = ["*"]
-    priority = 50
+[[groups]]
+name = "developers"
+
+  [[groups.rules]]
+  action = "allow"
+  description = "Dev servers and any port"
+  destinations = ["*.dev.company.com"]
+  ports = ["*"]  # Match all ports
+  protocols = ["tcp"]
+  priority = 50
