@@ -51,7 +51,12 @@
       "Bash(/root/.cargo/bin/cargo test --all-features --test acl_unit -- --test-threads=1)",
       "Bash(/root/.cargo/bin/cargo test --lib acl)",
       "Bash(/root/.cargo/bin/cargo test --test acl_unit)",
-      "Bash(/root/.cargo/bin/cargo test --all-features)"
+      "Bash(/root/.cargo/bin/cargo test --all-features)",
+      "Bash(/root/.cargo/bin/cargo test --release --lib acl_evaluation_performance -- --nocapture)",
+      "Bash(/root/.cargo/bin/cargo test --release acl_performance_under_seven_ms -- --ignored --nocapture)",
+      "Bash(/root/.cargo/bin/cargo test --release --test acl_unit many_rules_performance -- --nocapture)",
+      "Bash(/root/.cargo/bin/cargo test --release acl_handles_thousand_concurrent_connections -- --ignored --nocapture)",
+      "Bash(/root/.cargo/bin/cargo test --release --test acl_integration acl_handles_thousand_concurrent_connections -- --ignored --nocapture)"
     ],
     "deny": [],
     "ask": []
