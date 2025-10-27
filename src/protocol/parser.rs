@@ -4,21 +4,20 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tracing::{debug, trace};
 
-/// Parse client greeting (method selection)
-pub async fn parse_client_greeting(stream: &mut TcpStream) -> Result<ClientGreeting> {
-    // Read version and number of methods
-    let mut buf = [0u8; 2];
-    stream.read_exact(&mut buf).await?;
-
-    let version = buf[0];
-    let nmethods = buf[1];
-
+/// Parse client greeting (method selection) for SOCKS5.
+/// The caller must provide the already-read version byte.
+pub async fn parse_socks5_client_greeting(
+    stream: &mut TcpStream,
+    version: u8,
+) -> Result<ClientGreeting> {
     if version != SOCKS_VERSION {
         return Err(RustSocksError::Protocol(format!(
             "Unsupported SOCKS version: 0x{:02x}",
             version
         )));
     }
+
+    let nmethods = stream.read_u8().await?;
 
     if nmethods == 0 {
         return Err(RustSocksError::Protocol(
@@ -202,6 +201,99 @@ pub async fn send_socks5_response(
     Ok(())
 }
 
+/// Parse SOCKS4/4a request (SOCKS version byte must be consumed by caller)
+pub async fn parse_socks4_request(stream: &mut TcpStream) -> Result<Socks4Request> {
+    let command_byte = stream.read_u8().await?;
+    let command = Command::try_from(command_byte)?;
+
+    let port = stream.read_u16().await?;
+
+    let mut ip_octets = [0u8; 4];
+    stream.read_exact(&mut ip_octets).await?;
+
+    let user_id = read_null_terminated_string(stream).await?;
+    let user_id = if user_id.is_empty() {
+        None
+    } else {
+        Some(user_id)
+    };
+
+    let address =
+        if ip_octets[0] == 0 && ip_octets[1] == 0 && ip_octets[2] == 0 && ip_octets[3] != 0 {
+            let domain = read_null_terminated_string(stream).await?;
+            if domain.is_empty() {
+                return Err(RustSocksError::Protocol(
+                    "SOCKS4a domain name missing".to_string(),
+                ));
+            }
+            Address::Domain(domain)
+        } else {
+            Address::IPv4(ip_octets)
+        };
+
+    debug!(
+        "Parsed SOCKS4 request: command={:?}, address={}, port={}, user_id={:?}",
+        command,
+        address.to_string(),
+        port,
+        user_id
+    );
+
+    Ok(Socks4Request {
+        command,
+        address,
+        port,
+        user_id,
+    })
+}
+
+/// Send SOCKS4 response
+pub async fn send_socks4_response(
+    stream: &mut TcpStream,
+    reply: Socks4Reply,
+    bind_addr: [u8; 4],
+    bind_port: u16,
+) -> Result<()> {
+    let mut buf = Vec::with_capacity(8);
+    buf.push(0x00);
+    buf.push(reply as u8);
+    buf.extend_from_slice(&bind_port.to_be_bytes());
+    buf.extend_from_slice(&bind_addr);
+
+    stream.write_all(&buf).await?;
+    stream.flush().await?;
+
+    debug!(
+        "Sent SOCKS4 response: reply={:?}, bind_addr={}.{}.{}.{}, bind_port={}",
+        reply, bind_addr[0], bind_addr[1], bind_addr[2], bind_addr[3], bind_port
+    );
+
+    Ok(())
+}
+
+async fn read_null_terminated_string(stream: &mut TcpStream) -> Result<String> {
+    const MAX_LEN: usize = 255;
+    let mut bytes = Vec::new();
+
+    loop {
+        let byte = stream.read_u8().await?;
+        if byte == 0x00 {
+            break;
+        }
+
+        if bytes.len() >= MAX_LEN {
+            return Err(RustSocksError::Protocol(
+                "SOCKS4 field exceeds maximum length".to_string(),
+            ));
+        }
+
+        bytes.push(byte);
+    }
+
+    String::from_utf8(bytes)
+        .map_err(|_| RustSocksError::Protocol("Invalid string encoding".to_string()))
+}
+
 /// Parse UDP packet from raw bytes
 /// Format: RSV(2) + FRAG(1) + ATYP(1) + DST.ADDR(var) + DST.PORT(2) + DATA
 pub fn parse_udp_packet(buf: &[u8]) -> Result<UdpPacket> {
@@ -340,8 +432,8 @@ pub fn serialize_udp_packet(packet: &UdpPacket) -> Vec<u8> {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_client_greeting, AuthMethod};
-    use tokio::io::AsyncWriteExt;
+    use super::{parse_socks5_client_greeting, AuthMethod, SOCKS_VERSION};
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::{TcpListener, TcpStream};
 
     #[tokio::test]
@@ -352,7 +444,11 @@ mod tests {
 
         let server = tokio::spawn(async move {
             let (mut server_stream, _) = listener.accept().await.unwrap();
-            parse_client_greeting(&mut server_stream).await.unwrap()
+            let version = server_stream.read_u8().await.unwrap();
+            assert_eq!(version, SOCKS_VERSION);
+            parse_socks5_client_greeting(&mut server_stream, version)
+                .await
+                .unwrap()
         });
 
         let mut client = TcpStream::connect(addr).await.unwrap();

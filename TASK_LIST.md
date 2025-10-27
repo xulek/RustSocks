@@ -341,7 +341,7 @@
 - [ ] Reload users bez restartu
 
 #### 3.5.2 PAM Authentication (Zaawansowane)
-- [ ] PAM bindings (pam crate)
+- [x] PAM bindings (pam crate)
 - [ ] pam.address implementation
   - [ ] IP-only auth
   - [ ] Client-rules support
@@ -353,7 +353,7 @@
   - [ ] /etc/pam.d/rustsocks
   - [ ] /etc/pam.d/rustsocks-client
 - [ ] PAM service verification at startup
-- [ ] PAM auth tests (wymaga setup)
+- [x] PAM auth tests (wymaga setup)
 
 #### 3.5.3 Privilege Management
 - [ ] Privilege dropping implementation

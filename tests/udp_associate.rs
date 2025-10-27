@@ -12,8 +12,10 @@ use tokio::net::{TcpListener, TcpStream};
 async fn udp_associate_basic_flow() {
     // Setup server
     let auth_config = AuthConfig {
-        method: "none".to_string(),
+        client_method: "none".to_string(),
+        socks_method: "none".to_string(),
         users: vec![],
+        pam: Default::default(),
     };
     let auth_manager = Arc::new(AuthManager::new(&auth_config).unwrap());
     let acl_stats = Arc::new(AclStats::new());
@@ -116,8 +118,10 @@ username = "anonymous"
 
     // Setup server with ACL
     let auth_config = AuthConfig {
-        method: "none".to_string(),
+        client_method: "none".to_string(),
+        socks_method: "none".to_string(),
         users: vec![],
+        pam: Default::default(),
     };
     let auth_manager = Arc::new(AuthManager::new(&auth_config).unwrap());
     let acl_stats = Arc::new(AclStats::new());
@@ -196,8 +200,10 @@ username = "anonymous"
 
     // Setup server with ACL
     let auth_config = AuthConfig {
-        method: "none".to_string(),
+        client_method: "none".to_string(),
+        socks_method: "none".to_string(),
         users: vec![],
+        pam: Default::default(),
     };
     let auth_manager = Arc::new(AuthManager::new(&auth_config).unwrap());
     let acl_stats = Arc::new(AclStats::new());

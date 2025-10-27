@@ -4,12 +4,21 @@ bind_port = 1080
 max_connections = 10000
 
 [auth]
-method = "none"  # Options: "none", "userpass" - For load testing use "none"
+client_method = "none"  # Options: "none", "pam.address"
+socks_method = "none"   # Options: "none", "userpass", "pam.address", "pam.username"
 
 # For userpass authentication, add users:
  [[auth.users]]
  username = "alice"
  password = "secret123"
+
+[auth.pam]
+username_service = "rustsocks"
+address_service = "rustsocks-client"
+default_user = "rhostusr"
+default_ruser = "rhostusr"
+verbose = false
+verify_service = false
 
 [logging]
 level = "info"  # Options: "trace", "debug", "info", "warn", "error"

@@ -103,8 +103,10 @@ impl TestMetrics {
     fn record_success(&self, duration_ns: u64, bytes_sent: u64, bytes_received: u64) {
         self.total_connections.fetch_add(1, Ordering::Relaxed);
         self.successful_connections.fetch_add(1, Ordering::Relaxed);
-        self.total_duration_ns.fetch_add(duration_ns, Ordering::Relaxed);
-        self.total_bytes_sent.fetch_add(bytes_sent, Ordering::Relaxed);
+        self.total_duration_ns
+            .fetch_add(duration_ns, Ordering::Relaxed);
+        self.total_bytes_sent
+            .fetch_add(bytes_sent, Ordering::Relaxed);
         self.total_bytes_received
             .fetch_add(bytes_received, Ordering::Relaxed);
 
@@ -156,17 +158,40 @@ impl TestMetrics {
         println!("\n⏱️  Test Duration: {:.2}s", elapsed.as_secs_f64());
         println!("\n📈 Connection Statistics:");
         println!("  Total Connections:      {}", total);
-        println!("  ✅ Successful:          {} ({:.2}%)", successful, success_rate);
+        println!(
+            "  ✅ Successful:          {} ({:.2}%)",
+            successful, success_rate
+        );
         println!("  ❌ Failed:              {}", failed);
         println!("  🔄 Throughput:          {:.2} conn/s", throughput);
         println!("\n⚡ Latency Statistics (SOCKS5 handshake):");
-        println!("  Average:                {:.2} ms", avg_dur as f64 / 1_000_000.0);
-        println!("  Minimum:                {:.2} ms", min_dur as f64 / 1_000_000.0);
-        println!("  Maximum:                {:.2} ms", max_dur as f64 / 1_000_000.0);
+        println!(
+            "  Average:                {:.2} ms",
+            avg_dur as f64 / 1_000_000.0
+        );
+        println!(
+            "  Minimum:                {:.2} ms",
+            min_dur as f64 / 1_000_000.0
+        );
+        println!(
+            "  Maximum:                {:.2} ms",
+            max_dur as f64 / 1_000_000.0
+        );
         println!("\n📦 Data Transfer:");
-        println!("  Bytes Sent:             {} ({:.2} MB)", bytes_sent, bytes_sent as f64 / 1_048_576.0);
-        println!("  Bytes Received:         {} ({:.2} MB)", bytes_recv, bytes_recv as f64 / 1_048_576.0);
-        println!("  Total Transfer:         {:.2} MB", (bytes_sent + bytes_recv) as f64 / 1_048_576.0);
+        println!(
+            "  Bytes Sent:             {} ({:.2} MB)",
+            bytes_sent,
+            bytes_sent as f64 / 1_048_576.0
+        );
+        println!(
+            "  Bytes Received:         {} ({:.2} MB)",
+            bytes_recv,
+            bytes_recv as f64 / 1_048_576.0
+        );
+        println!(
+            "  Total Transfer:         {:.2} MB",
+            (bytes_sent + bytes_recv) as f64 / 1_048_576.0
+        );
         println!("{}", "=".repeat(80));
     }
 }
@@ -250,7 +275,10 @@ async fn test_concurrent_connections(
     count: usize,
     batch_size: usize,
 ) -> std::io::Result<()> {
-    println!("\n🚀 Starting Concurrent Connections Test ({} connections)", count);
+    println!(
+        "\n🚀 Starting Concurrent Connections Test ({} connections)",
+        count
+    );
     println!("   Batch Size: {} connections", batch_size);
     println!("   Proxy: {}", args.proxy);
 
@@ -318,10 +346,7 @@ async fn test_concurrent_connections(
     println!(); // New line after progress
 
     let test_elapsed = test_start.elapsed();
-    metrics.print_summary(
-        &format!("{} Concurrent Connections", count),
-        test_elapsed,
-    );
+    metrics.print_summary(&format!("{} Concurrent Connections", count), test_elapsed);
 
     Ok(())
 }

@@ -749,9 +749,7 @@ mod tests {
                 SESSION_DURATION.get_sample_count(),
                 USER_SESSIONS.with_label_values(&["alice"]).get(),
                 USER_SESSIONS.with_label_values(&["bob"]).get(),
-                USER_BANDWIDTH
-                    .with_label_values(&["alice", "sent"])
-                    .get(),
+                USER_BANDWIDTH.with_label_values(&["alice", "sent"]).get(),
                 USER_BANDWIDTH
                     .with_label_values(&["alice", "received"])
                     .get(),

@@ -26,7 +26,8 @@ use crate::utils::error::{Result, RustSocksError};
 
 /// Serve Swagger UI HTML
 async fn swagger_ui() -> Html<&'static str> {
-    Html(r#"<!DOCTYPE html>
+    Html(
+        r#"<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="utf-8" />
@@ -46,7 +47,8 @@ async fn swagger_ui() -> Html<&'static str> {
   };
 </script>
 </body>
-</html>"#)
+</html>"#,
+    )
 }
 
 /// OpenAPI spec endpoint

@@ -119,8 +119,7 @@ fn build_router(state: StatsState) -> Router {
     openapi.info.title = "RustSocks Session API".into();
     openapi.info.version = env!("CARGO_PKG_VERSION").into();
     openapi.info.description = Some(
-        "Session tracking, statistics, and monitoring API for RustSocks SOCKS5 proxy server"
-            .into(),
+        "Session tracking, statistics, and monitoring API for RustSocks SOCKS5 proxy server".into(),
     );
 
     Router::new()
@@ -195,14 +194,22 @@ async fn get_session_stats(
         active_sessions: stats.active_sessions,
         total_sessions: stats.total_sessions,
         total_bytes: stats.total_bytes,
-        top_users: stats.top_users.iter().map(|u| UserSessionStatDto {
-            user: u.user.clone(),
-            sessions: u.sessions,
-        }).collect(),
-        top_destinations: stats.top_destinations.iter().map(|d| DestinationStatDto {
-            dest_ip: d.dest_ip.clone(),
-            connections: d.connections,
-        }).collect(),
+        top_users: stats
+            .top_users
+            .iter()
+            .map(|u| UserSessionStatDto {
+                user: u.user.clone(),
+                sessions: u.sessions,
+            })
+            .collect(),
+        top_destinations: stats
+            .top_destinations
+            .iter()
+            .map(|d| DestinationStatDto {
+                dest_ip: d.dest_ip.clone(),
+                connections: d.connections,
+            })
+            .collect(),
         acl: AclDecisionStatsDto {
             allowed: stats.acl.allowed,
             blocked: stats.acl.blocked,

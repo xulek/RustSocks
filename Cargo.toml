@@ -65,3 +65,7 @@ tokio-test = "0.4"
 tempfile = "3.8"
 serde_json = "1.0"
 tower = { version = "0.5", features = ["util"] }
+pam-sys = "0.5.6"
+
+[target.'cfg(unix)'.dependencies]
+pam = "0.7"

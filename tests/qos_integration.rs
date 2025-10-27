@@ -32,7 +32,9 @@ async fn bandwidth_throttling_enforced_by_proxy() {
     let (mut upstream_peer, _) = upstream_peer_pair.expect("accept upstream peer");
 
     client_peer.set_nodelay(true).expect("set TCP_NODELAY");
-    upstream_peer.set_nodelay(true).expect("set TCP_NODELAY upstream");
+    upstream_peer
+        .set_nodelay(true)
+        .expect("set TCP_NODELAY upstream");
 
     let connection_info = ConnectionInfo {
         source_ip: server_client_stream.peer_addr().unwrap().ip(),
@@ -178,9 +180,7 @@ async fn fair_sharing_allocations_even_between_users() {
         .find(|a| a.user == "bob")
         .expect("bob allocation");
 
-    let diff = alice
-        .allocated_bandwidth
-        .abs_diff(bob.allocated_bandwidth);
+    let diff = alice.allocated_bandwidth.abs_diff(bob.allocated_bandwidth);
 
     assert!(
         diff <= qos_config.htb.guaranteed_bandwidth_bytes_per_sec / 2,

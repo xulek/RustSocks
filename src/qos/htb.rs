@@ -162,9 +162,7 @@ impl HtbQos {
         user_bucket.update_activity().await;
 
         // Update total bytes
-        user_bucket
-            .total_bytes
-            .fetch_add(bytes, Ordering::Relaxed);
+        user_bucket.total_bytes.fetch_add(bytes, Ordering::Relaxed);
 
         // Try guaranteed bucket first (always available)
         if user_bucket.guaranteed_bucket.try_consume(bytes).is_ok() {
@@ -397,8 +395,10 @@ impl HtbQos {
 
             for (idx, _) in active_users.iter().enumerate() {
                 let guaranteed = self.config.guaranteed_bandwidth_bytes_per_sec;
-                let capped_share =
-                    std::cmp::min(equal_share, self.config.max_bandwidth_bytes_per_sec - guaranteed);
+                let capped_share = std::cmp::min(
+                    equal_share,
+                    self.config.max_bandwidth_bytes_per_sec - guaranteed,
+                );
                 allocations[idx].2 = guaranteed + capped_share;
             }
         }
@@ -474,9 +474,9 @@ mod tests {
     #[tokio::test]
     async fn test_fair_sharing_calculation() {
         let config = HtbConfig {
-            global_bandwidth_bytes_per_sec: 1_000_000,    // 1 MB/s total
-            guaranteed_bandwidth_bytes_per_sec: 100_000,  // 100 KB/s per user
-            max_bandwidth_bytes_per_sec: 1_000_000,       // 1 MB/s max
+            global_bandwidth_bytes_per_sec: 1_000_000,   // 1 MB/s total
+            guaranteed_bandwidth_bytes_per_sec: 100_000, // 100 KB/s per user
+            max_bandwidth_bytes_per_sec: 1_000_000,      // 1 MB/s max
             ..Default::default()
         };
         let htb = HtbQos::new(config);
@@ -561,12 +561,8 @@ mod tests {
             .try_consume(alice_bucket.guaranteed_bucket.capacity())
             .ok();
 
-        alice_bucket
-            .active_connections
-            .store(1, Ordering::Relaxed);
-        bob_bucket
-            .active_connections
-            .store(1, Ordering::Relaxed);
+        alice_bucket.active_connections.store(1, Ordering::Relaxed);
+        bob_bucket.active_connections.store(1, Ordering::Relaxed);
 
         alice_bucket.update_activity().await;
         bob_bucket.update_activity().await;

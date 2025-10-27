@@ -3,8 +3,8 @@ use rustsocks::acl::{AclConfig, AclEngine, AclStats, Action, Protocol};
 use rustsocks::auth::AuthManager;
 use rustsocks::config::AuthConfig;
 use rustsocks::protocol::ReplyCode;
-use rustsocks::server::proxy::TrafficUpdateConfig;
 use rustsocks::qos::{ConnectionLimits, QosEngine};
+use rustsocks::server::proxy::TrafficUpdateConfig;
 use rustsocks::server::{handle_client, ClientHandlerContext};
 use rustsocks::session::{SessionManager, SessionStatus};
 use std::net::{IpAddr, SocketAddr};
@@ -245,16 +245,16 @@ async fn perform_handshake(
     let mut response = [0u8; 2];
     client.read_exact(&mut response).await?;
     if response != [0x05, 0x00] {
-        return Err(std::io::Error::other(
-            "unexpected method selection reply",
-        ));
+        return Err(std::io::Error::other("unexpected method selection reply"));
     }
 
     let ip = match upstream_addr.ip() {
         IpAddr::V4(ip) => ip,
-        IpAddr::V6(_) => return Err(std::io::Error::other(
-            "IPv6 upstream not supported in this test",
-        )),
+        IpAddr::V6(_) => {
+            return Err(std::io::Error::other(
+                "IPv6 upstream not supported in this test",
+            ))
+        }
     };
 
     let mut request = Vec::new();
@@ -266,9 +266,7 @@ async fn perform_handshake(
     let mut reply = [0u8; 10];
     client.read_exact(&mut reply).await?;
     if reply[1] != ReplyCode::Succeeded as u8 {
-        return Err(std::io::Error::other(
-            "connect reply not succeeded",
-        ));
+        return Err(std::io::Error::other("connect reply not succeeded"));
     }
 
     let elapsed = start.elapsed();

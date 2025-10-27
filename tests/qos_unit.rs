@@ -322,7 +322,10 @@ mod connection_counting_tests {
 
         let result = qos.check_and_inc_connection("alice", &limits);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("User connection limit"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("User connection limit"));
     }
 
     #[tokio::test]
@@ -347,7 +350,10 @@ mod connection_counting_tests {
 
         let result = qos.check_and_inc_connection("dave", &limits);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Global connection limit"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Global connection limit"));
     }
 
     #[tokio::test]
@@ -546,7 +552,10 @@ mod bandwidth_allocation_tests {
         let qos_clone = qos.clone();
         let alice_task = tokio::spawn(async move {
             let start = Instant::now();
-            qos_clone.allocate_bandwidth("alice", 100_000).await.unwrap();
+            qos_clone
+                .allocate_bandwidth("alice", 100_000)
+                .await
+                .unwrap();
             start.elapsed()
         });
 
@@ -575,9 +584,9 @@ mod fair_sharing_tests {
     #[tokio::test]
     async fn fair_sharing_balances_bandwidth() {
         let config = HtbConfig {
-            global_bandwidth_bytes_per_sec: 1_000_000, // 1 MB/s total
+            global_bandwidth_bytes_per_sec: 1_000_000,   // 1 MB/s total
             guaranteed_bandwidth_bytes_per_sec: 200_000, // 200 KB/s guaranteed
-            max_bandwidth_bytes_per_sec: 800_000,       // 800 KB/s max
+            max_bandwidth_bytes_per_sec: 800_000,        // 800 KB/s max
             burst_size_bytes: 200_000,
             refill_interval_ms: 10,
             fair_sharing_enabled: true,
@@ -885,7 +894,10 @@ mod qos_engine_tests {
 
         let result = qos.check_and_inc_connection("user1", &custom_limits);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("User connection limit"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("User connection limit"));
     }
 }
 
@@ -1068,7 +1080,9 @@ mod edge_cases_tests {
 
         // Should allocate large amounts instantly
         let start = Instant::now();
-        qos.allocate_bandwidth("user1", 1_000_000_000).await.unwrap();
+        qos.allocate_bandwidth("user1", 1_000_000_000)
+            .await
+            .unwrap();
         let elapsed = start.elapsed();
 
         assert!(elapsed < Duration::from_millis(10));
@@ -1122,7 +1136,9 @@ mod edge_cases_tests {
         for user in special_users {
             qos.check_and_inc_connection(user, &ConnectionLimits::default())
                 .expect(&format!("failed for user: {}", user));
-            qos.allocate_bandwidth(user, 1000).await.expect(&format!("failed allocation for: {}", user));
+            qos.allocate_bandwidth(user, 1000)
+                .await
+                .expect(&format!("failed allocation for: {}", user));
             assert_eq!(qos.get_user_connections(user), 1);
             qos.dec_user_connection(user);
         }

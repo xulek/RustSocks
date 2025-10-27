@@ -178,6 +178,7 @@ INFO Connected to 23.220.75.245:80, proxying data
 ### Wymagania
 - Rust 1.70+ (zainstalowano: 1.90.0)
 - Linux/WSL
+- libpam0g-dev (budowanie + testy z integracją PAM)
 
 ### Budowanie
 
@@ -188,8 +189,10 @@ cargo build
 # Release build (zoptymalizowany)
 cargo build --release
 
-# Uruchom testy
+# Uruchom testy (wymaga systemowych bibliotek PAM)
 cargo test
+
+> ℹ️ Jednostkowe testy PAM weryfikują mapowanie kodów błędów i walidację konfiguracji — upewnij się, że pakiet `libpam0g-dev` jest zainstalowany przed uruchomieniem.
 ```
 
 ## 🚀 Użycie

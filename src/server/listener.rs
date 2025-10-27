@@ -1,6 +1,6 @@
 use crate::acl::{load_acl_config_sync, AclEngine, AclStats, AclWatcher};
-use crate::api::types::ApiConfig;
 use crate::api::start_api_server;
+use crate::api::types::ApiConfig;
 use crate::auth::AuthManager;
 use crate::config::Config;
 use crate::qos::QosEngine;
@@ -200,7 +200,10 @@ impl SocksServer {
         let listener = TcpListener::bind(&bind_addr).await?;
 
         info!("RustSocks server listening on {}", bind_addr);
-        info!("Authentication method: {}", self.config.auth.method);
+        info!(
+            "Authentication methods: client={}, socks={}",
+            self.config.auth.client_method, self.config.auth.socks_method
+        );
         if self.acl_engine.is_some() {
             info!("ACL enforcement enabled");
         } else if self.config.acl.enabled {

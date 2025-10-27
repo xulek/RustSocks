@@ -99,10 +99,10 @@ fi
 # Check auth configuration
 echo ""
 if [ -f "config/rustsocks.toml" ]; then
-    AUTH_METHOD=$(grep -A1 "^\[auth\]" config/rustsocks.toml | grep "method" | sed 's/.*=\s*"\([^"]*\)".*/\1/')
+    AUTH_METHOD=$(grep -A5 "^\[auth\]" config/rustsocks.toml | grep "socks_method" | sed 's/.*=\s*"\([^"]*\)".*/\1/')
     if [ "${AUTH_METHOD}" != "none" ]; then
-        echo -e "${YELLOW}⚠  Warning: auth.method is set to '${AUTH_METHOD}' in config/rustsocks.toml${NC}"
-        echo "   Load tests work best with auth.method = \"none\""
+        echo -e "${YELLOW}⚠  Warning: auth.socks_method is set to '${AUTH_METHOD}' in config/rustsocks.toml${NC}"
+        echo "   Load tests work best with auth.socks_method = \"none\""
         echo "   To test with authentication, use --username and --password flags"
         echo ""
     else

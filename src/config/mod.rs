@@ -28,16 +28,36 @@ pub struct ServerConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuthConfig {
-    #[serde(default = "default_auth_method")]
-    pub method: String, // "none", "userpass"
+    #[serde(default = "default_client_method")]
+    pub client_method: String, // "none", "pam.address"
+    #[serde(default = "default_socks_method", alias = "method")]
+    pub socks_method: String, // "none", "userpass", "pam.address", "pam.username"
     #[serde(default)]
     pub users: Vec<User>,
+    #[serde(default)]
+    pub pam: PamSettings,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct User {
     pub username: String,
     pub password: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PamSettings {
+    #[serde(default = "default_pam_username_service")]
+    pub username_service: String,
+    #[serde(default = "default_pam_address_service")]
+    pub address_service: String,
+    #[serde(default = "default_pam_default_user")]
+    pub default_user: String,
+    #[serde(default = "default_pam_default_ruser")]
+    pub default_ruser: String,
+    #[serde(default)]
+    pub verbose: bool,
+    #[serde(default)]
+    pub verify_service: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -101,8 +121,28 @@ fn default_max_connections() -> usize {
     1000
 }
 
-fn default_auth_method() -> String {
+fn default_client_method() -> String {
     "none".to_string()
+}
+
+fn default_socks_method() -> String {
+    "none".to_string()
+}
+
+fn default_pam_username_service() -> String {
+    "rustsocks".to_string()
+}
+
+fn default_pam_address_service() -> String {
+    "rustsocks-client".to_string()
+}
+
+fn default_pam_default_user() -> String {
+    "rhostusr".to_string()
+}
+
+fn default_pam_default_ruser() -> String {
+    "rhostusr".to_string()
 }
 
 fn default_log_level() -> String {
@@ -182,8 +222,23 @@ impl Default for ServerConfig {
 impl Default for AuthConfig {
     fn default() -> Self {
         Self {
-            method: default_auth_method(),
+            client_method: default_client_method(),
+            socks_method: default_socks_method(),
             users: Vec::new(),
+            pam: PamSettings::default(),
+        }
+    }
+}
+
+impl Default for PamSettings {
+    fn default() -> Self {
+        Self {
+            username_service: default_pam_username_service(),
+            address_service: default_pam_address_service(),
+            default_user: default_pam_default_user(),
+            default_ruser: default_pam_default_ruser(),
+            verbose: false,
+            verify_service: false,
         }
     }
 }
@@ -243,18 +298,59 @@ impl Config {
 
     /// Validate configuration
     fn validate(&self) -> Result<()> {
-        // Validate auth method
-        if !matches!(self.auth.method.as_str(), "none" | "userpass") {
+        // Validate authentication configuration
+        if !matches!(self.auth.client_method.as_str(), "none" | "pam.address") {
             return Err(RustSocksError::Config(format!(
-                "Invalid auth method: {}. Must be 'none' or 'userpass'",
-                self.auth.method
+                "Invalid client auth method: {}. Supported: none, pam.address",
+                self.auth.client_method
             )));
         }
 
-        // If userpass auth, ensure we have users
-        if self.auth.method == "userpass" && self.auth.users.is_empty() {
+        if !matches!(
+            self.auth.socks_method.as_str(),
+            "none" | "userpass" | "pam.address" | "pam.username"
+        ) {
+            return Err(RustSocksError::Config(format!(
+                "Invalid SOCKS auth method: {}. Supported: none, userpass, pam.address, pam.username",
+                self.auth.socks_method
+            )));
+        }
+
+        #[cfg(not(unix))]
+        {
+            if self.auth.client_method == "pam.address"
+                || matches!(
+                    self.auth.socks_method.as_str(),
+                    "pam.address" | "pam.username"
+                )
+            {
+                return Err(RustSocksError::Config(
+                    "PAM authentication is only supported on Unix-like systems".to_string(),
+                ));
+            }
+        }
+
+        if self.auth.socks_method == "userpass" && self.auth.users.is_empty() {
             return Err(RustSocksError::Config(
                 "userpass auth requires at least one user".to_string(),
+            ));
+        }
+
+        if self.auth.socks_method == "pam.username"
+            && self.auth.pam.username_service.trim().is_empty()
+        {
+            return Err(RustSocksError::Config(
+                "auth.pam.username_service cannot be empty when pam.username auth is enabled"
+                    .to_string(),
+            ));
+        }
+
+        if (self.auth.socks_method == "pam.address" || self.auth.client_method == "pam.address")
+            && self.auth.pam.address_service.trim().is_empty()
+        {
+            return Err(RustSocksError::Config(
+                "auth.pam.address_service cannot be empty when pam.address auth is enabled"
+                    .to_string(),
             ));
         }
 
@@ -316,12 +412,26 @@ bind_port = 1080
 max_connections = 1000
 
 [auth]
-method = "none"  # Options: "none", "userpass"
+client_method = "none"       # Options: "none", "pam.address"
+socks_method = "none"        # Options: "none", "userpass", "pam.address", "pam.username"
 
 # For userpass authentication, add users:
 # [[auth.users]]
 # username = "alice"
 # password = "secret123"
+
+[auth.pam]
+# PAM service names (Linux /etc/pam.d/<service>)
+username_service = "rustsocks"
+address_service = "rustsocks-client"
+
+# Default identity for pam.address when username is not provided
+default_user = "rhostusr"
+default_ruser = "rhostusr"
+
+# Set to true to enable verbose PAM logging and service validation
+verbose = false
+verify_service = false
 
 [logging]
 level = "info"  # Options: "trace", "debug", "info", "warn", "error"
@@ -401,7 +511,8 @@ mod tests {
         let config = Config::default();
         assert_eq!(config.server.bind_address, "127.0.0.1");
         assert_eq!(config.server.bind_port, 1080);
-        assert_eq!(config.auth.method, "none");
+        assert_eq!(config.auth.client_method, "none");
+        assert_eq!(config.auth.socks_method, "none");
         assert_eq!(config.sessions.storage, "memory");
         assert_eq!(config.sessions.batch_size, 100);
         assert_eq!(config.sessions.batch_interval_ms, 1000);
@@ -419,10 +530,10 @@ mod tests {
     #[test]
     fn test_config_validation() {
         let mut config = Config::default();
-        config.auth.method = "invalid".to_string();
+        config.auth.socks_method = "invalid".to_string();
         assert!(config.validate().is_err());
 
-        config.auth.method = "userpass".to_string();
+        config.auth.socks_method = "userpass".to_string();
         assert!(config.validate().is_err()); // No users
 
         config.auth.users.push(User {

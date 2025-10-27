@@ -11,7 +11,7 @@ pub struct CompiledDestinationMatcher {
 
 #[derive(Debug, Clone)]
 enum DestinationMatcherType {
-    MatchAll,  // "*" - matches everything (IPs, domains, all)
+    MatchAll, // "*" - matches everything (IPs, domains, all)
     Ip(IpAddr),
     Cidr(ipnet::IpNet),
     Domain(String),
@@ -53,7 +53,7 @@ impl CompiledDestinationMatcher {
     /// Check if address matches this matcher
     pub fn matches(&self, addr: &Address) -> bool {
         match &self.matcher {
-            DestinationMatcherType::MatchAll => true,  // "*" matches everything
+            DestinationMatcherType::MatchAll => true, // "*" matches everything
             DestinationMatcherType::Ip(ip) => Self::match_ip(ip, addr),
             DestinationMatcherType::Cidr(cidr) => Self::match_cidr(cidr, addr),
             DestinationMatcherType::Domain(domain) => Self::match_domain(domain, addr),

@@ -1,5 +1,8 @@
 use lazy_static::lazy_static;
-use prometheus::{register_histogram, register_int_counter_vec, register_int_gauge, Histogram, IntCounterVec, IntGauge};
+use prometheus::{
+    register_histogram, register_int_counter_vec, register_int_gauge, Histogram, IntCounterVec,
+    IntGauge,
+};
 
 lazy_static! {
     pub static ref ACTIVE_QOS_USERS: IntGauge = register_int_gauge!(
@@ -7,14 +10,12 @@ lazy_static! {
         "Number of users with at least one active QoS-managed connection"
     )
     .expect("register rustsocks_qos_active_users gauge");
-
     pub static ref BANDWIDTH_ALLOCATED: IntCounterVec = register_int_counter_vec!(
         "rustsocks_qos_bandwidth_allocated_bytes_total",
         "Total bytes allocated through the QoS engine per user and direction",
         &["user", "direction"]
     )
     .expect("register rustsocks_qos_bandwidth_allocated_bytes_total counter vec");
-
     pub static ref ALLOCATION_WAIT: Histogram = register_histogram!(
         "rustsocks_qos_allocation_wait_seconds",
         "Observed wait time while throttling traffic for QoS allocations"

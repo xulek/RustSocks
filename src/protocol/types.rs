@@ -1,8 +1,9 @@
 use std::fmt;
 use std::net::{Ipv4Addr, Ipv6Addr};
 
-/// SOCKS5 Version
+/// SOCKS protocol versions
 pub const SOCKS_VERSION: u8 = 0x05;
+pub const SOCKS4_VERSION: u8 = 0x04;
 
 /// Authentication methods
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -102,12 +103,31 @@ pub struct Socks5Request {
     pub port: u16,
 }
 
+/// SOCKS4/4a request
+#[derive(Debug)]
+pub struct Socks4Request {
+    pub command: Command,
+    pub address: Address,
+    pub port: u16,
+    pub user_id: Option<String>,
+}
+
 /// SOCKS5 response
 #[derive(Debug)]
 pub struct Socks5Response {
     pub reply: ReplyCode,
     pub address: Address,
     pub port: u16,
+}
+
+/// SOCKS4 reply codes
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum Socks4Reply {
+    Granted = 0x5A,
+    Rejected = 0x5B,
+    IdentdUnavailable = 0x5C,
+    UserIdMismatch = 0x5D,
 }
 
 /// UDP packet header for SOCKS5 UDP ASSOCIATE
@@ -157,4 +177,10 @@ mod tests {
         let domain = Address::Domain("example.com".to_string());
         assert_eq!(domain.to_string(), "example.com");
     }
+}
+/// SOCKS protocol negotiated with the client
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SocksProtocol {
+    V4,
+    V5,
 }
