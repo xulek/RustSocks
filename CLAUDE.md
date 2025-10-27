@@ -728,4 +728,5 @@ socks_method = "pam.address"
 - **Sprint 3.1 (Complete)**: UDP ASSOCIATE command ✅
 - **Sprint 3.2 (Complete)**: BIND command ✅
 - **Sprint 3.3 (Complete)**: PAM authentication ✅
-- **Sprint 3.4+ (Planned)**: REST API, production packaging
+- **Sprint 3.4 (Complete)**: LDAP Groups integration ✅
+- **Sprint 3.5+ (Planned)**: REST API enhancements, production packaging

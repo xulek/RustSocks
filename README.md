@@ -765,7 +765,16 @@ Parametry można dostosować do przepustowości środowiska (np. mniejsze `burst
   - Cross-platform support (Unix + fallback)
   - Dokumentacja w CLAUDE.md i config/pam.d/README.md
 
-- [ ] **Sprint 3.8+ - Pozostałe**
+- ✅ **Sprint 3.8 - LDAP Groups Integration** ✅
+  - Dynamic LDAP group resolution via getgrouplist() (`src/auth/groups.rs`)
+  - Smart ACL filtering (only checks groups defined in config)
+  - Case-insensitive group matching
+  - Zero manual synchronization between LDAP and ACL
+  - Integration with PAM authentication
+  - 7 integration tests (`tests/ldap_groups.rs`)
+  - Complete guide (`LDAP_GROUPS_GUIDE.md`)
+
+- [ ] **Sprint 3.9+ - Pozostałe**
   - [ ] Extended Prometheus metrics & dashboards
   - [ ] Grafana dashboards
   - [ ] systemd integration
@@ -811,7 +820,7 @@ MIT License
 
 ---
 
-**Status:** 🟢 Sprint 1-2 UKOŃCZONE + Sprint 3.1-3.7 UKOŃCZONE! (UDP + BIND + REST API + QoS + PAM)
-**Wersja:** 0.5.0 (MVP + ACL + Sessions + UDP + BIND + REST API + QoS + PAM Auth)
-**Testy:** 74/74 passed ✅ (51 unit + 23 integration tests)
+**Status:** 🟢 Sprint 1-2 UKOŃCZONE + Sprint 3.1-3.8 UKOŃCZONE! (UDP + BIND + REST API + QoS + PAM + LDAP Groups)
+**Wersja:** 0.6.0 (MVP + ACL + Sessions + UDP + BIND + REST API + QoS + PAM Auth + LDAP Groups)
+**Testy:** 76/76 passed ✅ (54 unit + 22 integration tests)
 **Data:** 2025-10-27

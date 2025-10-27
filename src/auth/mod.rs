@@ -1,5 +1,7 @@
+mod groups;
 mod pam;
 
+pub use groups::get_user_groups;
 use self::pam::{PamAuthError, PamAuthenticator, PamMethod};
 use crate::config::AuthConfig;
 use crate::protocol::{parse_userpass_auth, send_auth_response, AuthMethod};
@@ -101,12 +103,16 @@ impl AuthManager {
     }
 
     /// Perform SOCKS-level authentication
+    ///
+    /// Returns:
+    /// - `Ok(None)` for no-auth methods
+    /// - `Ok(Some((username, groups)))` for authenticated users with their LDAP groups
     pub async fn authenticate(
         &self,
         stream: &mut TcpStream,
         method: AuthMethod,
         client_ip: IpAddr,
-    ) -> Result<Option<String>> {
+    ) -> Result<Option<(String, Vec<String>)>> {
         match (&self.socks_backend, method) {
             (AuthBackend::None, AuthMethod::NoAuth) => {
                 debug!("No authentication required");
@@ -128,7 +134,25 @@ impl AuthManager {
 
                 if is_valid {
                     info!(user = %username, "User/pass authentication successful");
-                    Ok(Some(username))
+
+                    // Retrieve user groups from system (LDAP via NSS/SSSD)
+                    let groups = get_user_groups(&username).unwrap_or_else(|e| {
+                        warn!(
+                            user = %username,
+                            error = %e,
+                            "Failed to retrieve user groups from system, using empty list"
+                        );
+                        Vec::new()
+                    });
+
+                    debug!(
+                        user = %username,
+                        group_count = groups.len(),
+                        groups = ?groups,
+                        "Retrieved user groups from system"
+                    );
+
+                    Ok(Some((username, groups)))
                 } else {
                     warn!(user = %username, "User/pass authentication failed");
                     Err(RustSocksError::AuthFailed(format!(
@@ -148,7 +172,25 @@ impl AuthManager {
                     Ok(()) => {
                         send_auth_response(stream, true).await?;
                         info!(user = %username, "PAM authentication successful");
-                        Ok(Some(username))
+
+                        // Retrieve user groups from system (LDAP via NSS/SSSD)
+                        let groups = get_user_groups(&username).unwrap_or_else(|e| {
+                            warn!(
+                                user = %username,
+                                error = %e,
+                                "Failed to retrieve user groups from system, using empty list"
+                            );
+                            Vec::new()
+                        });
+
+                        info!(
+                            user = %username,
+                            group_count = groups.len(),
+                            groups = ?groups,
+                            "PAM authentication successful with LDAP groups"
+                        );
+
+                        Ok(Some((username, groups)))
                     }
                     Err(e) => {
                         send_auth_response(stream, false).await?;

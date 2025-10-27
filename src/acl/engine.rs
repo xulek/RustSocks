@@ -90,7 +90,7 @@ impl AclEngine {
         })
     }
 
-    /// Evaluate ACL for a connection attempt
+    /// Evaluate ACL for a connection attempt (legacy method using static groups from config)
     /// Returns (Decision, matched_rule_description)
     pub async fn evaluate(
         &self,
@@ -135,6 +135,89 @@ impl AclEngine {
                     rule = rule.description,
                     priority = rule.priority,
                     "ACL rule matched"
+                );
+
+                return (decision, Some(rule.description.clone()));
+            }
+        }
+
+        // No rule matched - apply default policy
+        let decision = AclDecision::from(&config.global.default_policy);
+
+        debug!(
+            user = user,
+            dest = ?dest,
+            port = port,
+            decision = ?decision,
+            "No ACL rule matched, applying default policy"
+        );
+
+        (decision, Some("Default policy".to_string()))
+    }
+
+    /// Evaluate ACL with dynamic groups from LDAP (via NSS/SSSD)
+    ///
+    /// This method:
+    /// 1. Takes user's groups from LDAP/system (all groups, potentially thousands)
+    /// 2. Filters ONLY groups defined in ACL config (case-insensitive matching)
+    /// 3. Ignores groups not in ACL config (no need to define all LDAP groups)
+    /// 4. Optionally adds per-user rules from [[users]] section
+    /// 5. Evaluates rules in priority order (BLOCK first)
+    ///
+    /// Example:
+    /// - User "alice" has LDAP groups: ["alice", "developers", "engineering", "hr", ...]
+    /// - ACL config defines: [[groups]] name = "developers"
+    /// - This method uses ONLY "developers" rules, ignores all other groups
+    ///
+    /// Returns (Decision, matched_rule_description)
+    pub async fn evaluate_with_groups(
+        &self,
+        user: &str,
+        user_groups: &[String],
+        dest: &Address,
+        port: u16,
+        protocol: &Protocol,
+    ) -> (AclDecision, Option<String>) {
+        let config = self.config.read().await;
+
+        // Collect rules from user's LDAP groups (only those defined in ACL config)
+        let all_rules = self.collect_rules_from_groups(&config, user, user_groups);
+
+        debug!(
+            user = user,
+            ldap_groups = ?user_groups,
+            matched_groups = ?self.get_matched_groups(&config, user_groups),
+            rule_count = all_rules.len(),
+            "Collected ACL rules from LDAP groups for evaluation"
+        );
+
+        if all_rules.is_empty() {
+            debug!(
+                user = user,
+                dest = ?dest,
+                port = port,
+                ldap_groups = ?user_groups,
+                "No ACL rules matched for user groups, applying default policy"
+            );
+            return (
+                AclDecision::from(&config.global.default_policy),
+                Some("Default policy (no matching groups)".to_string()),
+            );
+        }
+
+        // Evaluate rules in priority order (BLOCK rules first)
+        for rule in &all_rules {
+            if rule.matches(dest, port, protocol) {
+                let decision = AclDecision::from(&rule.action);
+
+                debug!(
+                    user = user,
+                    dest = ?dest,
+                    port = port,
+                    decision = ?decision,
+                    rule = rule.description,
+                    priority = rule.priority,
+                    "ACL rule matched from LDAP groups"
                 );
 
                 return (decision, Some(rule.description.clone()));
@@ -200,6 +283,77 @@ impl AclEngine {
         );
 
         all_rules
+    }
+
+    /// Collect rules from LDAP groups (case-insensitive matching)
+    ///
+    /// This method:
+    /// - Iterates through user's LDAP groups
+    /// - For each LDAP group, checks if it exists in ACL config (case-insensitive)
+    /// - If match found, adds that group's rules
+    /// - Also adds per-user rules from [[users]] section if present
+    ///
+    /// Case-insensitive example:
+    /// - LDAP group: "Developers"
+    /// - ACL config: [[groups]] name = "developers"
+    /// - Result: MATCH (case-insensitive)
+    fn collect_rules_from_groups(
+        &self,
+        config: &CompiledAclConfig,
+        user: &str,
+        user_groups: &[String],
+    ) -> Vec<CompiledAclRule> {
+        let mut all_rules = Vec::new();
+
+        // Add per-user rules first (highest priority)
+        if let Some(user_acl) = config.users.get(user) {
+            all_rules.extend(user_acl.rules.clone());
+        }
+
+        // Iterate through user's LDAP groups
+        for ldap_group in user_groups {
+            // Case-insensitive search for matching group in ACL config
+            for (acl_group_name, group_acl) in &config.groups {
+                if ldap_group.eq_ignore_ascii_case(acl_group_name) {
+                    debug!(
+                        ldap_group = ldap_group,
+                        acl_group = acl_group_name,
+                        rule_count = group_acl.rules.len(),
+                        "Matched LDAP group to ACL group (case-insensitive)"
+                    );
+                    all_rules.extend(group_acl.rules.clone());
+                    break; // Found match, move to next LDAP group
+                }
+            }
+        }
+
+        // Sort by priority: BLOCK rules first, then by priority value (higher first)
+        all_rules.sort_by(|a, b| {
+            match (&a.action, &b.action) {
+                (Action::Block, Action::Allow) => std::cmp::Ordering::Less,
+                (Action::Allow, Action::Block) => std::cmp::Ordering::Greater,
+                // Same action - sort by priority descending
+                _ => b.priority.cmp(&a.priority),
+            }
+        });
+
+        all_rules
+    }
+
+    /// Get list of LDAP groups that matched ACL groups (for debugging)
+    fn get_matched_groups(&self, config: &CompiledAclConfig, user_groups: &[String]) -> Vec<String> {
+        let mut matched = Vec::new();
+
+        for ldap_group in user_groups {
+            for acl_group_name in config.groups.keys() {
+                if ldap_group.eq_ignore_ascii_case(acl_group_name) {
+                    matched.push(ldap_group.clone());
+                    break;
+                }
+            }
+        }
+
+        matched
     }
 
     /// Hot reload ACL configuration

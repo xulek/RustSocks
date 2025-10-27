@@ -117,14 +117,26 @@ async fn handle_socks5(
     send_server_choice(&mut client_stream, server_method).await?;
 
     // Step 2: Authentication
-    let user = ctx
+    let auth_result = ctx
         .auth_manager
         .authenticate(&mut client_stream, server_method, client_addr.ip())
         .await?;
 
-    if let Some(ref username) = user {
-        info!("User authenticated: {}", username);
-    }
+    // Extract username and groups from authentication result
+    let (user, user_groups) = match auth_result {
+        Some((username, groups)) => {
+            info!(
+                user = %username,
+                group_count = groups.len(),
+                "User authenticated with groups from LDAP"
+            );
+            (Some(username), groups)
+        }
+        None => {
+            debug!("No authentication (anonymous user)");
+            (None, Vec::new())
+        }
+    };
 
     let acl_user = user
         .clone()
@@ -181,8 +193,9 @@ async fn handle_socks5(
             _ => Protocol::Tcp,
         };
 
+        // Use evaluate_with_groups() for dynamic LDAP group matching
         let (decision, matched_rule) = engine
-            .evaluate(&acl_user, &request.address, request.port, &protocol)
+            .evaluate_with_groups(&acl_user, &user_groups, &request.address, request.port, &protocol)
             .await;
 
         match decision {
@@ -331,10 +344,16 @@ async fn handle_socks4(
     }
 
     // Perform no-auth path to allow future auth hooks (e.g., PAM address)
-    let _ = ctx
+    let auth_result = ctx
         .auth_manager
         .authenticate(&mut client_stream, AuthMethod::NoAuth, client_addr.ip())
         .await?;
+
+    // Extract groups if any (usually None for SOCKS4 no-auth)
+    let user_groups = match auth_result {
+        Some((_, groups)) => groups,
+        None => Vec::new(),
+    };
 
     let request = parse_socks4_request(&mut client_stream).await?;
 
@@ -386,8 +405,9 @@ async fn handle_socks4(
     let mut acl_decision = "allow".to_string();
 
     if let Some(engine) = ctx.acl_engine.as_ref() {
+        // Use evaluate_with_groups() for dynamic LDAP group matching
         let (decision, matched_rule) = engine
-            .evaluate(&acl_user, &request.address, request.port, &Protocol::Tcp)
+            .evaluate_with_groups(&acl_user, &user_groups, &request.address, request.port, &Protocol::Tcp)
             .await;
 
         match decision {
