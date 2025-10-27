@@ -1,6 +1,6 @@
 use rustsocks::acl::{load_acl_config_sync, AclEngine, AclStats};
 use rustsocks::auth::AuthManager;
-use rustsocks::config::AuthConfig;
+use rustsocks::config::{AuthConfig, PamSettings};
 use rustsocks::qos::{ConnectionLimits, QosEngine};
 use rustsocks::server::{handle_client, ClientHandlerContext, TrafficUpdateConfig};
 use rustsocks::session::SessionManager;
@@ -12,8 +12,10 @@ use tokio::net::{TcpListener, TcpStream};
 async fn bind_basic_handshake() {
     // Setup server
     let auth_config = AuthConfig {
-        method: "none".to_string(),
+        client_method: "none".to_string(),
+        socks_method: "none".to_string(),
         users: vec![],
+        pam: PamSettings::default(),
     };
     let auth_manager = Arc::new(AuthManager::new(&auth_config).unwrap());
     let acl_stats = Arc::new(AclStats::new());
@@ -93,8 +95,10 @@ async fn bind_basic_handshake() {
 async fn bind_with_incoming_connection() {
     // Setup server
     let auth_config = AuthConfig {
-        method: "none".to_string(),
+        client_method: "none".to_string(),
+        socks_method: "none".to_string(),
         users: vec![],
+        pam: PamSettings::default(),
     };
     let auth_manager = Arc::new(AuthManager::new(&auth_config).unwrap());
     let acl_stats = Arc::new(AclStats::new());
@@ -214,8 +218,10 @@ username = "anonymous"
 
     // Setup server with ACL
     let auth_config = AuthConfig {
-        method: "none".to_string(),
+        client_method: "none".to_string(),
+        socks_method: "none".to_string(),
         users: vec![],
+        pam: PamSettings::default(),
     };
     let auth_manager = Arc::new(AuthManager::new(&auth_config).unwrap());
     let acl_stats = Arc::new(AclStats::new());
@@ -296,8 +302,10 @@ username = "anonymous"
 
     // Setup server with ACL
     let auth_config = AuthConfig {
-        method: "none".to_string(),
+        client_method: "none".to_string(),
+        socks_method: "none".to_string(),
         users: vec![],
+        pam: PamSettings::default(),
     };
     let auth_manager = Arc::new(AuthManager::new(&auth_config).unwrap());
     let acl_stats = Arc::new(AclStats::new());

@@ -60,7 +60,13 @@
       "Bash(chmod:*)",
       "Bash(./target/release/examples/loadtest:*)",
       "Bash(./target/release/examples/echo_server:*)",
-      "Bash(ulimit -n:*)"
+      "Bash(ulimit -n:*)",
+      "Bash(/root/.cargo/bin/cargo check --all-features)",
+      "Bash(/root/.cargo/bin/cargo test --all-features --lib pam)",
+      "Bash(/root/.cargo/bin/cargo test --all-features --test pam_integration)",
+      "Bash(/root/.cargo/bin/cargo test --all-features --lib)",
+      "Bash(/root/.cargo/bin/cargo test --all-features --test '*')",
+      "Bash(/root/.cargo/bin/cargo test --all-features --test bind_command)"
     ],
     "deny": [],
     "ask": []

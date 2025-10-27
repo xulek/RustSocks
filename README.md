@@ -17,6 +17,8 @@
 - ✅ **Authentication System**
   - No authentication (0x00)
   - Username/Password authentication (0x02, RFC 1929)
+  - PAM authentication (pam.address i pam.username) ✨ NOWE!
+  - Two-tier authentication (client-level + SOCKS-level)
   - Konfigurowalne metody autentykacji
 
 - ✅ **TCP Server (Tokio)**
@@ -555,6 +557,113 @@ cargo test -- --nocapture
 - QoS / Rate limiting – testy HTB, throttling i fair sharing (2 unit + 2 integration) ✅
 - Integracje: `tests/acl_integration.rs`, `tests/api_endpoints.rs`, `tests/bind_command.rs`, `tests/udp_associate.rs`, `tests/qos_integration.rs` ✅
 
+## 🔐 PAM Authentication (Sprint 3.7 ✅)
+
+RustSocks wspiera **PAM (Pluggable Authentication Modules)** dla elastycznej autentykacji na poziomie systemowym, zainspirowanej przez Dante SOCKS server.
+
+### Metody autentykacji PAM
+
+#### 1. pam.address - Autentykacja po IP
+Autentykuje klientów tylko na podstawie adresu IP (bez username/password).
+
+```toml
+[auth]
+client_method = "pam.address"    # Przed SOCKS handshake
+# lub
+socks_method = "pam.address"     # Po SOCKS handshake
+
+[auth.pam]
+address_service = "rustsocks-client"
+default_user = "rhostusr"
+```
+
+**Zastosowania:**
+- Zaufane sieci wewnętrzne
+- ACL oparte na IP
+- Defense in depth (kombinacja z innymi metodami)
+
+#### 2. pam.username - Autentykacja username/password
+Tradycyjna autentykacja SOCKS5 przez PAM.
+
+```toml
+[auth]
+socks_method = "pam.username"
+
+[auth.pam]
+username_service = "rustsocks"
+verbose = false
+verify_service = true
+```
+
+**Uwaga:** ⚠️ SOCKS5 username/password przesyła hasła w clear-text. Używaj tylko w zaufanych sieciach lub z dodatkowym szyfrowaniem (VPN, SSH tunnel).
+
+### Two-tier authentication (obrona w głąb)
+
+```toml
+[auth]
+client_method = "pam.address"      # 1. Sprawdzenie IP przed SOCKS
+socks_method = "pam.username"      # 2. Username/password po SOCKS
+```
+
+### Instalacja PAM service files
+
+```bash
+# Skopiuj przykładowe pliki do systemu
+sudo cp config/pam.d/rustsocks /etc/pam.d/rustsocks
+sudo cp config/pam.d/rustsocks-client /etc/pam.d/rustsocks-client
+
+# Ustaw uprawnienia
+sudo chmod 644 /etc/pam.d/rustsocks*
+
+# Zweryfikuj konfigurację (wymaga pamtester)
+pamtester rustsocks username authenticate
+```
+
+### Przykładowe pliki PAM service
+
+**Lokalizacja:** `config/pam.d/`
+- `rustsocks` - Username/password (produkcja)
+- `rustsocks-client` - IP-based (produkcja)
+- `rustsocks-test` - Permissive (testy)
+- `rustsocks-client-test` - Permissive (testy)
+
+**Szczegółowa dokumentacja:** `config/pam.d/README.md`
+
+### Funkcje
+
+- ✅ Two-tier authentication (client + SOCKS levels)
+- ✅ pam.address - IP-based authentication
+- ✅ pam.username - Username/password authentication
+- ✅ Async PAM operations via `spawn_blocking`
+- ✅ Cross-platform support (Unix + fallback)
+- ✅ Configurable PAM service names
+- ✅ Integration with ACL engine
+- ✅ Session tracking with PAM decisions
+
+### Testy
+
+```bash
+# Testy PAM (wymagają konfiguracji PAM)
+cargo test --all-features pam -- --ignored
+
+# Unit testy (bez PAM setup)
+cargo test --all-features --lib pam
+```
+
+### Security Considerations
+
+1. **Clear-text passwords**: SOCKS5 username/password nie jest szyfrowane
+   - Używaj tylko w zaufanych sieciach
+   - Rozważ TLS wrapper, VPN, lub SSH tunnel
+2. **PAM service configuration**:
+   - ⚠️ Brak pliku PAM service może zezwolić na wszystkie połączenia!
+   - Zawsze weryfikuj `/etc/pam.d/<service>`
+3. **Wymagania uprawnień**:
+   - PAM wymaga zazwyczaj root dla weryfikacji haseł
+   - Server powinien drop privileges po zbindowaniu socketu
+
+**Pełna dokumentacja:** `CLAUDE.md` - sekcja "PAM Authentication"
+
 ## ⚙️ QoS & HTB Rate Limiting (Sprint 3.6 ✅)
 
 Zaawansowana warstwa kontroli ruchu zapewnia gwarantowane pasmo dla każdego użytkownika, sprawiedliwe współdzielenie niewykorzystanej przepustowości oraz limity połączeń w ramach jednego silnika QoS.
@@ -648,12 +757,19 @@ Parametry można dostosować do przepustowości środowiska (np. mniejsze `burst
   - Metryki Prometheus: `rustsocks_qos_active_users`, `rustsocks_qos_bandwidth_allocated_bytes_total`, `rustsocks_qos_allocation_wait_seconds`
   - Testy: jednostkowe (`src/qos/htb.rs`) oraz integracyjne (`tests/qos_integration.rs`) pokrywające throttling i fair sharing
 
-- [ ] **Sprint 3.4+ - Pozostałe**
+- ✅ **Sprint 3.7 - PAM Authentication** ✅
+  - PAM integration (`pam.address` i `pam.username`)
+  - Two-tier authentication (client-level + SOCKS-level)
+  - Example PAM service files (`config/pam.d/`)
+  - Integration tests (`tests/pam_integration.rs`)
+  - Cross-platform support (Unix + fallback)
+  - Dokumentacja w CLAUDE.md i config/pam.d/README.md
+
+- [ ] **Sprint 3.8+ - Pozostałe**
   - [ ] Extended Prometheus metrics & dashboards
   - [ ] Grafana dashboards
   - [ ] systemd integration
   - [ ] Docker packaging
-  - [ ] PAM authentication
 
 ## 📊 Performance
 
@@ -695,7 +811,7 @@ MIT License
 
 ---
 
-**Status:** 🟢 Sprint 1-2 UKOŃCZONE + Sprint 3.1-3.3 UKOŃCZONE! (UDP + BIND + REST API Core)
-**Wersja:** 0.4.0 (MVP + ACL + Sessions + UDP + BIND + REST API)
-**Testy:** 65/65 passed ✅ (47 unit + 18 integration tests)
-**Data:** 2025-10-25
+**Status:** 🟢 Sprint 1-2 UKOŃCZONE + Sprint 3.1-3.7 UKOŃCZONE! (UDP + BIND + REST API + QoS + PAM)
+**Wersja:** 0.5.0 (MVP + ACL + Sessions + UDP + BIND + REST API + QoS + PAM Auth)
+**Testy:** 74/74 passed ✅ (51 unit + 23 integration tests)
+**Data:** 2025-10-27

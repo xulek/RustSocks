@@ -1,0 +1,33 @@
+#%PAM-1.0
+#
+# PAM configuration for RustSocks client IP-based authentication
+#
+# This file should be copied to: /etc/pam.d/rustsocks-client
+#
+# This is used for IP/hostname-only authentication (no username/password).
+# Useful for trusted networks where IP-based ACLs are sufficient.
+#
+# Usage: Configure in rustsocks.toml with:
+#   [auth]
+#   client_method = "pam.address"
+#   [auth.pam]
+#   address_service = "rustsocks-client"
+#   default_user = "rhostusr"
+
+# OPTION 1: Allow all (permissive) - for testing or trusted internal networks
+auth       required     pam_permit.so
+account    required     pam_permit.so
+
+# OPTION 2: Use pam_rhosts for .rhosts/.shosts based authentication
+# Uncomment below and comment out pam_permit.so above
+# auth       required     pam_rhosts.so
+# account    required     pam_unix.so
+
+# OPTION 3: Use pam_access with /etc/security/access.conf
+# Uncomment below and configure /etc/security/access.conf
+# auth       required     pam_access.so
+# account    required     pam_permit.so
+
+# OPTION 4: Custom PAM module for IP-based ACLs
+# auth       required     pam_custom_ip.so
+# account    required     pam_permit.so

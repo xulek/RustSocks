@@ -85,8 +85,11 @@ The codebase follows a modular architecture organized by functionality:
   - Supports IPv4, IPv6, and domain name addressing
 
 - **`auth/`** - Authentication manager
+  - `mod.rs`: AuthManager with pluggable backend system
+  - `pam.rs`: PAM (Pluggable Authentication Modules) integration
   - Supports `NoAuth` (0x00) and `Username/Password` (0x02, RFC 1929)
-  - Pluggable authentication methods
+  - Supports PAM authentication (pam.address and pam.username)
+  - Pluggable authentication methods with client-level and SOCKS-level auth
 
 - **`acl/`** - Access Control List engine
   - `types.rs`: ACL data structures (Action, Protocol, matchers)
@@ -542,6 +545,181 @@ cargo test --all-features bind
 # - Session tracking
 ```
 
+## PAM Authentication
+
+**Implementation Status**: ✅ Complete
+
+PAM (Pluggable Authentication Modules) provides flexible system-level authentication for RustSocks, inspired by Dante SOCKS server.
+
+### Authentication Methods
+
+RustSocks supports **two-tier authentication**:
+
+1. **Client-level auth** (before SOCKS handshake) - `client_method`
+2. **SOCKS-level auth** (after SOCKS handshake) - `socks_method`
+
+#### pam.address - IP-based Authentication
+
+Authenticates clients based on IP address only (no username/password required).
+
+- **Use case**: Trusted networks, IP-based ACLs
+- **Configuration**: `client_method = "pam.address"` or `socks_method = "pam.address"`
+- **PAM service**: Configured via `auth.pam.address_service` (default: "rustsocks-client")
+- **Default user**: `auth.pam.default_user` (default: "rhostusr")
+
+#### pam.username - Username/Password Authentication
+
+Traditional SOCKS5 username/password authentication via PAM.
+
+- **Use case**: User-based access control with system accounts
+- **Configuration**: `socks_method = "pam.username"`
+- **PAM service**: Configured via `auth.pam.username_service` (default: "rustsocks")
+- **Protocol**: SOCKS5 username/password (RFC 1929)
+- ⚠️ **Security**: Password transmitted in clear-text (use in trusted networks only)
+
+### Key Components
+
+- **`src/auth/pam.rs`**: PAM integration
+  - `PamAuthenticator`: Async PAM authentication wrapper
+  - `PamMethod`: Address vs Username method enum
+  - `authenticate_address()`: IP-only authentication
+  - `authenticate_username()`: Username/password authentication
+  - Cross-platform support (Unix + non-Unix fallback)
+- **`src/auth/mod.rs`**: AuthManager integration
+  - `AuthBackend::PamAddress` and `PamUsername` variants
+  - `authenticate_client()`: Pre-SOCKS authentication (pam.address)
+  - `authenticate()`: SOCKS-level authentication (pam.username)
+- **`src/config/mod.rs`**: PamSettings configuration and validation
+
+### Configuration
+
+```toml
+[auth]
+# Client-level authentication (before SOCKS handshake)
+client_method = "none"           # Options: "none", "pam.address"
+
+# SOCKS-level authentication (after SOCKS handshake)
+socks_method = "pam.username"    # Options: "none", "userpass", "pam.address", "pam.username"
+
+[auth.pam]
+# PAM service names (corresponds to /etc/pam.d/<service>)
+username_service = "rustsocks"
+address_service = "rustsocks-client"
+
+# Default identity for pam.address authentication
+default_user = "rhostusr"
+default_ruser = "rhostusr"
+
+# Enable verbose PAM logging
+verbose = false
+
+# Verify PAM service files exist at startup
+verify_service = false
+```
+
+### PAM Service Files
+
+Example PAM configurations are provided in `config/pam.d/`:
+
+- **`rustsocks`** - Username/password authentication (production)
+- **`rustsocks-client`** - IP-based authentication (production)
+- **`rustsocks-test`** - Permissive config for testing
+- **`rustsocks-client-test`** - Permissive config for testing
+
+**Installation**:
+```bash
+# Copy to system PAM directory
+sudo cp config/pam.d/rustsocks /etc/pam.d/rustsocks
+sudo cp config/pam.d/rustsocks-client /etc/pam.d/rustsocks-client
+
+# Set permissions
+sudo chmod 644 /etc/pam.d/rustsocks*
+```
+
+See `config/pam.d/README.md` for detailed setup instructions.
+
+### Features
+
+- ✅ Two-tier authentication (client + SOCKS levels)
+- ✅ pam.address - IP-based authentication
+- ✅ pam.username - Username/password authentication
+- ✅ Async PAM operations via `spawn_blocking`
+- ✅ Cross-platform support (Unix + fallback)
+- ✅ Configurable PAM service names
+- ✅ Integration with ACL engine
+- ✅ Session tracking with PAM decisions
+- ✅ Comprehensive error handling
+
+### Testing
+
+```bash
+# Run PAM tests (requires PAM setup)
+cargo test --all-features pam -- --ignored
+
+# Integration tests include:
+# - PAM configuration validation
+# - pam.address authentication
+# - pam.username authentication
+# - Cross-platform compatibility
+# - Error handling
+```
+
+**Note**: PAM integration tests require:
+- PAM installed on the system
+- Test PAM service files in `/etc/pam.d/`
+- Running as root (for actual PAM authentication)
+
+### Security Considerations
+
+1. **Clear-text passwords**: SOCKS5 username/password transmits credentials unencrypted
+   - Only use in trusted networks
+   - Consider TLS wrapper, VPN, or SSH tunnel for production
+2. **PAM service configuration**:
+   - ⚠️ On some systems, missing PAM service file may allow all connections!
+   - Always verify `/etc/pam.d/<service>` exists
+   - Test both successful and failed authentication
+3. **Privilege requirements**:
+   - PAM typically requires root for password verification
+   - Server should drop privileges after binding socket
+4. **Defense in depth**:
+   - Combine PAM with ACL engine for layered security
+   - Use `client_method = "pam.address"` + `socks_method = "pam.username"` for dual authentication
+
+### Platform Support
+
+- **Unix/Linux**: Full PAM support via `pam` crate
+- **Windows/macOS**: Stub implementation (returns NotSupported error)
+- **Build-time**: Requires `libpam-dev` on Unix systems
+
+**Dependencies**:
+```toml
+[target.'cfg(unix)'.dependencies]
+pam = "0.7"
+```
+
+### Examples
+
+#### Example 1: Username/password authentication only
+```toml
+[auth]
+client_method = "none"
+socks_method = "pam.username"
+```
+
+#### Example 2: IP filtering + username/password (defense in depth)
+```toml
+[auth]
+client_method = "pam.address"      # IP check before SOCKS
+socks_method = "pam.username"      # Username/password after SOCKS
+```
+
+#### Example 3: IP-based authentication only (trusted network)
+```toml
+[auth]
+client_method = "none"
+socks_method = "pam.address"
+```
+
 ## Roadmap Context
 
 - **Sprint 1 (Complete)**: MVP with SOCKS5 protocol, auth, basic proxy
@@ -549,4 +727,5 @@ cargo test --all-features bind
 - **Sprint 2.2-2.4 (Complete)**: Session manager, persistence, metrics, IPv6/domain resolution
 - **Sprint 3.1 (Complete)**: UDP ASSOCIATE command ✅
 - **Sprint 3.2 (Complete)**: BIND command ✅
-- **Sprint 3.3+ (Planned)**: REST API, production packaging, PAM auth
+- **Sprint 3.3 (Complete)**: PAM authentication ✅
+- **Sprint 3.4+ (Planned)**: REST API, production packaging

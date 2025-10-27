@@ -1,7 +1,7 @@
 use rustsocks::acl::types::{AclRule, GlobalAclConfig, UserAcl};
 use rustsocks::acl::{AclConfig, AclEngine, AclStats, Action, Protocol};
 use rustsocks::auth::AuthManager;
-use rustsocks::config::AuthConfig;
+use rustsocks::config::{AuthConfig, PamSettings};
 use rustsocks::protocol::ReplyCode;
 use rustsocks::qos::{ConnectionLimits, QosEngine};
 use rustsocks::server::proxy::TrafficUpdateConfig;
@@ -49,8 +49,10 @@ async fn acl_blocks_connection_and_tracks_stats() {
     // Authentication set to no-auth for simplicity
     let auth_manager = Arc::new(
         AuthManager::new(&AuthConfig {
-            method: "none".into(),
+            client_method: "none".into(),
+            socks_method: "none".into(),
             users: Vec::new(),
+            pam: PamSettings::default(),
         })
         .expect("auth manager"),
     );
@@ -161,8 +163,10 @@ impl AllowEnv {
 async fn spawn_allow_env(expected: usize) -> AllowEnv {
     let auth_manager = Arc::new(
         AuthManager::new(&AuthConfig {
-            method: "none".into(),
+            client_method: "none".into(),
+            socks_method: "none".into(),
             users: Vec::new(),
+            pam: PamSettings::default(),
         })
         .expect("auth manager"),
     );
