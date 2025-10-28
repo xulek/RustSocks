@@ -220,6 +220,8 @@ cargo test -- --nocapture
 
 **Status testów:** ✅ 76/76 passed
 
+**CI pipeline:** GitHub Actions wykonują `cargo fmt --check`, `cargo clippy --all-features -- -D warnings`, `cargo test --locked --all-targets --features database -- --skip performance` oraz `cargo audit`.
+
 ## 📁 Struktura Projektu
 
 ```
@@ -292,6 +294,11 @@ metrics = ["prometheus", "lazy_static"]
 database = ["sqlx"]
 fast-allocator = ["mimalloc"]
 ```
+
+## 🔄 CI/CD
+
+- GitHub Actions: Build & Test (z opcjonalnym streszczeniem wyników)
+- Dodatkowe kroki: `cargo fmt --check`, `cargo clippy`, `cargo audit`
 
 ## 🎯 Roadmap
 

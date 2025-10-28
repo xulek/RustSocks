@@ -10,8 +10,8 @@
 - [x] Inicjalizacja projektu Rust (cargo init)
 - [x] Struktura katalogów (src/protocol, src/auth, src/server, etc.)
 - [x] Cargo.toml z podstawowymi dependencies
-- [x] CI/CD pipeline setup (GitHub Actions) - TODO w przyszłości
-- [x] Pre-commit hooks (rustfmt, clippy) - TODO w przyszłości
+- [x] CI/CD pipeline setup (GitHub Actions) - build, test, lint, audit
+- [ ] Pre-commit hooks (rustfmt, clippy) - TODO w przyszłości
 - [x] README z podstawową dokumentacją ✅
 
 ### 1.2 SOCKS5 Protocol Parser ✅
@@ -596,10 +596,10 @@
 - [ ] Code coverage reports
 
 ### CI/CD
-- [ ] GitHub Actions workflows
-  - [ ] Build & Test
-  - [ ] Clippy & fmt check
-  - [ ] Security audit
+- [x] GitHub Actions workflows
+  - [x] Build & Test (cargo test `--skip performance` + raport)
+  - [x] Clippy & fmt check
+  - [x] Security audit (cargo audit)
   - [ ] Release builds
   - [ ] Docker image build
   - [ ] Package building
