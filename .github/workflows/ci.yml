@@ -18,6 +18,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Validate workflow syntax
+        run: |
+          python3 - <<'PY'
+          import yaml
+          from pathlib import Path
+
+          workflows_dir = Path(".github/workflows")
+          for workflow in workflows_dir.glob("*.yml"):
+              with workflow.open() as fh:
+                  yaml.safe_load(fh)
+              print(f"Validated {workflow}")
+          PY
+
       - name: Install system dependencies
         run: sudo apt-get update && sudo apt-get install -y libpam0g-dev
 
@@ -52,41 +65,41 @@ jobs:
       - name: Summarize test results
         if: always()
         run: |
-          python <<'PY'
-import re
-from pathlib import Path
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
 
-log_path = Path("cargo-test-output.log")
-if not log_path.exists():
-    print("No cargo-test-output.log found.")
-    raise SystemExit(0)
+          log_path = Path("cargo-test-output.log")
+          if not log_path.exists():
+              print("No cargo-test-output.log found.")
+              raise SystemExit(0)
 
-pattern = re.compile(r'(\d+)\s+(passed|failed|ignored|measured|filtered out)')
-labels = {
-    "passed": "passed",
-    "failed": "failed",
-    "ignored": "ignored",
-    "measured": "measured",
-    "filtered out": "filtered_out",
-}
-totals = {v: 0 for v in labels.values()}
-for line in log_path.read_text().splitlines():
-    if "test result:" not in line:
-        continue
-    for count, label in pattern.findall(line):
-        key = labels[label]
-        totals[key] += int(count)
+          pattern = re.compile(r'(\d+)\s+(passed|failed|ignored|measured|filtered out)')
+          labels = {
+              "passed": "passed",
+              "failed": "failed",
+              "ignored": "ignored",
+              "measured": "measured",
+              "filtered out": "filtered_out",
+          }
+          totals = {v: 0 for v in labels.values()}
+          for line in log_path.read_text().splitlines():
+              if "test result:" not in line:
+                  continue
+              for count, label in pattern.findall(line):
+                  key = labels[label]
+                  totals[key] += int(count)
 
-total_executed = totals["passed"] + totals["failed"]
+          total_executed = totals["passed"] + totals["failed"]
 
-print(f"Test summary:")
-print(f"- Executed: {total_executed}")
-print(f"- Passed:   {totals['passed']}")
-print(f"- Failed:   {totals['failed']}")
-print(f"- Ignored:  {totals['ignored']}")
-print(f"- Measured: {totals['measured']}")
-print(f"- Skipped (filtered out): {totals['filtered_out']}")
-PY
+          print("Test summary:")
+          print(f"- Executed: {total_executed}")
+          print(f"- Passed:   {totals['passed']}")
+          print(f"- Failed:   {totals['failed']}")
+          print(f"- Ignored:  {totals['ignored']}")
+          print(f"- Measured: {totals['measured']}")
+          print(f"- Skipped (filtered out): {totals['filtered_out']}")
+          PY
 
       - name: Fail if tests failed
         if: steps.cargo-tests.outcome == 'failure'
