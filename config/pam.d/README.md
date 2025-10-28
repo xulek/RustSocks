@@ -180,7 +180,7 @@ sudo passwd -S username
 ```bash
 # Install PAM development packages
 sudo apt-get install libpam0g-dev    # Debian/Ubuntu
-sudo yum install pam-devel           # RHEL/CentOS
+sudo dnf install pam-devel gcc nodejs rust cargo  # RHEL/CentOS
 sudo pacman -S pam                   # Arch Linux
 
 # Verify PAM library

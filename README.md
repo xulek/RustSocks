@@ -266,6 +266,7 @@ rustsocks_qos_bandwidth_allocated_*     # QoS bandwidth
 - Node.js 18+ (dla dashboard)
 - libpam0g-dev (Linux, dla PAM auth)
 - SQLite (dla session persistence)
+- Na Red Hat / CentOS upewnij się, że zainstalowane są `gcc`, `nodejs`, `rust`, `cargo` oraz pakiet `pam-devel`
 
 ### Kompilacja
 

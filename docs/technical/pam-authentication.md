@@ -24,7 +24,7 @@ RustSocks wspiera dwie metody PAM authentication:
 sudo apt-get install libpam0g-dev
 
 # RHEL/CentOS/Fedora
-sudo yum install pam-devel
+sudo dnf install pam-devel gcc nodejs rust cargo
 
 # Arch Linux
 sudo pacman -S pam

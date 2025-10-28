@@ -689,7 +689,7 @@ cargo test --all-features pam -- --ignored
 
 - **Unix/Linux**: Full PAM support via `pam` crate
 - **Windows/macOS**: Stub implementation (returns NotSupported error)
-- **Build-time**: Requires `libpam-dev` on Unix systems
+- **Build-time**: Requires `libpam-dev` on Unix systems (na Red Hat / CentOS dodatkowo `gcc`, `nodejs`, `rust`, `cargo`, `pam-devel`)
 
 **Dependencies**:
 ```toml

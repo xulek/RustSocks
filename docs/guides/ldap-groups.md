@@ -262,7 +262,7 @@ shadow:     files sss
 ```bash
 # Development headers (if building from source)
 sudo apt-get install libpam0g-dev  # Debian/Ubuntu
-sudo yum install pam-devel          # RHEL/CentOS
+sudo dnf install pam-devel gcc nodejs rust cargo  # RHEL/CentOS
 
 # SSSD (if not already installed)
 sudo apt-get install sssd sssd-tools
