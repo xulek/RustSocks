@@ -1,5 +1,7 @@
 // RustSocks - High-performance SOCKS5 proxy server
 
+#![recursion_limit = "256"]
+
 pub mod acl;
 pub mod api;
 pub mod auth;

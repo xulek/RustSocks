@@ -14,6 +14,11 @@ use tracing::{error, info};
 
 use crate::api::handlers::sessions::ApiState;
 use crate::api::handlers::{
+    acl_management::{
+        add_group_rule, add_user_rule, create_group, delete_group, delete_group_rule,
+        delete_user_rule, get_global_settings, get_group_detail, get_user_detail, list_groups,
+        list_users, search_rules, update_global_settings, update_group_rule, update_user_rule,
+    },
     management::{get_acl_rules, get_metrics, health_check, reload_acl, test_acl_decision},
     sessions::{
         get_active_sessions, get_session_detail, get_session_history, get_session_stats,
@@ -89,7 +94,19 @@ fn get_openapi_spec() -> serde_json::Value {
             },
             {
                 "name": "ACL",
-                "description": "Access Control List management"
+                "description": "Access Control List management (read-only)"
+            },
+            {
+                "name": "ACL-Groups",
+                "description": "ACL rule management for groups (LDAP integration)"
+            },
+            {
+                "name": "ACL-Users",
+                "description": "ACL rule management for users (per-user overrides)"
+            },
+            {
+                "name": "ACL-Global",
+                "description": "Global ACL settings and search"
             },
             {
                 "name": "Admin",
@@ -383,6 +400,609 @@ fn get_openapi_spec() -> serde_json::Value {
                         }
                     }
                 }
+            },
+            "/api/acl/groups": {
+                "get": {
+                    "summary": "List all ACL groups",
+                    "description": "Get a list of all configured ACL groups with rule counts",
+                    "tags": ["ACL-Groups"],
+                    "operationId": "listGroups",
+                    "responses": {
+                        "200": {
+                            "description": "List of ACL groups",
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "groups": {
+                                                "type": "array",
+                                                "items": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "name": {"type": "string", "example": "developers"},
+                                                        "rule_count": {"type": "integer", "example": 5}
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    },
+                                    "example": {
+                                        "groups": [
+                                            {"name": "developers", "rule_count": 3},
+                                            {"name": "admins", "rule_count": 5}
+                                        ]
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "post": {
+                    "summary": "Create new ACL group",
+                    "description": "Create a new empty ACL group",
+                    "tags": ["ACL-Groups"],
+                    "operationId": "createGroup",
+                    "requestBody": {
+                        "required": true,
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "name": {"type": "string", "example": "admins"}
+                                    },
+                                    "required": ["name"]
+                                }
+                            }
+                        }
+                    },
+                    "responses": {
+                        "200": {
+                            "description": "Group created successfully",
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "success": {"type": "boolean"},
+                                            "message": {"type": "string"}
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "400": {
+                            "description": "Group already exists or ACL not enabled"
+                        }
+                    }
+                }
+            },
+            "/api/acl/groups/{groupname}": {
+                "get": {
+                    "summary": "Get ACL group details",
+                    "description": "Get detailed information about an ACL group including all rules",
+                    "tags": ["ACL-Groups"],
+                    "operationId": "getGroupDetail",
+                    "parameters": [
+                        {
+                            "name": "groupname",
+                            "in": "path",
+                            "required": true,
+                            "schema": {"type": "string"},
+                            "description": "Group name",
+                            "example": "developers"
+                        }
+                    ],
+                    "responses": {
+                        "200": {
+                            "description": "Group details with rules",
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "name": {"type": "string"},
+                                            "rules": {
+                                                "type": "array",
+                                                "items": {"$ref": "#/components/schemas/AclRule"}
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "404": {
+                            "description": "Group not found"
+                        }
+                    }
+                },
+                "delete": {
+                    "summary": "Delete ACL group",
+                    "description": "Delete an entire ACL group and all its rules",
+                    "tags": ["ACL-Groups"],
+                    "operationId": "deleteGroup",
+                    "parameters": [
+                        {
+                            "name": "groupname",
+                            "in": "path",
+                            "required": true,
+                            "schema": {"type": "string"},
+                            "description": "Group name"
+                        }
+                    ],
+                    "responses": {
+                        "200": {
+                            "description": "Group deleted successfully"
+                        },
+                        "404": {
+                            "description": "Group not found"
+                        }
+                    }
+                }
+            },
+            "/api/acl/groups/{groupname}/rules": {
+                "post": {
+                    "summary": "Add rule to group",
+                    "description": "Add a new ACL rule to a group. Rules are identified by destination + port combination.",
+                    "tags": ["ACL-Groups"],
+                    "operationId": "addGroupRule",
+                    "parameters": [
+                        {
+                            "name": "groupname",
+                            "in": "path",
+                            "required": true,
+                            "schema": {"type": "string"},
+                            "description": "Group name"
+                        }
+                    ],
+                    "requestBody": {
+                        "required": true,
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/AddRuleRequest"},
+                                "example": {
+                                    "action": "allow",
+                                    "description": "SSH access to production",
+                                    "destinations": ["*.prod.company.com"],
+                                    "ports": ["22"],
+                                    "protocols": ["tcp"],
+                                    "priority": 200
+                                }
+                            }
+                        }
+                    },
+                    "responses": {
+                        "200": {
+                            "description": "Rule added successfully",
+                            "content": {
+                                "application/json": {
+                                    "schema": {"$ref": "#/components/schemas/RuleOperationResponse"}
+                                }
+                            }
+                        },
+                        "400": {
+                            "description": "Invalid rule or duplicate rule"
+                        }
+                    }
+                },
+                "put": {
+                    "summary": "Update group rule",
+                    "description": "Update an existing rule by identifying it with destination + port",
+                    "tags": ["ACL-Groups"],
+                    "operationId": "updateGroupRule",
+                    "parameters": [
+                        {
+                            "name": "groupname",
+                            "in": "path",
+                            "required": true,
+                            "schema": {"type": "string"},
+                            "description": "Group name"
+                        }
+                    ],
+                    "requestBody": {
+                        "required": true,
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "match": {"$ref": "#/components/schemas/RuleIdentifier"},
+                                        "update": {"$ref": "#/components/schemas/AddRuleRequest"}
+                                    },
+                                    "required": ["match", "update"]
+                                },
+                                "example": {
+                                    "match": {
+                                        "destinations": ["*.prod.company.com"],
+                                        "ports": ["22"]
+                                    },
+                                    "update": {
+                                        "action": "block",
+                                        "description": "SSH blocked (new security policy)",
+                                        "destinations": ["*.prod.company.com"],
+                                        "ports": ["22"],
+                                        "protocols": ["tcp"],
+                                        "priority": 1000
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "responses": {
+                        "200": {
+                            "description": "Rule updated successfully",
+                            "content": {
+                                "application/json": {
+                                    "schema": {"$ref": "#/components/schemas/RuleOperationResponse"}
+                                }
+                            }
+                        },
+                        "404": {
+                            "description": "Rule not found"
+                        }
+                    }
+                },
+                "delete": {
+                    "summary": "Delete group rule",
+                    "description": "Delete a rule by identifying it with destination + port",
+                    "tags": ["ACL-Groups"],
+                    "operationId": "deleteGroupRule",
+                    "parameters": [
+                        {
+                            "name": "groupname",
+                            "in": "path",
+                            "required": true,
+                            "schema": {"type": "string"},
+                            "description": "Group name"
+                        }
+                    ],
+                    "requestBody": {
+                        "required": true,
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/RuleIdentifier"},
+                                "example": {
+                                    "destinations": ["*.prod.company.com"],
+                                    "ports": ["22"]
+                                }
+                            }
+                        }
+                    },
+                    "responses": {
+                        "200": {
+                            "description": "Rule deleted successfully"
+                        },
+                        "404": {
+                            "description": "Rule not found"
+                        }
+                    }
+                }
+            },
+            "/api/acl/users": {
+                "get": {
+                    "summary": "List all ACL users",
+                    "description": "Get a list of all users with ACL rules configured",
+                    "tags": ["ACL-Users"],
+                    "operationId": "listUsers",
+                    "responses": {
+                        "200": {
+                            "description": "List of ACL users",
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "users": {
+                                                "type": "array",
+                                                "items": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "username": {"type": "string"},
+                                                        "groups": {"type": "array", "items": {"type": "string"}},
+                                                        "rule_count": {"type": "integer"}
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "/api/acl/users/{username}": {
+                "get": {
+                    "summary": "Get user ACL details",
+                    "description": "Get detailed ACL information for a specific user",
+                    "tags": ["ACL-Users"],
+                    "operationId": "getUserDetail",
+                    "parameters": [
+                        {
+                            "name": "username",
+                            "in": "path",
+                            "required": true,
+                            "schema": {"type": "string"},
+                            "description": "Username"
+                        }
+                    ],
+                    "responses": {
+                        "200": {
+                            "description": "User ACL details"
+                        },
+                        "404": {
+                            "description": "User not found"
+                        }
+                    }
+                }
+            },
+            "/api/acl/users/{username}/rules": {
+                "post": {
+                    "summary": "Add rule to user",
+                    "description": "Add a per-user ACL rule override (higher priority than group rules)",
+                    "tags": ["ACL-Users"],
+                    "operationId": "addUserRule",
+                    "parameters": [
+                        {
+                            "name": "username",
+                            "in": "path",
+                            "required": true,
+                            "schema": {"type": "string"},
+                            "description": "Username"
+                        }
+                    ],
+                    "requestBody": {
+                        "required": true,
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/AddRuleRequest"},
+                                "example": {
+                                    "action": "block",
+                                    "description": "Alice blocked from admin panel",
+                                    "destinations": ["admin.company.com"],
+                                    "ports": ["*"],
+                                    "protocols": ["tcp"],
+                                    "priority": 2000
+                                }
+                            }
+                        }
+                    },
+                    "responses": {
+                        "200": {
+                            "description": "Rule added successfully"
+                        }
+                    }
+                },
+                "put": {
+                    "summary": "Update user rule",
+                    "description": "Update an existing per-user rule",
+                    "tags": ["ACL-Users"],
+                    "operationId": "updateUserRule",
+                    "parameters": [
+                        {
+                            "name": "username",
+                            "in": "path",
+                            "required": true,
+                            "schema": {"type": "string"},
+                            "description": "Username"
+                        }
+                    ],
+                    "requestBody": {
+                        "required": true,
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "match": {"$ref": "#/components/schemas/RuleIdentifier"},
+                                        "update": {"$ref": "#/components/schemas/AddRuleRequest"}
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "responses": {
+                        "200": {
+                            "description": "Rule updated successfully"
+                        },
+                        "404": {
+                            "description": "Rule not found"
+                        }
+                    }
+                },
+                "delete": {
+                    "summary": "Delete user rule",
+                    "description": "Delete a per-user ACL rule",
+                    "tags": ["ACL-Users"],
+                    "operationId": "deleteUserRule",
+                    "parameters": [
+                        {
+                            "name": "username",
+                            "in": "path",
+                            "required": true,
+                            "schema": {"type": "string"},
+                            "description": "Username"
+                        }
+                    ],
+                    "requestBody": {
+                        "required": true,
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/RuleIdentifier"}
+                            }
+                        }
+                    },
+                    "responses": {
+                        "200": {
+                            "description": "Rule deleted successfully"
+                        },
+                        "404": {
+                            "description": "Rule not found"
+                        }
+                    }
+                }
+            },
+            "/api/acl/global": {
+                "get": {
+                    "summary": "Get global ACL settings",
+                    "description": "Get global ACL configuration (default policy)",
+                    "tags": ["ACL-Global"],
+                    "operationId": "getGlobalSettings",
+                    "responses": {
+                        "200": {
+                            "description": "Global ACL settings",
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "default_policy": {"type": "string", "enum": ["allow", "block"], "example": "block"}
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "put": {
+                    "summary": "Update global ACL settings",
+                    "description": "Update global ACL configuration (default policy)",
+                    "tags": ["ACL-Global"],
+                    "operationId": "updateGlobalSettings",
+                    "requestBody": {
+                        "required": true,
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "default_policy": {"type": "string", "enum": ["allow", "block"]}
+                                    },
+                                    "required": ["default_policy"]
+                                },
+                                "example": {
+                                    "default_policy": "allow"
+                                }
+                            }
+                        }
+                    },
+                    "responses": {
+                        "200": {
+                            "description": "Global settings updated successfully",
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "success": {"type": "boolean"},
+                                            "message": {"type": "string"},
+                                            "old_policy": {"type": "string"},
+                                            "new_policy": {"type": "string"}
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "/api/acl/search": {
+                "post": {
+                    "summary": "Search ACL rules",
+                    "description": "Search for ACL rules across all groups and users using various criteria",
+                    "tags": ["ACL-Global"],
+                    "operationId": "searchRules",
+                    "requestBody": {
+                        "required": true,
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "destination": {"type": "string", "example": "prod.company.com"},
+                                        "port": {"type": "integer", "example": 22},
+                                        "action": {"type": "string", "enum": ["allow", "block"]}
+                                    }
+                                },
+                                "example": {
+                                    "destination": "prod.company.com"
+                                }
+                            }
+                        }
+                    },
+                    "responses": {
+                        "200": {
+                            "description": "Search results",
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "matches": {
+                                                "type": "array",
+                                                "items": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "rule_type": {"type": "string", "enum": ["group", "user"]},
+                                                        "owner": {"type": "string"},
+                                                        "rule": {"$ref": "#/components/schemas/AclRule"}
+                                                    }
+                                                }
+                                            },
+                                            "count": {"type": "integer"}
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "components": {
+            "schemas": {
+                "AclRule": {
+                    "type": "object",
+                    "properties": {
+                        "action": {"type": "string", "enum": ["allow", "block"]},
+                        "description": {"type": "string"},
+                        "destinations": {"type": "array", "items": {"type": "string"}, "example": ["*.example.com", "10.0.0.0/8"]},
+                        "ports": {"type": "array", "items": {"type": "string"}, "example": ["22", "80", "443", "8000-9000"]},
+                        "protocols": {"type": "array", "items": {"type": "string", "enum": ["tcp", "udp", "both"]}},
+                        "priority": {"type": "integer", "example": 100}
+                    }
+                },
+                "AddRuleRequest": {
+                    "type": "object",
+                    "properties": {
+                        "action": {"type": "string", "enum": ["allow", "block"]},
+                        "description": {"type": "string"},
+                        "destinations": {"type": "array", "items": {"type": "string"}},
+                        "ports": {"type": "array", "items": {"type": "string"}},
+                        "protocols": {"type": "array", "items": {"type": "string", "enum": ["tcp", "udp", "both"]}},
+                        "priority": {"type": "integer"}
+                    },
+                    "required": ["action", "description", "destinations", "ports", "protocols", "priority"]
+                },
+                "RuleIdentifier": {
+                    "type": "object",
+                    "description": "Identifies a rule by destination + optional port (NOT by index!)",
+                    "properties": {
+                        "destinations": {"type": "array", "items": {"type": "string"}},
+                        "ports": {"type": "array", "items": {"type": "string"}}
+                    },
+                    "required": ["destinations"]
+                },
+                "RuleOperationResponse": {
+                    "type": "object",
+                    "properties": {
+                        "success": {"type": "boolean"},
+                        "message": {"type": "string"},
+                        "rule": {"$ref": "#/components/schemas/AclRule"},
+                        "old_rule": {"$ref": "#/components/schemas/AclRule"}
+                    }
+                }
             }
         }
     })
@@ -424,6 +1044,24 @@ pub async fn start_api_server(
         .route("/api/admin/reload-acl", post(reload_acl))
         .route("/api/acl/rules", get(get_acl_rules))
         .route("/api/acl/test", post(test_acl_decision))
+        // ACL Management endpoints - Groups
+        .route("/api/acl/groups", get(list_groups))
+        .route("/api/acl/groups", post(create_group))
+        .route("/api/acl/groups/:groupname", get(get_group_detail))
+        .route("/api/acl/groups/:groupname", axum::routing::delete(delete_group))
+        .route("/api/acl/groups/:groupname/rules", post(add_group_rule))
+        .route("/api/acl/groups/:groupname/rules", axum::routing::put(update_group_rule))
+        .route("/api/acl/groups/:groupname/rules", axum::routing::delete(delete_group_rule))
+        // ACL Management endpoints - Users
+        .route("/api/acl/users", get(list_users))
+        .route("/api/acl/users/:username", get(get_user_detail))
+        .route("/api/acl/users/:username/rules", post(add_user_rule))
+        .route("/api/acl/users/:username/rules", axum::routing::put(update_user_rule))
+        .route("/api/acl/users/:username/rules", axum::routing::delete(delete_user_rule))
+        // ACL Management endpoints - Global & Search
+        .route("/api/acl/global", get(get_global_settings))
+        .route("/api/acl/global", axum::routing::put(update_global_settings))
+        .route("/api/acl/search", post(search_rules))
         // Layer with state and body limit
         .layer(DefaultBodyLimit::max(1024 * 1024)) // 1MB max body
         .with_state(state);

@@ -179,3 +179,158 @@ impl Default for ApiConfig {
         }
     }
 }
+
+// ============================================================================
+// ACL Management API Types
+// ============================================================================
+
+/// Request to add a new ACL rule
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AddRuleRequest {
+    pub action: String,
+    pub description: String,
+    pub destinations: Vec<String>,
+    pub ports: Vec<String>,
+    pub protocols: Vec<String>,
+    pub priority: u32,
+}
+
+/// Request to update an existing ACL rule
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UpdateRuleRequest {
+    /// Identifier of the rule to update
+    #[serde(rename = "match")]
+    pub match_rule: RuleIdentifierRequest,
+    /// New rule values
+    pub update: AddRuleRequest,
+}
+
+/// Identifier for finding a specific rule
+#[derive(Debug, Serialize, Deserialize)]
+pub struct RuleIdentifierRequest {
+    pub destinations: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ports: Option<Vec<String>>,
+}
+
+/// Request to delete a rule
+#[derive(Debug, Serialize, Deserialize)]
+pub struct DeleteRuleRequest {
+    pub destinations: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ports: Option<Vec<String>>,
+}
+
+/// Response for add/update/delete rule operations
+#[derive(Debug, Serialize, Deserialize)]
+pub struct RuleOperationResponse {
+    pub success: bool,
+    pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rule: Option<crate::acl::types::AclRule>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub old_rule: Option<crate::acl::types::AclRule>,
+}
+
+/// Group summary for list endpoint
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GroupSummary {
+    pub name: String,
+    pub rule_count: usize,
+}
+
+/// Response for GET /api/acl/groups
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GroupListResponse {
+    pub groups: Vec<GroupSummary>,
+}
+
+/// Response for GET /api/acl/groups/{groupname}
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GroupDetailResponse {
+    pub name: String,
+    pub rules: Vec<crate::acl::types::AclRule>,
+}
+
+/// User summary for list endpoint
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UserSummary {
+    pub username: String,
+    pub groups: Vec<String>,
+    pub rule_count: usize,
+}
+
+/// Response for GET /api/acl/users
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UserListResponse {
+    pub users: Vec<UserSummary>,
+}
+
+/// Response for GET /api/acl/users/{username}
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UserDetailResponse {
+    pub username: String,
+    pub groups: Vec<String>,
+    pub rules: Vec<crate::acl::types::AclRule>,
+}
+
+/// Response for GET /api/acl/global
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GlobalSettingsResponse {
+    pub default_policy: String,
+}
+
+/// Request to update global settings
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UpdateGlobalSettingsRequest {
+    pub default_policy: String,
+}
+
+/// Response for global settings update
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UpdateGlobalSettingsResponse {
+    pub success: bool,
+    pub message: String,
+    pub old_policy: String,
+    pub new_policy: String,
+}
+
+/// Request to search for rules
+#[derive(Debug, Serialize, Deserialize)]
+pub struct RuleSearchRequest {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub destination: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub port: Option<u16>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub action: Option<String>,
+}
+
+/// Single search result
+#[derive(Debug, Serialize, Deserialize)]
+pub struct RuleSearchResultItem {
+    pub rule_type: String, // "group" or "user"
+    pub owner: String,     // group name or username
+    pub rule: crate::acl::types::AclRule,
+}
+
+/// Response for POST /api/acl/search
+#[derive(Debug, Serialize, Deserialize)]
+pub struct RuleSearchResponse {
+    pub matches: Vec<RuleSearchResultItem>,
+    pub count: usize,
+}
+
+/// Request to create a new group
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CreateGroupRequest {
+    pub name: String,
+}
+
+/// Response for delete group operation
+#[derive(Debug, Serialize, Deserialize)]
+pub struct DeleteGroupResponse {
+    pub success: bool,
+    pub message: String,
+    pub deleted_group: Option<crate::acl::types::GroupAcl>,
+}
