@@ -1,0 +1,179 @@
+# RustSocks Admin Dashboard
+
+Modern web-based admin dashboard for RustSocks SOCKS5 proxy server.
+
+## Features
+
+- **Real-time Session Monitoring**: View active and historical SOCKS5 sessions with live updates
+- **ACL Management**: Browse and view Access Control List rules for groups and users
+- **User Management**: Manage users and their group memberships
+- **Statistics Dashboard**: Detailed analytics including bandwidth usage, top users, and destinations
+- **Configuration View**: Server health status and API endpoint documentation
+- **Clean, Modern UI**: Dark theme with intuitive navigation
+
+## Tech Stack
+
+- **React 18**: Modern React with hooks
+- **Vite**: Lightning-fast build tool and dev server
+- **React Router**: Client-side routing
+- **Lucide React**: Beautiful icons
+- **Vanilla CSS**: No framework overhead, custom design
+
+## Quick Start
+
+### Prerequisites
+
+- Node.js 18+ and npm
+- RustSocks server running with API enabled
+
+### Installation
+
+```bash
+cd dashboard
+npm install
+```
+
+### Development
+
+```bash
+npm run dev
+```
+
+Dashboard will be available at `http://localhost:3000` with API proxy to `http://127.0.0.1:9090`.
+
+### Production Build
+
+```bash
+npm run build
+```
+
+Built files will be in `dashboard/dist/` directory.
+
+## Configuration
+
+### Enable Dashboard in RustSocks
+
+Edit `rustsocks.toml`:
+
+```toml
+[sessions]
+stats_api_enabled = true
+dashboard_enabled = true
+swagger_enabled = true
+stats_api_bind_address = "127.0.0.1"
+stats_api_port = 9090
+```
+
+### Serve Dashboard from RustSocks
+
+The dashboard is served automatically when `dashboard_enabled = true` and the `dashboard/dist/` directory exists.
+
+## Dashboard Pages
+
+### 1. Dashboard (Home)
+- Active sessions count
+- Total sessions and bandwidth statistics
+- Top users by session count
+- Top destinations by connections
+- Real-time updates every 5 seconds
+
+### 2. Sessions
+- Real-time session monitoring
+- Toggle between active sessions and history
+- Session details: user, source, destination, protocol, status, bandwidth
+- Auto-refresh every 3 seconds
+
+### 3. ACL Rules
+- Browse ACL groups and their rules
+- View user ACL configurations
+- Rule details: action, destinations, ports, protocols, priority
+- Group membership visualization
+
+### 4. Users
+- List all users with ACL rules
+- Group memberships
+- Rule count per user
+
+### 5. Statistics
+- Aggregated session statistics
+- Bandwidth by user
+- Top destinations
+- Session success/failure rates
+
+### 6. Configuration
+- Server health status and uptime
+- API endpoint documentation
+- Configuration instructions
+
+## API Integration
+
+The dashboard consumes the following RustSocks API endpoints:
+
+- `GET /health` - Server health check
+- `GET /api/sessions/active` - Active sessions
+- `GET /api/sessions/history` - Session history
+- `GET /api/sessions/stats` - Aggregated statistics
+- `GET /api/acl/groups` - List ACL groups
+- `GET /api/acl/groups/{name}` - Group details with rules
+- `GET /api/acl/users` - List users with ACL
+
+All API calls use relative paths and are proxied during development.
+
+## Customization
+
+### Colors
+
+Edit `src/index.css` CSS variables:
+
+```css
+:root {
+  --primary: #2563eb;
+  --success: #10b981;
+  --danger: #ef4444;
+  --bg-dark: #0f172a;
+  --bg-light: #1e293b;
+  /* ... */
+}
+```
+
+### Refresh Intervals
+
+Edit refresh intervals in component files:
+- Dashboard: 5000ms
+- Sessions: 3000ms
+
+## Security Notes
+
+- The dashboard is for **administrative use only**
+- Deploy behind authentication/VPN in production
+- API endpoints should be secured with tokens (future feature)
+- Do not expose dashboard to public internet
+
+## Future Enhancements
+
+- [ ] Real-time WebSocket updates
+- [ ] Advanced ACL rule editor (add/edit/delete)
+- [ ] User creation and management
+- [ ] Session termination controls
+- [ ] Traffic graphs with Recharts
+- [ ] Export statistics (CSV/JSON)
+- [ ] Authentication/authorization
+- [ ] Dark/light theme toggle
+
+## Troubleshooting
+
+### Dashboard shows "Failed to fetch"
+
+- Ensure RustSocks server is running with `stats_api_enabled = true`
+- Check API is accessible at `http://127.0.0.1:9090`
+- Verify proxy configuration in `vite.config.js`
+
+### Empty data on dashboard
+
+- Create some SOCKS5 connections to generate session data
+- Enable ACL to see rules
+- Check server logs for errors
+
+## License
+
+Part of the RustSocks project.

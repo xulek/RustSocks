@@ -167,6 +167,8 @@ pub struct ApiConfig {
     pub bind_port: u16,
     pub enable_api: bool,
     pub token: Option<String>,
+    pub swagger_enabled: bool,
+    pub dashboard_enabled: bool,
 }
 
 impl Default for ApiConfig {
@@ -176,6 +178,8 @@ impl Default for ApiConfig {
             bind_port: 9090,
             enable_api: false,
             token: None,
+            swagger_enabled: true,
+            dashboard_enabled: false,
         }
     }
 }

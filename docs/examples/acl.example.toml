@@ -1,0 +1,51 @@
+[global]
+default_policy = "block"
+
+[[users]]
+username = "anonymous"
+groups = []
+
+[[users.rules]]
+action = "allow"
+description = "Allow all traffic for anonymous user (load testing)"
+destinations = ["*"]
+ports = ["*"]
+protocols = ["both"]
+priority = 100
+
+[[users]]
+username = "alice"
+groups = ["developers"]
+
+[[users.rules]]
+action = "allow"
+description = "Allow HTTP/HTTPS to all destinations"
+destinations = ["*"]
+ports = [
+    "443",
+    "80",
+]
+protocols = ["tcp"]
+priority = 100
+
+[[groups]]
+name = "developers"
+
+[[groups.rules]]
+action = "allow"
+description = "Dev servers and any port"
+destinations = ["*.dev.company.com"]
+ports = ["*"]
+protocols = ["tcp"]
+priority = 50
+
+[[groups]]
+name = "test123"
+
+[[groups.rules]]
+action = "allow"
+description = "SSH access to production"
+destinations = ["*.prod.company.com"]
+ports = ["22"]
+protocols = ["tcp"]
+priority = 200

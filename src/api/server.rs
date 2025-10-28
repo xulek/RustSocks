@@ -7,10 +7,12 @@ use axum::{
 };
 use serde_json;
 use std::net::SocketAddr;
+use std::path::Path;
 use std::sync::Arc;
 use tokio::net::TcpListener;
 use tokio::task::JoinHandle;
-use tracing::{error, info};
+use tower_http::services::ServeDir;
+use tracing::{error, info, warn};
 
 use crate::api::handlers::sessions::ApiState;
 use crate::api::handlers::{
@@ -1026,11 +1028,19 @@ pub async fn start_api_server(
         acl_config_path,
     };
 
-    // Build router with all endpoints and Swagger
-    let app = Router::new()
-        // Swagger UI
-        .route("/swagger-ui/", get(swagger_ui))
-        .route("/openapi.json", get(openapi_spec))
+    // Build router with all endpoints
+    let mut app = Router::new();
+
+    // Conditionally add Swagger UI
+    if config.swagger_enabled {
+        app = app
+            .route("/swagger-ui/", get(swagger_ui))
+            .route("/openapi.json", get(openapi_spec));
+        info!("Swagger UI enabled at /swagger-ui/");
+    }
+
+    // Add API routes
+    app = app
         // Health and metrics
         .route("/health", get(health_check))
         .route("/metrics", get(get_metrics))
@@ -1061,8 +1071,24 @@ pub async fn start_api_server(
         // ACL Management endpoints - Global & Search
         .route("/api/acl/global", get(get_global_settings))
         .route("/api/acl/global", axum::routing::put(update_global_settings))
-        .route("/api/acl/search", post(search_rules))
-        // Layer with state and body limit
+        .route("/api/acl/search", post(search_rules));
+
+    // Conditionally serve dashboard static files
+    if config.dashboard_enabled {
+        let dashboard_path = "dashboard/dist";
+        if Path::new(dashboard_path).exists() {
+            info!("Dashboard enabled - serving static files from {}", dashboard_path);
+            app = app.fallback_service(ServeDir::new(dashboard_path));
+        } else {
+            warn!(
+                "Dashboard enabled but {} directory not found. Run 'cd dashboard && npm run build'",
+                dashboard_path
+            );
+        }
+    }
+
+    // Layer with state and body limit
+    let app = app
         .layer(DefaultBodyLimit::max(1024 * 1024)) // 1MB max body
         .with_state(state);
 
@@ -1073,7 +1099,14 @@ pub async fn start_api_server(
 
     let listener = TcpListener::bind(&addr).await?;
     info!("API server listening on http://{}", addr);
-    info!("Swagger UI available at http://{}/swagger-ui/", addr);
+
+    if config.swagger_enabled {
+        info!("Swagger UI available at http://{}/swagger-ui/", addr);
+    }
+
+    if config.dashboard_enabled {
+        info!("Admin dashboard available at http://{}/", addr);
+    }
 
     let handle = tokio::spawn(async move {
         let server = axum::serve(listener, app);

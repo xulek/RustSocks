@@ -106,6 +106,10 @@ pub struct SessionSettings {
     pub stats_api_bind_address: String,
     #[serde(default = "default_stats_api_port")]
     pub stats_api_port: u16,
+    #[serde(default = "default_swagger_enabled")]
+    pub swagger_enabled: bool,
+    #[serde(default = "default_dashboard_enabled")]
+    pub dashboard_enabled: bool,
 }
 
 // Default values
@@ -209,6 +213,14 @@ fn default_stats_api_port() -> u16 {
     9090
 }
 
+fn default_swagger_enabled() -> bool {
+    true
+}
+
+fn default_dashboard_enabled() -> bool {
+    false
+}
+
 impl Default for ServerConfig {
     fn default() -> Self {
         Self {
@@ -278,6 +290,8 @@ impl Default for SessionSettings {
             stats_api_enabled: default_stats_api_enabled(),
             stats_api_bind_address: default_stats_api_bind_address(),
             stats_api_port: default_stats_api_port(),
+            swagger_enabled: default_swagger_enabled(),
+            dashboard_enabled: default_dashboard_enabled(),
         }
     }
 }
@@ -456,6 +470,8 @@ stats_window_hours = 24
 stats_api_enabled = false
 stats_api_bind_address = "127.0.0.1"
 stats_api_port = 9090
+swagger_enabled = true
+dashboard_enabled = false
 
 [qos]
 enabled = false  # Enable QoS (Quality of Service) / Rate Limiting
@@ -525,6 +541,8 @@ mod tests {
         assert!(!config.sessions.stats_api_enabled);
         assert_eq!(config.sessions.stats_api_bind_address, "127.0.0.1");
         assert_eq!(config.sessions.stats_api_port, 9090);
+        assert!(config.sessions.swagger_enabled);
+        assert!(!config.sessions.dashboard_enabled);
     }
 
     #[test]

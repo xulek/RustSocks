@@ -720,6 +720,85 @@ client_method = "none"
 socks_method = "pam.address"
 ```
 
+## Web Dashboard
+
+**Implementation Status**: ✅ Complete
+
+RustSocks includes a modern web-based admin dashboard built with React.
+
+### Features
+
+- **Real-time Session Monitoring**: View active and historical sessions with live updates
+- **ACL Management**: Browse groups, users, and their access rules
+- **User Management**: View users and group memberships
+- **Statistics Dashboard**: Analytics including bandwidth, top users, and destinations
+- **Configuration View**: Server health and API documentation
+- **Modern UI**: Dark theme with clean, intuitive design
+
+### Configuration
+
+Enable dashboard and Swagger UI in `rustsocks.toml`:
+
+```toml
+[sessions]
+stats_api_enabled = true    # Enable API server
+dashboard_enabled = true    # Enable web dashboard
+swagger_enabled = true      # Enable Swagger UI
+stats_api_bind_address = "127.0.0.1"
+stats_api_port = 9090
+```
+
+### Development
+
+```bash
+# Install dependencies
+cd dashboard
+npm install
+
+# Run development server (with proxy to API)
+npm run dev
+
+# Build for production
+npm run build
+```
+
+Development server runs at `http://localhost:3000` with API proxy.
+
+### Production Deployment
+
+Dashboard is served automatically from `dashboard/dist/` when:
+1. `dashboard_enabled = true` in config
+2. Dashboard has been built (`npm run build`)
+3. API server is enabled
+
+Access dashboard at: `http://127.0.0.1:9090/`
+
+### Dashboard Pages
+
+- **Dashboard**: Real-time overview with session stats, top users, top destinations
+- **Sessions**: Live session monitoring with active/history toggle
+- **ACL Rules**: Browse and view ACL groups, users, and rules
+- **Users**: User management and group memberships
+- **Statistics**: Detailed analytics and bandwidth metrics
+- **Configuration**: Server health, uptime, API documentation
+
+### Security Notes
+
+- Dashboard is for **administrative use only**
+- Deploy behind authentication/VPN in production
+- Do not expose to public internet
+- API endpoints require security tokens (future enhancement)
+
+### Tech Stack
+
+- React 18 with hooks
+- Vite build system
+- React Router for navigation
+- Lucide React icons
+- Vanilla CSS (no framework)
+
+See `dashboard/README.md` for detailed documentation.
+
 ## Roadmap Context
 
 - **Sprint 1 (Complete)**: MVP with SOCKS5 protocol, auth, basic proxy
@@ -729,4 +808,5 @@ socks_method = "pam.address"
 - **Sprint 3.2 (Complete)**: BIND command ✅
 - **Sprint 3.3 (Complete)**: PAM authentication ✅
 - **Sprint 3.4 (Complete)**: LDAP Groups integration ✅
-- **Sprint 3.5+ (Planned)**: REST API enhancements, production packaging
+- **Sprint 3.5 (Complete)**: Web Dashboard + API enhancements ✅
+- **Sprint 4+ (Planned)**: Production packaging, performance tuning

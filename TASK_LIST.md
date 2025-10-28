@@ -500,13 +500,38 @@
 - [ ] Geo-location logging
 - [ ] Geo-based metrics
 
-### 4.4 Web Dashboard (Opcjonalne)
-- [ ] React/Vue frontend
-- [ ] Real-time session view
-- [ ] ACL rule editor
-- [ ] User management UI
-- [ ] Statistics dashboards
-- [ ] Configuration editor
+### 4.4 Web Dashboard (UKOŃCZONY ✅)
+- [x] React frontend (Vite + React 18) ✅
+- [x] Real-time session view ✅
+  - [x] Active sessions monitoring ✅
+  - [x] Session history view ✅
+  - [x] Auto-refresh (3s interval) ✅
+- [x] ACL rule browser ✅
+  - [x] Groups list with rules ✅
+  - [x] Users list with ACL ✅
+  - [x] Rule details display ✅
+- [x] User management UI ✅
+  - [x] User list with groups ✅
+  - [x] Group membership view ✅
+- [x] Statistics dashboards ✅
+  - [x] Session stats (total, active, closed, failed) ✅
+  - [x] Bandwidth metrics ✅
+  - [x] Top users by traffic ✅
+  - [x] Top destinations ✅
+- [x] Configuration viewer ✅
+  - [x] Health status display ✅
+  - [x] Server uptime ✅
+  - [x] API endpoints documentation ✅
+- [x] Backend integration ✅
+  - [x] Swagger UI switch (dashboard_enabled) ✅
+  - [x] Dashboard switch (swagger_enabled) ✅
+  - [x] Static file serving (tower-http) ✅
+  - [x] Conditional routing ✅
+- [x] Modern UI/UX ✅
+  - [x] Dark theme ✅
+  - [x] Sidebar navigation ✅
+  - [x] Responsive design ✅
+  - [x] Clean typography ✅
 
 ### 4.5 Clustering & HA (Zaawansowane)
 - [ ] Multi-node coordination
@@ -526,20 +551,27 @@
 ## 📋 Documentation & Quality (Ciągłe)
 
 ### Dokumentacja
-- [x] README.md (podstawowy) ✅
+- [x] README.md (nowoczesny, zwięzły) ✅
+- [x] CLAUDE.md (kompletny developer guide) ✅
+- [x] docs/ folder structure ✅
+  - [x] docs/README.md (documentation index) ✅
+  - [x] docs/guides/ (user guides) ✅
+    - [x] ldap-groups.md ✅
+  - [x] docs/technical/ (implementation details) ✅
+    - [x] acl-engine.md ✅
+    - [x] pam-authentication.md ✅
+    - [x] session-manager.md ✅
+    - [x] ldap-integration.md ✅
+  - [x] docs/examples/ (config examples) ✅
+    - [x] rustsocks.example.toml ✅
+    - [x] acl.example.toml ✅
+- [x] dashboard/README.md (dashboard docs) ✅
 - [ ] CONTRIBUTING.md
 - [ ] CODE_OF_CONDUCT.md
 - [ ] SECURITY.md
-- [ ] docs/architecture.md
-- [ ] docs/configuration.md (pełna referencia)
-- [ ] docs/acl-guide.md (z przykładami)
-- [ ] docs/pam-authentication.md
-- [ ] docs/monitoring.md
-- [ ] docs/api-reference.md (OpenAPI)
-- [ ] docs/deployment.md
-- [ ] docs/troubleshooting.md
-- [ ] docs/performance-tuning.md
-- [ ] Example configs dla różnych use cases
+- [ ] docs/guides/deployment.md
+- [ ] docs/guides/troubleshooting.md
+- [ ] docs/guides/performance-tuning.md
 
 ### Testy
 - [x] Unit tests >80% coverage ✅
@@ -640,17 +672,21 @@
 - **Sprint 3.6 (QoS & Rate Limiting):** ✅ 100% (Ukończony!)
 - **Sprint 3.7 (PAM Authentication):** ✅ 100% (Ukończony!)
 - **Sprint 3.8 (LDAP Groups Integration):** ✅ 100% (Ukończony!)
+- **Sprint 3.9 (Web Dashboard):** ✅ 100% (Ukończony!)
 - **Sprint 3.10.1 (Load Tests):** ✅ 100% (Ukończony!)
 - **Sprint 3.4+ (Extended Metrics & Advanced):** 🔄 Następny
-- **Sprint 4 (Advanced Features):** ⏳ 0% (Przyszłość)
+- **Sprint 4.4 (Web Dashboard):** ✅ 100% (Ukończony!)
+- **Sprint 4 (Advanced Features):** 🔄 ~15% (Dashboard ✅, reszta w toku)
 
 ### Statystyki Kodu (Obecne)
-- **Linii kodu:** ~7,200 (+~1,500 Load Testing)
+- **Linii kodu:** ~7,200 Rust (+~1,500 Load Testing) + ~1,200 React/JSX
 - **Plików .rs:** 32 (src: 30, tests: 12, examples: 3)
+- **Plików frontend:** 13 (React components + config)
 - **Testy:** 76/76 passed (54 unit + 22 integration: 2 ACL + 7 API + 4 BIND + 1 IPv6 + 1 session + 3 UDP + 6 PAM + 7 LDAP groups)
 - **Load Tests:** 5 scenarios (1000 conn, 5000 conn, ACL perf, session overhead, DB throughput)
 - **Coverage:** ~87% (ACL >90%, API >85%, Auth >85%, Groups >90%)
 - **Binary size:** ~4.5 MB (release, estimated)
+- **Dashboard:** React 18 + Vite, 6 pages, dark theme
 
 ### Statystyki Docelowe (v1.0)
 - **Linii kodu:** ~8,000-10,000 (oszacowanie)
@@ -671,30 +707,54 @@
 
 ---
 
-**Ostatnia aktualizacja:** 2025-10-27 (22:30)
-**Wersja:** 0.6.0 (PAM Auth + LDAP Groups Complete)
-**Next Target:** 0.7.0 (Extended Metrics + systemd + Packaging)
+**Ostatnia aktualizacja:** 2025-10-28 (07:45)
+**Wersja:** 0.7.0 (Web Dashboard + Documentation Reorganization Complete)
+**Next Target:** 0.8.0 (Extended Metrics + systemd + Packaging)
 
 ## 🎉 Najnowsze Osiągnięcia
 
-### Sprint 3.7 - PAM Authentication ✅
-- Pełna integracja PAM (pam.address + pam.username)
-- Two-tier authentication (client-level + SOCKS-level)
-- Przykładowe pliki PAM service (`config/pam.d/`)
-- Cross-platform support (Unix + fallback)
-- 9 testów integracyjnych (6 passed, 3 ignored - wymagają PAM setup)
+### Sprint 3.9 - Web Dashboard ✅ (2025-10-28)
+- **Modern React 18 Dashboard** z Vite build system
+- **6 stron administracyjnych:**
+  - Dashboard - Real-time overview (stats, top users, destinations)
+  - Sessions - Live monitoring (active/history, auto-refresh 3s)
+  - ACL Rules - Browse groups & users with rules
+  - Users - User management & group memberships
+  - Statistics - Detailed analytics & bandwidth metrics
+  - Configuration - Health status, uptime, API docs
+- **Backend integration:**
+  - `swagger_enabled` / `dashboard_enabled` switches w config
+  - Static file serving z tower-http
+  - Conditional routing (API priority, dashboard fallback)
+- **Modern UI/UX:**
+  - Dark theme z custom CSS (no framework)
+  - Sidebar navigation
+  - Real-time updates
+  - Clean typography & responsive design
+- **Documentation reorganization:**
+  - `docs/` folder structure (guides/ + technical/ + examples/)
+  - Updated README.md (modern, concise)
+  - New .gitignore (Rust + Node.js stack)
+  - docs/README.md as central index
+
+**Kluczowe pliki:**
+- `dashboard/` - React frontend (src/pages/, vite.config.js)
+- `src/api/server.rs` - Backend with conditional routing
+- `docs/` - Reorganized documentation
+- `dashboard/README.md` - Complete dashboard guide
 
 ### Sprint 3.8 - LDAP Groups Integration ✅
 - **Dynamiczne pobieranie grup z LDAP** via `getgrouplist()` (NSS/SSSD)
 - **Smart filtering** - ACL sprawdza TYLKO grupy zdefiniowane w config
 - **Case-insensitive matching** - "developers" = "Developers" = "DEVELOPERS"
 - **Zero manual sync** - grupy z LDAP automatycznie mapowane do ACL
-- **Complete documentation** - `LDAP_GROUPS_GUIDE.md` (full setup guide)
+- **Complete documentation** - `docs/guides/ldap-groups.md`
 - **7 integration tests** - wszystkie przeszły ✅
 - **Production ready** - gotowe do deployment z SSSD/LDAP
 
-**Kluczowe pliki:**
-- `src/auth/groups.rs` - LDAP group resolution
-- `src/acl/engine.rs` - `evaluate_with_groups()` method
-- `tests/ldap_groups.rs` - 7 integration tests
-- `LDAP_GROUPS_GUIDE.md` - complete guide
+### Sprint 3.7 - PAM Authentication ✅
+- Pełna integracja PAM (pam.address + pam.username)
+- Two-tier authentication (client-level + SOCKS-level)
+- Przykładowe pliki PAM service (`config/pam.d/`)
+- Cross-platform support (Unix + fallback)
+- Documentation w `docs/technical/pam-authentication.md`

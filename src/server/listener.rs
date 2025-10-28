@@ -143,6 +143,8 @@ impl SocksServer {
                 bind_port: config.sessions.stats_api_port,
                 enable_api: true,
                 token: None,
+                swagger_enabled: config.sessions.swagger_enabled,
+                dashboard_enabled: config.sessions.dashboard_enabled,
             };
 
             let acl_config_path = if config.acl.enabled {
