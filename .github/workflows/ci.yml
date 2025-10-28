@@ -42,4 +42,52 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Run tests (skip performance benchmarks)
-        run: cargo test --locked --all-targets --features database -- --skip performance
+        id: cargo-tests
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          cargo test --locked --all-targets --features database -- --skip performance 2>&1 | tee cargo-test-output.log
+          exit "${PIPESTATUS[0]}"
+
+      - name: Summarize test results
+        if: always()
+        run: |
+          python <<'PY'
+import re
+from pathlib import Path
+
+log_path = Path("cargo-test-output.log")
+if not log_path.exists():
+    print("No cargo-test-output.log found.")
+    raise SystemExit(0)
+
+pattern = re.compile(r'(\d+)\s+(passed|failed|ignored|measured|filtered out)')
+labels = {
+    "passed": "passed",
+    "failed": "failed",
+    "ignored": "ignored",
+    "measured": "measured",
+    "filtered out": "filtered_out",
+}
+totals = {v: 0 for v in labels.values()}
+for line in log_path.read_text().splitlines():
+    if "test result:" not in line:
+        continue
+    for count, label in pattern.findall(line):
+        key = labels[label]
+        totals[key] += int(count)
+
+total_executed = totals["passed"] + totals["failed"]
+
+print(f"Test summary:")
+print(f"- Executed: {total_executed}")
+print(f"- Passed:   {totals['passed']}")
+print(f"- Failed:   {totals['failed']}")
+print(f"- Ignored:  {totals['ignored']}")
+print(f"- Measured: {totals['measured']}")
+print(f"- Skipped (filtered out): {totals['filtered_out']}")
+PY
+
+      - name: Fail if tests failed
+        if: steps.cargo-tests.outcome == 'failure'
+        run: exit 1
