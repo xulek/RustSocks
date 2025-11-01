@@ -15,10 +15,11 @@ import AclRules from './pages/AclRules'
 import UserManagement from './pages/UserManagement'
 import Statistics from './pages/Statistics'
 import Configuration from './pages/Configuration'
+import { ROUTER_BASENAME } from './lib/basePath'
 
 function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={ROUTER_BASENAME}>
       <div className="app">
         <aside className="sidebar">
           <div className="sidebar-header">

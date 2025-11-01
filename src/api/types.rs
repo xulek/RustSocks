@@ -169,6 +169,7 @@ pub struct ApiConfig {
     pub token: Option<String>,
     pub swagger_enabled: bool,
     pub dashboard_enabled: bool,
+    pub base_path: String,
 }
 
 impl Default for ApiConfig {
@@ -180,6 +181,7 @@ impl Default for ApiConfig {
             token: None,
             swagger_enabled: true,
             dashboard_enabled: false,
+            base_path: "/".to_string(),
         }
     }
 }

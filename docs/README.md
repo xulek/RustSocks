@@ -9,6 +9,7 @@ Complete documentation for RustSocks SOCKS5 proxy server.
 End-user focused documentation:
 
 - **[LDAP Groups Guide](guides/ldap-groups.md)** - How to configure and use LDAP group integration
+- **[Building with Base Path](guides/building-with-base-path.md)** - Complete guide for building and deploying with URL prefix
 
 ### Technical Documentation (`technical/`)
 

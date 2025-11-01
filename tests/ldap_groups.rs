@@ -8,7 +8,6 @@
 ///
 /// Note: These tests use mock LDAP groups (simulated arrays of strings).
 /// Real LDAP integration would require NSS/SSSD configuration.
-
 use rustsocks::acl::types::{AclRule, GlobalAclConfig, GroupAcl};
 use rustsocks::acl::{AclConfig, AclEngine, Action, Protocol};
 use rustsocks::protocol::Address;
@@ -74,9 +73,7 @@ async fn test_ldap_groups_only_defined_groups_are_checked() {
     // Should ALLOW because "developers" group matches and allows 10.0.0.0/8
     assert_eq!(decision, rustsocks::acl::AclDecision::Allow);
     assert!(matched_rule.is_some());
-    assert!(matched_rule
-        .unwrap()
-        .contains("Developers internal access"));
+    assert!(matched_rule.unwrap().contains("Developers internal access"));
 }
 
 #[tokio::test]
@@ -102,9 +99,7 @@ async fn test_ldap_groups_no_matching_groups_uses_default_policy() {
     assert_eq!(decision, rustsocks::acl::AclDecision::Block);
     assert!(matched_rule.is_some());
     let rule_desc = matched_rule.unwrap();
-    assert!(
-        rule_desc.contains("Default policy") || rule_desc.contains("no matching groups")
-    );
+    assert!(rule_desc.contains("Default policy") || rule_desc.contains("no matching groups"));
 }
 
 #[tokio::test]
@@ -127,9 +122,7 @@ async fn test_ldap_groups_case_insensitive_matching() {
     // Should ALLOW because case-insensitive matching: "Developers" = "developers"
     assert_eq!(decision, rustsocks::acl::AclDecision::Allow);
     assert!(matched_rule.is_some());
-    assert!(matched_rule
-        .unwrap()
-        .contains("Developers internal access"));
+    assert!(matched_rule.unwrap().contains("Developers internal access"));
 }
 
 #[tokio::test]

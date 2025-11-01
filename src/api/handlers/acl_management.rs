@@ -2,7 +2,6 @@
 ///
 /// These handlers provide REST API endpoints for managing ACL rules dynamically,
 /// including adding, updating, and deleting rules for groups and users.
-
 use crate::acl::crud::{self, RuleIdentifier, RuleSearchCriteria};
 use crate::acl::persistence;
 use crate::acl::types::{AclRule, Action, Protocol};
@@ -314,20 +313,21 @@ pub async fn update_group_rule(
     };
 
     // Update rule
-    let old_rule = match crud::update_group_rule(&mut config, &group_name, &identifier, new_rule.clone()) {
-        Ok(r) => r,
-        Err(e) => {
-            return (
-                StatusCode::NOT_FOUND,
-                Json(RuleOperationResponse {
-                    success: false,
-                    message: e,
-                    rule: None,
-                    old_rule: None,
-                }),
-            );
-        }
-    };
+    let old_rule =
+        match crud::update_group_rule(&mut config, &group_name, &identifier, new_rule.clone()) {
+            Ok(r) => r,
+            Err(e) => {
+                return (
+                    StatusCode::NOT_FOUND,
+                    Json(RuleOperationResponse {
+                        success: false,
+                        message: e,
+                        rule: None,
+                        old_rule: None,
+                    }),
+                );
+            }
+        };
 
     // Save and reload
     if let Err(e) = save_and_reload(&state, config).await {
@@ -806,20 +806,21 @@ pub async fn update_user_rule(
         }
     };
 
-    let old_rule = match crud::update_user_rule(&mut config, &username, &identifier, new_rule.clone()) {
-        Ok(r) => r,
-        Err(e) => {
-            return (
-                StatusCode::NOT_FOUND,
-                Json(RuleOperationResponse {
-                    success: false,
-                    message: e,
-                    rule: None,
-                    old_rule: None,
-                }),
-            );
-        }
-    };
+    let old_rule =
+        match crud::update_user_rule(&mut config, &username, &identifier, new_rule.clone()) {
+            Ok(r) => r,
+            Err(e) => {
+                return (
+                    StatusCode::NOT_FOUND,
+                    Json(RuleOperationResponse {
+                        success: false,
+                        message: e,
+                        rule: None,
+                        old_rule: None,
+                    }),
+                );
+            }
+        };
 
     if let Err(e) = save_and_reload(&state, config).await {
         return (

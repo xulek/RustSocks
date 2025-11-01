@@ -341,7 +341,11 @@ impl AclEngine {
     }
 
     /// Get list of LDAP groups that matched ACL groups (for debugging)
-    fn get_matched_groups(&self, config: &CompiledAclConfig, user_groups: &[String]) -> Vec<String> {
+    fn get_matched_groups(
+        &self,
+        config: &CompiledAclConfig,
+        user_groups: &[String],
+    ) -> Vec<String> {
         let mut matched = Vec::new();
 
         for ldap_group in user_groups {

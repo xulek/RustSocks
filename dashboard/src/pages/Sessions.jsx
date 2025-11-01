@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { RefreshCw } from 'lucide-react'
+import { getApiUrl } from '../lib/basePath'
 
 function Sessions() {
   const [sessions, setSessions] = useState([])
@@ -15,7 +16,7 @@ function Sessions() {
 
   const fetchSessions = async () => {
     try {
-      const endpoint = showActive ? '/api/sessions/active' : '/api/sessions/history'
+      const endpoint = showActive ? getApiUrl('/api/sessions/active') : getApiUrl('/api/sessions/history')
       const response = await fetch(endpoint)
       if (!response.ok) throw new Error('Failed to fetch sessions')
       const data = await response.json()

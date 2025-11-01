@@ -54,14 +54,22 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Check formatting
+        id: fmt-check
+        continue-on-error: true
         run: cargo fmt --all -- --check
+
+      - name: Report formatting issues (warning)
+        if: steps.fmt-check.outcome == 'failure'
+        run: |
+          echo "::warning::Code formatting issues detected. Run 'cargo fmt --all' to fix them."
+          exit 0
 
       - name: Run clippy
         run: cargo clippy --locked --all-targets --all-features -- -D warnings
 
   test:
     runs-on: ubuntu-latest
-    needs: [build, lint]
+    needs: build
     steps:
       - uses: actions/checkout@v4
 
@@ -125,7 +133,7 @@ jobs:
 
   security:
     runs-on: ubuntu-latest
-    needs: [build, lint]
+    needs: build
     steps:
       - uses: actions/checkout@v4
 

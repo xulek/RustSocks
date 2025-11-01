@@ -110,6 +110,8 @@ pub struct SessionSettings {
     pub swagger_enabled: bool,
     #[serde(default = "default_dashboard_enabled")]
     pub dashboard_enabled: bool,
+    #[serde(default = "default_base_path")]
+    pub base_path: String,
 }
 
 // Default values
@@ -221,6 +223,32 @@ fn default_dashboard_enabled() -> bool {
     false
 }
 
+fn default_base_path() -> String {
+    "/".to_string()
+}
+
+fn normalize_base_path(raw: &str) -> String {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() || trimmed == "/" {
+        return "/".to_string();
+    }
+
+    let mut normalized = String::new();
+    for segment in trimmed.split('/') {
+        if segment.is_empty() {
+            continue;
+        }
+        normalized.push('/');
+        normalized.push_str(segment);
+    }
+
+    if normalized.is_empty() {
+        "/".to_string()
+    } else {
+        normalized
+    }
+}
+
 impl Default for ServerConfig {
     fn default() -> Self {
         Self {
@@ -292,6 +320,7 @@ impl Default for SessionSettings {
             stats_api_port: default_stats_api_port(),
             swagger_enabled: default_swagger_enabled(),
             dashboard_enabled: default_dashboard_enabled(),
+            base_path: default_base_path(),
         }
     }
 }
@@ -302,10 +331,14 @@ impl Config {
         let content = std::fs::read_to_string(path.as_ref())
             .map_err(|e| RustSocksError::Config(format!("Failed to read config file: {}", e)))?;
 
-        let config: Config = toml::from_str(&content)
+        let mut config: Config = toml::from_str(&content)
             .map_err(|e| RustSocksError::Config(format!("Failed to parse config: {}", e)))?;
 
         config.validate()?;
+
+        // Normalize base path after validation so downstream components can rely on canonical form.
+        let normalized_base = config.sessions.normalized_base_path();
+        config.sessions.base_path = normalized_base;
 
         Ok(config)
     }
@@ -415,6 +448,25 @@ impl Config {
             ));
         }
 
+        if self.sessions.base_path.trim().is_empty() {
+            return Err(RustSocksError::Config(
+                "sessions.base_path cannot be empty".to_string(),
+            ));
+        }
+
+        if self.sessions.base_path.chars().any(|c| c.is_whitespace()) {
+            return Err(RustSocksError::Config(
+                "sessions.base_path cannot contain whitespace".to_string(),
+            ));
+        }
+
+        let normalized_base = self.sessions.normalized_base_path();
+        if !normalized_base.starts_with('/') {
+            return Err(RustSocksError::Config(
+                "sessions.base_path must resolve to an absolute path starting with '/'".to_string(),
+            ));
+        }
+
         Ok(())
     }
 
@@ -472,6 +524,7 @@ stats_api_bind_address = "127.0.0.1"
 stats_api_port = 9090
 swagger_enabled = true
 dashboard_enabled = false
+base_path = "/"
 
 [qos]
 enabled = false  # Enable QoS (Quality of Service) / Rate Limiting
@@ -518,6 +571,12 @@ max_connections_global = 10000
     }
 }
 
+impl SessionSettings {
+    pub fn normalized_base_path(&self) -> String {
+        normalize_base_path(&self.base_path)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -543,6 +602,8 @@ mod tests {
         assert_eq!(config.sessions.stats_api_port, 9090);
         assert!(config.sessions.swagger_enabled);
         assert!(!config.sessions.dashboard_enabled);
+        assert_eq!(config.sessions.base_path, "/");
+        assert_eq!(config.sessions.normalized_base_path(), "/");
     }
 
     #[test]
@@ -591,5 +652,16 @@ mod tests {
 
         config.sessions.stats_window_hours = 0;
         assert!(config.validate().is_err());
+
+        let mut config = Config::default();
+        config.sessions.base_path = "".to_string();
+        assert!(config.validate().is_err());
+
+        config.sessions.base_path = " rust".to_string();
+        assert!(config.validate().is_err());
+
+        config.sessions.base_path = "/rustsocks/".to_string();
+        assert!(config.validate().is_ok());
+        assert_eq!(config.sessions.normalized_base_path(), "/rustsocks");
     }
 }

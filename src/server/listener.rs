@@ -145,6 +145,7 @@ impl SocksServer {
                 token: None,
                 swagger_enabled: config.sessions.swagger_enabled,
                 dashboard_enabled: config.sessions.dashboard_enabled,
+                base_path: config.sessions.normalized_base_path(),
             };
 
             let acl_config_path = if config.acl.enabled {

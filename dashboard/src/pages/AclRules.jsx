@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { Shield, Plus, Trash2, Edit } from 'lucide-react'
+import { getApiUrl } from '../lib/basePath'
 
 function AclRules() {
   const [groups, setGroups] = useState([])
@@ -15,8 +16,8 @@ function AclRules() {
   const fetchAclData = async () => {
     try {
       const [groupsRes, usersRes] = await Promise.all([
-        fetch('/api/acl/groups'),
-        fetch('/api/acl/users')
+        fetch(getApiUrl('/api/acl/groups')),
+        fetch(getApiUrl('/api/acl/users'))
       ])
 
       if (!groupsRes.ok || !usersRes.ok) {
@@ -38,7 +39,7 @@ function AclRules() {
 
   const fetchGroupDetail = async (groupName) => {
     try {
-      const response = await fetch(`/api/acl/groups/${groupName}`)
+      const response = await fetch(getApiUrl(`/api/acl/groups/${groupName}`))
       if (!response.ok) throw new Error('Failed to fetch group details')
       const data = await response.json()
       setSelectedGroup(data)

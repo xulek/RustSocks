@@ -2,7 +2,6 @@
 ///
 /// These tests verify that the REST API endpoints for ACL management work correctly,
 /// including CRUD operations for groups, users, and global settings.
-
 use rustsocks::acl::types::{AclConfig, Action, GlobalAclConfig, GroupAcl};
 use rustsocks::acl::{load_config, save_config};
 use tempfile::TempDir;
@@ -123,8 +122,8 @@ async fn test_delete_group_rule() {
         ports: Some(vec!["443".to_string()]),
     };
 
-    let deleted = rustsocks::acl::crud::delete_group_rule(&mut config, "developers", &identifier)
-        .unwrap();
+    let deleted =
+        rustsocks::acl::crud::delete_group_rule(&mut config, "developers", &identifier).unwrap();
 
     // Verify rule was deleted
     assert_eq!(deleted.destinations[0], "*.example.com");
@@ -268,7 +267,10 @@ async fn test_add_user_rule() {
     assert_eq!(config.users.len(), 1);
     assert_eq!(config.users[0].username, "alice");
     assert_eq!(config.users[0].rules.len(), 1);
-    assert_eq!(config.users[0].rules[0].destinations[0], "admin.example.com");
+    assert_eq!(
+        config.users[0].rules[0].destinations[0],
+        "admin.example.com"
+    );
 }
 
 #[tokio::test]

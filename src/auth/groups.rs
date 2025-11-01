@@ -10,7 +10,6 @@
 /// 4. Irrelevant groups are ignored (no need to define thousands of LDAP groups)
 ///
 /// This approach is inspired by Dante SOCKS server's group handling.
-
 use std::ffi::CString;
 use tracing::{debug, warn};
 
@@ -35,9 +34,7 @@ pub fn get_user_groups(username: &str) -> Result<Vec<String>, std::io::Error> {
     // Lookup user to get UID and primary GID
     let user = User::from_name(username)
         .map_err(|e| std::io::Error::other(format!("User lookup failed: {}", e)))?
-        .ok_or_else(|| {
-            std::io::Error::other(format!("User not found in system: {}", username))
-        })?;
+        .ok_or_else(|| std::io::Error::other(format!("User not found in system: {}", username)))?;
 
     let gid = user.gid;
     let username_c = CString::new(username)
@@ -169,10 +166,7 @@ mod tests {
     #[cfg(not(unix))]
     fn test_get_user_groups_not_supported_on_non_unix() {
         let result = get_user_groups("testuser");
-        assert!(
-            result.is_err(),
-            "Should return error on non-Unix platforms"
-        );
+        assert!(result.is_err(), "Should return error on non-Unix platforms");
 
         let err = result.unwrap_err();
         assert!(

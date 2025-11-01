@@ -241,7 +241,11 @@ impl AclWatcher {
 
 impl Drop for AclWatcher {
     fn drop(&mut self) {
-        self.stop();
+        // Silently stop the watcher (don't log, as stop() may have been called explicitly)
+        if let Some(handle) = self.poll_handle.take() {
+            handle.abort();
+        }
+        self.watcher = None;
     }
 }
 

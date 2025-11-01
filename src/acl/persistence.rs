@@ -4,7 +4,6 @@
 /// - Atomic writes (write to temp, then rename)
 /// - Automatic backups before overwrite
 /// - Rollback capability on errors
-
 use super::types::AclConfig;
 use std::path::{Path, PathBuf};
 use tokio::fs;
@@ -18,10 +17,7 @@ use tracing::{debug, error, info, warn};
 /// 3. Validate config
 /// 4. Atomically rename temp file to target file
 /// 5. Delete backup on success
-pub async fn save_config<P: AsRef<Path>>(
-    config: &AclConfig,
-    path: P,
-) -> Result<(), String> {
+pub async fn save_config<P: AsRef<Path>>(config: &AclConfig, path: P) -> Result<(), String> {
     let path = path.as_ref();
 
     // 0. Validate config before saving
@@ -185,8 +181,8 @@ pub async fn load_config<P: AsRef<Path>>(path: P) -> Result<AclConfig, String> {
         .await
         .map_err(|e| format!("Failed to read ACL config file: {}", e))?;
 
-    let config: AclConfig = toml::from_str(&content)
-        .map_err(|e| format!("Failed to parse ACL config: {}", e))?;
+    let config: AclConfig =
+        toml::from_str(&content).map_err(|e| format!("Failed to parse ACL config: {}", e))?;
 
     // Validate
     config.validate()?;

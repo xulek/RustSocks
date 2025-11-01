@@ -45,6 +45,7 @@ stats_api_bind_address = "127.0.0.1"
 stats_api_port = 9090
 swagger_enabled = true      # Enable Swagger UI at /swagger-ui/
 dashboard_enabled = true    # Enable Web Dashboard at /
+base_path = "/rustsocks/"            # Base URL path prefix ("/" or e.g. "/rustsocks")
 
 [qos]
 enabled = true  # Enable QoS (Quality of Service) / Rate Limiting

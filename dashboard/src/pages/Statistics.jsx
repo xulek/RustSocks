@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { getApiUrl } from '../lib/basePath'
 
 function Statistics() {
   const [stats, setStats] = useState(null)
@@ -11,7 +12,7 @@ function Statistics() {
 
   const fetchStats = async () => {
     try {
-      const response = await fetch('/api/sessions/stats')
+      const response = await fetch(getApiUrl('/api/sessions/stats'))
       if (!response.ok) throw new Error('Failed to fetch statistics')
       const data = await response.json()
       setStats(data)

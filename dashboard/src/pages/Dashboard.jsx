@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { Activity, Users, Shield, TrendingUp } from 'lucide-react'
+import { getApiUrl } from '../lib/basePath'
 
 function Dashboard() {
   const [stats, setStats] = useState(null)
@@ -14,7 +15,7 @@ function Dashboard() {
 
   const fetchStats = async () => {
     try {
-      const response = await fetch('/api/sessions/stats')
+      const response = await fetch(getApiUrl('/api/sessions/stats'))
       if (!response.ok) throw new Error('Failed to fetch stats')
       const data = await response.json()
       setStats(data)

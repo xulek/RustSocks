@@ -195,7 +195,13 @@ async fn handle_socks5(
 
         // Use evaluate_with_groups() for dynamic LDAP group matching
         let (decision, matched_rule) = engine
-            .evaluate_with_groups(&acl_user, &user_groups, &request.address, request.port, &protocol)
+            .evaluate_with_groups(
+                &acl_user,
+                &user_groups,
+                &request.address,
+                request.port,
+                &protocol,
+            )
             .await;
 
         match decision {
@@ -407,7 +413,13 @@ async fn handle_socks4(
     if let Some(engine) = ctx.acl_engine.as_ref() {
         // Use evaluate_with_groups() for dynamic LDAP group matching
         let (decision, matched_rule) = engine
-            .evaluate_with_groups(&acl_user, &user_groups, &request.address, request.port, &Protocol::Tcp)
+            .evaluate_with_groups(
+                &acl_user,
+                &user_groups,
+                &request.address,
+                request.port,
+                &Protocol::Tcp,
+            )
             .await;
 
         match decision {

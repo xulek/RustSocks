@@ -1,7 +1,7 @@
 use axum::{
     extract::DefaultBodyLimit,
     http::StatusCode,
-    response::{Html, IntoResponse},
+    response::{Html, IntoResponse, Redirect},
     routing::{get, post},
     Json, Router,
 };
@@ -11,6 +11,7 @@ use std::path::Path;
 use std::sync::Arc;
 use tokio::net::TcpListener;
 use tokio::task::JoinHandle;
+use tower_http::normalize_path::NormalizePathLayer;
 use tower_http::services::ServeDir;
 use tracing::{error, info, warn};
 
@@ -31,9 +32,15 @@ use crate::api::types::ApiConfig;
 use crate::session::SessionManager;
 use crate::utils::error::{Result, RustSocksError};
 
-/// Serve Swagger UI HTML
-async fn swagger_ui() -> Html<&'static str> {
-    Html(
+/// Serve Swagger UI HTML with dynamic base path
+async fn swagger_ui(base_path: String) -> Html<String> {
+    let openapi_url = if base_path.is_empty() {
+        "/openapi.json".to_string()
+    } else {
+        format!("{}/openapi.json", base_path)
+    };
+
+    let html = format!(
         r#"<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -46,25 +53,34 @@ async fn swagger_ui() -> Html<&'static str> {
 <div id="swagger-ui"></div>
 <script src="https://unpkg.com/swagger-ui-dist@5.11.0/swagger-ui-bundle.js" crossorigin></script>
 <script>
-  window.onload = () => {
-    window.ui = SwaggerUIBundle({
-      url: '/openapi.json',
+  window.onload = () => {{
+    window.ui = SwaggerUIBundle({{
+      url: '{}',
       dom_id: '#swagger-ui',
-    });
-  };
+    }});
+  }};
 </script>
 </body>
 </html>"#,
-    )
+        openapi_url
+    );
+
+    Html(html)
 }
 
 /// OpenAPI spec endpoint
-async fn openapi_spec() -> impl IntoResponse {
-    (StatusCode::OK, Json(get_openapi_spec()))
+async fn openapi_spec(base_path: String) -> impl IntoResponse {
+    (StatusCode::OK, Json(get_openapi_spec(base_path)))
 }
 
 /// Generate OpenAPI specification
-fn get_openapi_spec() -> serde_json::Value {
+fn get_openapi_spec(base_path: String) -> serde_json::Value {
+    let server_url = if base_path.is_empty() {
+        "http://localhost:9090".to_string()
+    } else {
+        format!("http://localhost:9090{}", base_path)
+    };
+
     serde_json::json!({
         "openapi": "3.0.0",
         "info": {
@@ -77,7 +93,7 @@ fn get_openapi_spec() -> serde_json::Value {
         },
         "servers": [
             {
-                "url": "http://localhost:9090",
+                "url": server_url,
                 "description": "Development server"
             }
         ],
@@ -1022,6 +1038,26 @@ pub async fn start_api_server(
         return Err(RustSocksError::Config("API server disabled".to_string()));
     }
 
+    let base_path = if config.base_path.trim().is_empty() {
+        "/".to_string()
+    } else {
+        config.base_path.clone()
+    };
+    let base_prefix = if base_path == "/" {
+        ""
+    } else {
+        base_path.as_str()
+    };
+
+    info!(
+        "Mounting API router at base path '{}'",
+        if base_prefix.is_empty() {
+            "/"
+        } else {
+            base_prefix
+        }
+    );
+
     let state = ApiState {
         session_manager,
         acl_engine,
@@ -1033,10 +1069,26 @@ pub async fn start_api_server(
 
     // Conditionally add Swagger UI
     if config.swagger_enabled {
+        let base_for_swagger = base_prefix.to_string();
         app = app
-            .route("/swagger-ui/", get(swagger_ui))
-            .route("/openapi.json", get(openapi_spec));
-        info!("Swagger UI enabled at /swagger-ui/");
+            .route(
+                "/swagger-ui/",
+                get(move || swagger_ui(base_for_swagger.clone())),
+            )
+            .route("/swagger-ui", get({
+                let base_for_swagger = base_prefix.to_string();
+                move || swagger_ui(base_for_swagger.clone())
+            }))
+            .route("/openapi.json", get({
+                let base_for_openapi = base_prefix.to_string();
+                move || openapi_spec(base_for_openapi.clone())
+            }));
+        let swagger_mount = if base_prefix.is_empty() {
+            "/swagger-ui/".to_string()
+        } else {
+            format!("{}/swagger-ui/", base_prefix)
+        };
+        info!("Swagger UI enabled at {swagger_mount}");
     }
 
     // Add API routes
@@ -1058,27 +1110,77 @@ pub async fn start_api_server(
         .route("/api/acl/groups", get(list_groups))
         .route("/api/acl/groups", post(create_group))
         .route("/api/acl/groups/:groupname", get(get_group_detail))
-        .route("/api/acl/groups/:groupname", axum::routing::delete(delete_group))
+        .route(
+            "/api/acl/groups/:groupname",
+            axum::routing::delete(delete_group),
+        )
         .route("/api/acl/groups/:groupname/rules", post(add_group_rule))
-        .route("/api/acl/groups/:groupname/rules", axum::routing::put(update_group_rule))
-        .route("/api/acl/groups/:groupname/rules", axum::routing::delete(delete_group_rule))
+        .route(
+            "/api/acl/groups/:groupname/rules",
+            axum::routing::put(update_group_rule),
+        )
+        .route(
+            "/api/acl/groups/:groupname/rules",
+            axum::routing::delete(delete_group_rule),
+        )
         // ACL Management endpoints - Users
         .route("/api/acl/users", get(list_users))
         .route("/api/acl/users/:username", get(get_user_detail))
         .route("/api/acl/users/:username/rules", post(add_user_rule))
-        .route("/api/acl/users/:username/rules", axum::routing::put(update_user_rule))
-        .route("/api/acl/users/:username/rules", axum::routing::delete(delete_user_rule))
+        .route(
+            "/api/acl/users/:username/rules",
+            axum::routing::put(update_user_rule),
+        )
+        .route(
+            "/api/acl/users/:username/rules",
+            axum::routing::delete(delete_user_rule),
+        )
         // ACL Management endpoints - Global & Search
         .route("/api/acl/global", get(get_global_settings))
-        .route("/api/acl/global", axum::routing::put(update_global_settings))
+        .route(
+            "/api/acl/global",
+            axum::routing::put(update_global_settings),
+        )
         .route("/api/acl/search", post(search_rules));
 
     // Conditionally serve dashboard static files
     if config.dashboard_enabled {
         let dashboard_path = "dashboard/dist";
         if Path::new(dashboard_path).exists() {
-            info!("Dashboard enabled - serving static files from {}", dashboard_path);
-            app = app.fallback_service(ServeDir::new(dashboard_path));
+            info!(
+                "Dashboard enabled - serving static files from {}",
+                dashboard_path
+            );
+
+            let index_path = Path::new(dashboard_path).join("index.html");
+            let base_for_assets = base_prefix.to_string();
+
+            // Create ServeDir for assets directory only
+            let assets_path = format!("{}/assets", dashboard_path);
+            let assets_service = ServeDir::new(&assets_path);
+
+            // Handler for serving rewritten index.html (for SPA routing)
+            let serve_spa = move || {
+                let index_path = index_path.clone();
+                let base_prefix = base_for_assets.clone();
+                async move {
+                    match tokio::fs::read_to_string(&index_path).await {
+                        Ok(raw) => {
+                            let rewritten = rewrite_dashboard_index(&raw, &base_prefix);
+                            Ok::<_, StatusCode>(Html(rewritten))
+                        }
+                        Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
+                    }
+                }
+            };
+
+            // Mount assets directory at /assets
+            app = app.nest_service("/assets", assets_service);
+
+            // Serve index.html for root and all other paths (SPA routing)
+            // This must come AFTER all API routes are defined
+            app = app.route("/", get(serve_spa.clone()));
+            app = app.fallback(serve_spa);
         } else {
             warn!(
                 "Dashboard enabled but {} directory not found. Run 'cd dashboard && npm run build'",
@@ -1087,8 +1189,23 @@ pub async fn start_api_server(
         }
     }
 
-    // Layer with state and body limit
+    let app = if base_path == "/" {
+        app
+    } else {
+        // Add explicit redirect for root with trailing slash (Axum nest() limitation)
+        let base_path_with_slash = format!("{}/", base_path);
+        let redirect_target = base_path.clone();
+        Router::new()
+            .route(
+                &base_path_with_slash,
+                get(move || async move { Redirect::permanent(&redirect_target) }),
+            )
+            .nest(&base_path, app)
+    };
+
+    // Layer with state, body limit, and path normalization
     let app = app
+        .layer(NormalizePathLayer::trim_trailing_slash())
         .layer(DefaultBodyLimit::max(1024 * 1024)) // 1MB max body
         .with_state(state);
 
@@ -1098,14 +1215,22 @@ pub async fn start_api_server(
         .map_err(|e| RustSocksError::Config(format!("Invalid bind address: {}", e)))?;
 
     let listener = TcpListener::bind(&addr).await?;
-    info!("API server listening on http://{}", addr);
+
+    // Log base URL with base_path if present
+    let base_url = if base_prefix.is_empty() {
+        format!("http://{}", addr)
+    } else {
+        format!("http://{}{}", addr, base_prefix)
+    };
+
+    info!("API server listening on {}", base_url);
 
     if config.swagger_enabled {
-        info!("Swagger UI available at http://{}/swagger-ui/", addr);
+        info!("Swagger UI available at {}/swagger-ui/", base_url);
     }
 
     if config.dashboard_enabled {
-        info!("Admin dashboard available at http://{}/", addr);
+        info!("Dashboard available at {}", base_url);
     }
 
     let handle = tokio::spawn(async move {
@@ -1116,4 +1241,65 @@ pub async fn start_api_server(
     });
 
     Ok(handle)
+}
+
+fn rewrite_dashboard_index(original: &str, base_prefix: &str) -> String {
+    let mut rewritten = if base_prefix.is_empty() {
+        original.to_string()
+    } else {
+        original
+            // Rewrite absolute paths
+            .replace(
+                "href=\"/assets/",
+                &format!("href=\"{}/assets/", base_prefix),
+            )
+            .replace(
+                "src=\"/assets/",
+                &format!("src=\"{}/assets/", base_prefix),
+            )
+            // Rewrite relative paths (Vite builds with base: './')
+            .replace(
+                "href=\"./assets/",
+                &format!("href=\"{}/assets/", base_prefix),
+            )
+            .replace(
+                "src=\"./assets/",
+                &format!("src=\"{}/assets/", base_prefix),
+            )
+            // Rewrite favicon paths
+            .replace(
+                "href=\"/vite.svg\"",
+                &format!("href=\"{}/vite.svg\"", base_prefix),
+            )
+            .replace(
+                "src=\"/vite.svg\"",
+                &format!("src=\"{}/vite.svg\"", base_prefix),
+            )
+            .replace(
+                "href=\"./vite.svg\"",
+                &format!("href=\"{}/vite.svg\"", base_prefix),
+            )
+            .replace(
+                "src=\"./vite.svg\"",
+                &format!("src=\"{}/vite.svg\"", base_prefix),
+            )
+    };
+
+    inject_base_path_script(&mut rewritten, base_prefix);
+    rewritten
+}
+
+fn inject_base_path_script(html: &mut String, base_prefix: &str) {
+    let marker = "</head>";
+    if let Some(idx) = html.find(marker) {
+        let script = if base_prefix.is_empty() {
+            "<script>window.__RUSTSOCKS_BASE_PATH__ = '';</script>".to_string()
+        } else {
+            format!(
+                "<script>window.__RUSTSOCKS_BASE_PATH__ = '{}';</script>",
+                base_prefix
+            )
+        };
+        html.insert_str(idx, &script);
+    }
 }

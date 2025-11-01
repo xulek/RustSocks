@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { getApiUrl } from '../lib/basePath'
 
 function UserManagement() {
   const [users, setUsers] = useState([])
@@ -11,7 +12,7 @@ function UserManagement() {
 
   const fetchUsers = async () => {
     try {
-      const response = await fetch('/api/acl/users')
+      const response = await fetch(getApiUrl('/api/acl/users'))
       if (!response.ok) throw new Error('Failed to fetch users')
       const data = await response.json()
       setUsers(data.users || [])

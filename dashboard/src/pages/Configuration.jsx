@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { Server, Shield, Database, Settings } from 'lucide-react'
+import { getApiUrl, BASE_PATH } from '../lib/basePath'
 
 function Configuration() {
   const [health, setHealth] = useState(null)
@@ -12,7 +13,7 @@ function Configuration() {
 
   const fetchHealth = async () => {
     try {
-      const response = await fetch('/health')
+      const response = await fetch(getApiUrl('/health'))
       if (!response.ok) throw new Error('Failed to fetch health')
       const data = await response.json()
       setHealth(data)
@@ -84,7 +85,8 @@ stats_api_enabled = true
 swagger_enabled = true
 dashboard_enabled = true
 stats_api_bind_address = "127.0.0.1"
-stats_api_port = 9090`}
+stats_api_port = 9090
+base_path = "/"  # Adjust to "/rustsocks" when serving behind a prefix`}
           </pre>
         </div>
       </div>
@@ -103,35 +105,35 @@ stats_api_port = 9090`}
             </thead>
             <tbody>
               <tr>
-                <td><code>/health</code></td>
+                <td><code>{BASE_PATH ? `${BASE_PATH}/health` : '/health'}</code></td>
                 <td>Health check and server status</td>
               </tr>
               <tr>
-                <td><code>/metrics</code></td>
+                <td><code>{BASE_PATH ? `${BASE_PATH}/metrics` : '/metrics'}</code></td>
                 <td>Prometheus metrics</td>
               </tr>
               <tr>
-                <td><code>/api/sessions/active</code></td>
+                <td><code>{BASE_PATH ? `${BASE_PATH}/api/sessions/active` : '/api/sessions/active'}</code></td>
                 <td>List active SOCKS5 sessions</td>
               </tr>
               <tr>
-                <td><code>/api/sessions/history</code></td>
+                <td><code>{BASE_PATH ? `${BASE_PATH}/api/sessions/history` : '/api/sessions/history'}</code></td>
                 <td>Session history with filtering</td>
               </tr>
               <tr>
-                <td><code>/api/sessions/stats</code></td>
+                <td><code>{BASE_PATH ? `${BASE_PATH}/api/sessions/stats` : '/api/sessions/stats'}</code></td>
                 <td>Aggregated session statistics</td>
               </tr>
               <tr>
-                <td><code>/api/acl/groups</code></td>
+                <td><code>{BASE_PATH ? `${BASE_PATH}/api/acl/groups` : '/api/acl/groups'}</code></td>
                 <td>List ACL groups</td>
               </tr>
               <tr>
-                <td><code>/api/acl/users</code></td>
+                <td><code>{BASE_PATH ? `${BASE_PATH}/api/acl/users` : '/api/acl/users'}</code></td>
                 <td>List users with ACL rules</td>
               </tr>
               <tr>
-                <td><code>/swagger-ui/</code></td>
+                <td><code>{BASE_PATH ? `${BASE_PATH}/swagger-ui/` : '/swagger-ui/'}</code></td>
                 <td>Interactive API documentation</td>
               </tr>
             </tbody>

@@ -49,6 +49,8 @@ npm run build
 
 Built files will be in `dashboard/dist/` directory.
 
+> **Note:** When deploying with a URL base path (e.g., `/rustsocks`), see [Building with Base Path Guide](../docs/guides/building-with-base-path.md) for complete instructions.
+
 ## Configuration
 
 ### Enable Dashboard in RustSocks
@@ -62,11 +64,18 @@ dashboard_enabled = true
 swagger_enabled = true
 stats_api_bind_address = "127.0.0.1"
 stats_api_port = 9090
+base_path = "/"  # Options: "/" or "/rustsocks" or any custom path
 ```
 
 ### Serve Dashboard from RustSocks
 
 The dashboard is served automatically when `dashboard_enabled = true` and the `dashboard/dist/` directory exists.
+
+**URL Base Path Support:**
+- `base_path = "/"` - Dashboard at `http://host:9090/`
+- `base_path = "/rustsocks"` - Dashboard at `http://host:9090/rustsocks`
+
+For detailed instructions on building and deploying with custom base paths, see [Building with Base Path Guide](../docs/guides/building-with-base-path.md).
 
 ## Dashboard Pages
 

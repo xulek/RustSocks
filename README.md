@@ -87,6 +87,7 @@ curl -x socks5://127.0.0.1:1080 http://example.com
 
 - **[User Guides](docs/guides/)** - Przewodniki użytkownika
   - [LDAP Groups Guide](docs/guides/ldap-groups.md)
+  - [Building with Base Path](docs/guides/building-with-base-path.md) - Deployment z prefixem URL
 
 - **[Technical Documentation](docs/technical/)** - Szczegóły implementacji
   - [ACL Engine](docs/technical/acl-engine.md)
@@ -116,14 +117,18 @@ stats_api_port = 9090
 - **Swagger UI**: http://127.0.0.1:9090/swagger-ui/
 - **API**: http://127.0.0.1:9090/api/*
 
-### Development
+> Zmień `sessions.base_path`, aby wystawić interfejs pod prefiksowaną ścieżką (np. `/rustsocks`). Wszystkie powyższe adresy zostaną automatycznie uzupełnione tym prefiksem.
+
+### Development & Building
 
 ```bash
 cd dashboard
 npm install
-npm run dev  # Development server on :3000
-npm run build  # Production build
+npm run dev    # Development server on :3000
+npm run build  # Production build → dashboard/dist/
 ```
+
+> **Deployment z prefixem URL:** Szczegółowe instrukcje w [Building with Base Path Guide](docs/guides/building-with-base-path.md)
 
 **Funkcje dashboardu:**
 - 📊 Real-time session monitoring
@@ -182,6 +187,7 @@ enabled = true
 storage = "sqlite"
 database_url = "sqlite://sessions.db"
 stats_api_enabled = true
+base_path = "/"  # Base URL prefix for API/dashboard (e.g. "/" or "/rustsocks")
 ```
 
 ## 🔌 REST API

@@ -12,7 +12,6 @@
 /// ```bash
 /// sudo cargo test --all-features pam -- --ignored --nocapture
 /// ```
-
 use rustsocks::auth::AuthManager;
 use rustsocks::config::{AuthConfig, PamSettings, User};
 use std::net::IpAddr;
@@ -175,8 +174,7 @@ mod non_unix_tests {
 
         let err = result.unwrap_err();
         assert!(
-            err.to_string().contains("not supported")
-                || err.to_string().contains("not available"),
+            err.to_string().contains("not supported") || err.to_string().contains("not available"),
             "Error should indicate PAM is not supported"
         );
     }

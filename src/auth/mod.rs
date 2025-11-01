@@ -1,11 +1,11 @@
 mod groups;
 mod pam;
 
-pub use groups::get_user_groups;
 use self::pam::{PamAuthError, PamAuthenticator, PamMethod};
 use crate::config::AuthConfig;
 use crate::protocol::{parse_userpass_auth, send_auth_response, AuthMethod};
 use crate::utils::error::{Result, RustSocksError};
+pub use groups::get_user_groups;
 use std::collections::HashMap;
 use std::net::IpAddr;
 use tokio::net::TcpStream;

@@ -773,6 +773,41 @@ Dashboard is served automatically from `dashboard/dist/` when:
 
 Access dashboard at: `http://127.0.0.1:9090/`
 
+### URL Base Path Support
+
+RustSocks supports deploying under a custom URL prefix:
+
+```toml
+[sessions]
+base_path = "/rustsocks"  # Options: "/", "/rustsocks", "/proxy", etc.
+```
+
+**How it works:**
+- Backend nests all routes under the prefix
+- Frontend auto-detects base path from injected `window.__RUSTSOCKS_BASE_PATH__`
+- React Router uses `basename` for client-side routing
+- All API calls automatically include the prefix via `getApiUrl()`
+
+**Build process:**
+```bash
+# 1. Set base_path in config
+# 2. Build frontend
+cd dashboard && npm run build
+
+# 3. Build backend
+cargo build --release
+
+# 4. Run server
+./target/release/rustsocks --config config/rustsocks.toml
+```
+
+**URLs with base_path = "/rustsocks":**
+- Dashboard: `http://127.0.0.1:9090/rustsocks`
+- API: `http://127.0.0.1:9090/rustsocks/api/`
+- Swagger: `http://127.0.0.1:9090/rustsocks/swagger-ui/`
+
+For detailed instructions including nginx reverse proxy setup, see [Building with Base Path Guide](docs/guides/building-with-base-path.md).
+
 ### Dashboard Pages
 
 - **Dashboard**: Real-time overview with session stats, top users, top destinations

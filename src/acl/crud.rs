@@ -2,7 +2,6 @@
 ///
 /// This module provides functions to add, update, and delete ACL rules
 /// using destination + port as unique identifiers instead of indices.
-
 use super::types::{AclConfig, AclRule, GroupAcl, UserAcl};
 use serde::{Deserialize, Serialize};
 use tracing::{debug, info};
@@ -109,10 +108,7 @@ pub fn add_group_rule(
             name: group_name.to_string(),
             rules: vec![rule.clone()],
         });
-        info!(
-            group = group_name,
-            "Created new group and added rule"
-        );
+        info!(group = group_name, "Created new group and added rule");
     }
 
     Ok(())
@@ -218,11 +214,7 @@ pub fn delete_group(config: &mut AclConfig, group_name: &str) -> Result<GroupAcl
 /// Add a new rule to a user
 ///
 /// Creates the user entry if it doesn't exist.
-pub fn add_user_rule(
-    config: &mut AclConfig,
-    username: &str,
-    rule: AclRule,
-) -> Result<(), String> {
+pub fn add_user_rule(config: &mut AclConfig, username: &str, rule: AclRule) -> Result<(), String> {
     // Check if rule with same identifier already exists
     let identifier = RuleIdentifier::from_rule(&rule);
     if find_rule_in_user(config, username, &identifier).is_some() {
@@ -346,10 +338,7 @@ pub struct RuleSearchResult {
 }
 
 /// Search for rules matching criteria across all groups and users
-pub fn search_rules(
-    config: &AclConfig,
-    criteria: &RuleSearchCriteria,
-) -> Vec<RuleSearchResult> {
+pub fn search_rules(config: &AclConfig, criteria: &RuleSearchCriteria) -> Vec<RuleSearchResult> {
     let mut results = Vec::new();
 
     // Search in groups
