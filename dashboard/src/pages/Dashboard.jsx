@@ -1,8 +1,19 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { ArrowUpRight } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { getApiUrl } from '../lib/basePath'
 import { formatBytes, formatDuration } from '../lib/format'
+import {
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  CartesianGrid,
+  XAxis,
+  YAxis,
+  Tooltip,
+  AreaChart,
+  Area
+} from 'recharts'
 
 function Dashboard() {
   const [stats, setStats] = useState(null)
@@ -10,7 +21,22 @@ function Dashboard() {
   const [error, setError] = useState(null)
   const [health, setHealth] = useState(null)
   const [healthError, setHealthError] = useState(null)
+  const [statsHistory, setStatsHistory] = useState([])
   const navigate = useNavigate()
+  const bandwidthSeries = useMemo(() => {
+    if (statsHistory.length === 0) return []
+    return statsHistory.map((point, index) => {
+      if (index === 0) {
+        return { ...point, mbTransferred: 0 }
+      }
+      const prev = statsHistory[index - 1]
+      const delta = Math.max(point.bandwidth - prev.bandwidth, 0)
+      return {
+        ...point,
+        mbTransferred: Number((delta / (1024 * 1024)).toFixed(2))
+      }
+    })
+  }, [statsHistory])
 
   const fetchStats = useCallback(async () => {
     try {
@@ -19,6 +45,18 @@ function Dashboard() {
       const data = await response.json()
       setStats(data)
       setError(null)
+
+      setStatsHistory((prev) => {
+        const nextPoint = {
+          timestamp: new Date().toISOString(),
+          active: data.active_sessions,
+          total: data.total_sessions,
+          bandwidth: data.total_bytes_sent + data.total_bytes_received
+        }
+        const next = [...prev, nextPoint]
+        // Limit history to last 24 samples (~2 minutes with 5s polling)
+        return next.slice(-24)
+      })
     } catch (err) {
       setError(err.message)
     } finally {
@@ -124,6 +162,99 @@ function Dashboard() {
       )}
       {healthError && (
         <div className="error">Health check unavailable: {healthError}</div>
+      )}
+
+      {statsHistory.length > 1 && (
+        <div className="chart-grid">
+          <div className="card">
+            <div className="card-header">
+              <h3>Sesje w czasie</h3>
+            </div>
+            <div className="chart-wrapper">
+              <ResponsiveContainer width="100%" height={260}>
+                <LineChart data={statsHistory}>
+                  <CartesianGrid stroke="rgba(148, 163, 184, 0.2)" strokeDasharray="3 3" />
+                  <XAxis
+                    dataKey="timestamp"
+                    tickFormatter={(value) => new Date(value).toLocaleTimeString()}
+                    stroke="var(--text-secondary)"
+                    tick={{ fontSize: 12 }}
+                  />
+                  <YAxis
+                    stroke="var(--text-secondary)"
+                    tick={{ fontSize: 12 }}
+                    allowDecimals={false}
+                  />
+                  <Tooltip
+                    labelFormatter={(value) => new Date(value).toLocaleTimeString()}
+                    formatter={(val, name) => [
+                      val,
+                      name === 'active' ? 'Aktywne' : 'Łącznie'
+                    ]}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="active"
+                    stroke="#38bdf8"
+                    strokeWidth={2}
+                    dot={false}
+                    name="Aktywne"
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="total"
+                    stroke="#c084fc"
+                    strokeWidth={1.5}
+                    dot={false}
+                    name="Łącznie"
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          <div className="card">
+            <div className="card-header">
+              <h3>Przepustowość łączna</h3>
+            </div>
+            <div className="chart-wrapper">
+              <ResponsiveContainer width="100%" height={260}>
+                <AreaChart data={bandwidthSeries}>
+                  <defs>
+                    <linearGradient id="bandwidthGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#22d3ee" stopOpacity={0.8} />
+                      <stop offset="95%" stopColor="#22d3ee" stopOpacity={0.1} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid stroke="rgba(148, 163, 184, 0.2)" strokeDasharray="3 3" />
+                  <XAxis
+                    dataKey="timestamp"
+                    tickFormatter={(value) => new Date(value).toLocaleTimeString()}
+                    stroke="var(--text-secondary)"
+                    tick={{ fontSize: 12 }}
+                  />
+                  <YAxis
+                    stroke="var(--text-secondary)"
+                    tick={{ fontSize: 12 }}
+                    tickFormatter={(value) => `${value} MB`}
+                    allowDecimals={false}
+                  />
+                  <Tooltip
+                    labelFormatter={(value) => new Date(value).toLocaleTimeString()}
+                    formatter={(val) => [`${val} MB`, 'Transfer']}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="mbTransferred"
+                    stroke="#22d3ee"
+                    fill="url(#bandwidthGradient)"
+                    name="Transfer (MB)"
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        </div>
       )}
 
       <div className="card">

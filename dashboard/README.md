@@ -6,6 +6,7 @@ Modern web-based admin dashboard for RustSocks SOCKS5 proxy server.
 
 - **Real-time Session Monitoring**: View active and historical SOCKS5 sessions with live updates
 - **Advanced Session Tools**: Filter historical traffic, paginate results, export CSV, and inspect detailed session metadata
+- **Live Telemetry Charts**: Interaktywne wykresy liczby sesji i przepustowości z odświeżaniem co kilka sekund
 - **ACL Management**: Browse and view Access Control List rules for groups and users
 - **ACL Toolbox**: Test ACL decisions and trigger live reloads without restarting the service
 - **User Management**: Manage users and their group memberships
@@ -94,6 +95,7 @@ For detailed instructions on building and deploying with custom base paths, see 
 - Active/total session counters with real-time updates
 - Inline health status (status, version, uptime)
 - Quick actions in top tables to jump into filtered session history
+- Live charts dla liczby sesji oraz przyrostów przepustowości
 - Total bandwidth tracker
 - Refreshes automatically every 5 seconds
 
