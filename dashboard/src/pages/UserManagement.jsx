@@ -1,10 +1,14 @@
 import React, { useState, useEffect } from 'react'
+import { Eye } from 'lucide-react'
 import { getApiUrl } from '../lib/basePath'
+import UserDetailModal from '../components/UserDetailModal'
 
 function UserManagement() {
   const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [selectedUser, setSelectedUser] = useState(null)
+  const [detailOpen, setDetailOpen] = useState(false)
 
   useEffect(() => {
     fetchUsers()
@@ -22,6 +26,11 @@ function UserManagement() {
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleViewUserDetails = (user) => {
+    setSelectedUser(user)
+    setDetailOpen(true)
   }
 
   if (loading) return <div className="loading">Loading users...</div>
@@ -43,6 +52,7 @@ function UserManagement() {
                 <th>Username</th>
                 <th>Groups</th>
                 <th>ACL Rules</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -61,11 +71,21 @@ function UserManagement() {
                     )}
                   </td>
                   <td>{user.rule_count} rules</td>
+                  <td>
+                    <button
+                      type="button"
+                      className="icon-button"
+                      title="View user details and sessions"
+                      onClick={() => handleViewUserDetails(user)}
+                    >
+                      <Eye size={16} />
+                    </button>
+                  </td>
                 </tr>
               ))}
               {users.length === 0 && (
                 <tr>
-                  <td colSpan="3" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
+                  <td colSpan="4" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
                     No users configured
                   </td>
                 </tr>
@@ -74,6 +94,15 @@ function UserManagement() {
           </table>
         </div>
       </div>
+
+      <UserDetailModal
+        open={detailOpen}
+        user={selectedUser}
+        onClose={() => {
+          setDetailOpen(false)
+          setSelectedUser(null)
+        }}
+      />
     </div>
   )
 }

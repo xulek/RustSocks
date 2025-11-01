@@ -49,3 +49,7 @@ destinations = ["*.prod.company.com"]
 ports = ["22"]
 protocols = ["tcp"]
 priority = 200
+
+[[groups]]
+name = "test"
+rules = []

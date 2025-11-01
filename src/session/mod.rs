@@ -1,5 +1,6 @@
 #[cfg(feature = "database")]
 pub mod batch;
+pub mod history;
 pub mod manager;
 #[cfg(feature = "metrics")]
 pub mod metrics;
@@ -9,6 +10,7 @@ pub mod types;
 
 #[cfg(feature = "database")]
 pub use batch::{BatchConfig, BatchWriter};
+pub use history::{start_metrics_collector, MetricsHistory, MetricsSnapshot};
 pub use manager::SessionManager;
 #[cfg(feature = "metrics")]
 pub use metrics::SessionMetrics;

@@ -47,6 +47,13 @@ swagger_enabled = true      # Enable Swagger UI at /swagger-ui/
 dashboard_enabled = true    # Enable Web Dashboard at /
 base_path = "/rustsocks/"            # Base URL path prefix ("/" or e.g. "/rustsocks")
 
+[metrics]
+enabled = true              # Enable metrics collection
+storage = "sqlite"          # Options: "memory", "sqlite" (uses sessions.database_url)
+retention_hours = 24        # Keep metrics for 24 hours
+cleanup_interval_hours = 6  # Cleanup old metrics every 6 hours
+collection_interval_secs = 5  # Collect metrics every 5 seconds
+
 [qos]
 enabled = true  # Enable QoS (Quality of Service) / Rate Limiting
 algorithm = "htb"  # Options: "htb" (Hierarchical Token Bucket with fair sharing)

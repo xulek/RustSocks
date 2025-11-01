@@ -24,8 +24,8 @@ use crate::api::handlers::{
     },
     management::{get_acl_rules, get_metrics, health_check, reload_acl, test_acl_decision},
     sessions::{
-        get_active_sessions, get_session_detail, get_session_history, get_session_stats,
-        get_user_sessions,
+        get_active_sessions, get_metrics_history, get_session_detail, get_session_history,
+        get_session_stats, get_user_sessions,
     },
 };
 use crate::api::types::ApiConfig;
@@ -1032,6 +1032,7 @@ pub async fn start_api_server(
     session_manager: Arc<SessionManager>,
     acl_engine: Option<Arc<crate::acl::AclEngine>>,
     acl_config_path: Option<String>,
+    metrics_history: Option<Arc<crate::session::MetricsHistory>>,
 ) -> Result<JoinHandle<()>> {
     if !config.enable_api {
         info!("API server disabled");
@@ -1068,6 +1069,7 @@ pub async fn start_api_server(
         start_time: std::time::Instant::now(),
         #[cfg(feature = "database")]
         session_store,
+        metrics_history,
     };
 
     // Build router with all endpoints
@@ -1114,6 +1116,7 @@ pub async fn start_api_server(
         .route("/api/sessions/stats", get(get_session_stats))
         .route("/api/sessions/:id", get(get_session_detail))
         .route("/api/users/:user/sessions", get(get_user_sessions))
+        .route("/api/metrics/history", get(get_metrics_history))
         // Management endpoints
         .route("/api/admin/reload-acl", post(reload_acl))
         .route("/api/acl/rules", get(get_acl_rules))

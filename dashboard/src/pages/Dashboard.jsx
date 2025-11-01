@@ -11,6 +11,7 @@ import {
   XAxis,
   YAxis,
   Tooltip,
+  Legend,
   AreaChart,
   Area
 } from 'recharts'
@@ -22,25 +23,73 @@ function Dashboard() {
   const [health, setHealth] = useState(null)
   const [healthError, setHealthError] = useState(null)
   const [statsHistory, setStatsHistory] = useState([])
+
+  // Load timeRange from localStorage
+  const [timeRange, setTimeRange] = useState(() => {
+    try {
+      const stored = localStorage.getItem('rustsocks_dashboard_timerange')
+      if (stored) {
+        const parsed = parseInt(stored, 10)
+        if (!isNaN(parsed) && parsed > 0) {
+          return parsed
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to load timeRange from localStorage:', e)
+    }
+    return 15 // default: 15 minutes
+  })
   const navigate = useNavigate()
+
+  // Oblicz zakres czasu dla osi X
+  const timeWindow = useMemo(() => {
+    if (statsHistory.length === 0) return { start: Date.now() - timeRange * 60 * 1000, end: Date.now() }
+
+    const lastPoint = statsHistory[statsHistory.length - 1]
+    const endTime = new Date(lastPoint.timestamp).getTime()
+    const startTime = endTime - timeRange * 60 * 1000
+
+    return { start: startTime, end: endTime }
+  }, [statsHistory, timeRange])
 
   const chartHistory = useMemo(() => {
     if (statsHistory.length === 0) {
       return []
     }
 
-    if (statsHistory.length === 1) {
-      const single = statsHistory[0]
-      const baseTime = new Date(single.timestamp)
-      const earlier = new Date(baseTime.getTime() - 1000).toISOString()
+    // Filtruj dane według wybranego zakresu czasowego
+    const cutoffTime = timeWindow.start
+
+    const filteredHistory = statsHistory
+      .filter(point => {
+        const pointTime = new Date(point.timestamp).getTime()
+        return pointTime >= cutoffTime
+      })
+      .map(point => ({
+        ...point,
+        timestamp: new Date(point.timestamp).getTime() // Konwertuj na milisekundy dla XAxis
+      }))
+
+    if (filteredHistory.length === 0 && statsHistory.length > 0) {
+      // Jeśli po filtrowaniu nie ma danych, pokaż ostatni punkt
+      const last = statsHistory[statsHistory.length - 1]
+      return [{
+        ...last,
+        timestamp: new Date(last.timestamp).getTime()
+      }]
+    }
+
+    if (filteredHistory.length === 1) {
+      const single = filteredHistory[0]
+      const earlier = single.timestamp - 1000
       return [
         { ...single, timestamp: earlier },
         single
       ]
     }
 
-    return statsHistory
-  }, [statsHistory])
+    return filteredHistory
+  }, [statsHistory, timeWindow])
 
   const bandwidthSeries = useMemo(() => {
     if (chartHistory.length === 0) return []
@@ -64,22 +113,30 @@ function Dashboard() {
       const data = await response.json()
       setStats(data)
       setError(null)
-
-      setStatsHistory((prev) => {
-        const nextPoint = {
-          timestamp: new Date().toISOString(),
-          active: data.active_sessions,
-          total: data.total_sessions,
-          bandwidth: data.total_bytes_sent + data.total_bytes_received
-        }
-        const next = [...prev, nextPoint]
-        // Limit history to last 24 samples (~2 minutes with 5s polling)
-        return next.slice(-24)
-      })
     } catch (err) {
       setError(err.message)
     } finally {
       setLoading(false)
+    }
+  }, [])
+
+  const fetchMetricsHistory = useCallback(async () => {
+    try {
+      const response = await fetch(getApiUrl('/api/metrics/history'))
+      if (!response.ok) throw new Error('Failed to fetch metrics history')
+      const data = await response.json()
+
+      // Transform backend data to frontend format
+      const transformed = data.map(snapshot => ({
+        timestamp: snapshot.timestamp,
+        active: snapshot.active_sessions,
+        total: snapshot.total_sessions,
+        bandwidth: snapshot.bandwidth
+      }))
+
+      setStatsHistory(transformed)
+    } catch (err) {
+      console.warn('Failed to fetch metrics history:', err)
     }
   }, [])
 
@@ -98,15 +155,29 @@ function Dashboard() {
 
   useEffect(() => {
     fetchStats()
-    const interval = setInterval(fetchStats, 5000) // Refresh every 5 seconds
-    return () => clearInterval(interval)
-  }, [fetchStats])
+    fetchMetricsHistory()
+    const statsInterval = setInterval(fetchStats, 5000) // Refresh every 5 seconds
+    const historyInterval = setInterval(fetchMetricsHistory, 5000) // Refresh history every 5 seconds
+    return () => {
+      clearInterval(statsInterval)
+      clearInterval(historyInterval)
+    }
+  }, [fetchStats, fetchMetricsHistory])
 
   useEffect(() => {
     fetchHealth()
     const interval = setInterval(fetchHealth, 15000)
     return () => clearInterval(interval)
   }, [fetchHealth])
+
+  // Save timeRange to localStorage when it changes
+  useEffect(() => {
+    try {
+      localStorage.setItem('rustsocks_dashboard_timerange', timeRange.toString())
+    } catch (e) {
+      console.warn('Failed to save timeRange to localStorage:', e)
+    }
+  }, [timeRange])
 
   const navigateToSessions = (params) => {
     const search = new URLSearchParams({ view: 'history' })
@@ -184,17 +255,46 @@ function Dashboard() {
       )}
 
       {chartHistory.length > 0 && (
-        <div className="chart-grid">
+        <>
           <div className="card">
             <div className="card-header">
-              <h3>Sesje w czasie</h3>
+              <h3>Zakres czasowy wykresów</h3>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                {[
+                  { label: '5 min', value: 5 },
+                  { label: '15 min', value: 15 },
+                  { label: '30 min', value: 30 },
+                  { label: '1h', value: 60 },
+                  { label: '2h', value: 120 }
+                ].map(option => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    className={`btn ${timeRange === option.value ? 'btn-primary' : ''}`}
+                    onClick={() => setTimeRange(option.value)}
+                    style={{ padding: '6px 12px', fontSize: '14px' }}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
             </div>
+          </div>
+
+          <div className="chart-grid">
+            <div className="card">
+              <div className="card-header">
+                <h3>Sesje w czasie</h3>
+              </div>
             <div className="chart-wrapper">
               <ResponsiveContainer width="100%" height={260}>
                 <LineChart data={chartHistory}>
                   <CartesianGrid stroke="rgba(148, 163, 184, 0.2)" strokeDasharray="3 3" />
                   <XAxis
                     dataKey="timestamp"
+                    domain={[timeWindow.start, timeWindow.end]}
+                    scale="time"
+                    type="number"
                     tickFormatter={(value) => new Date(value).toLocaleTimeString()}
                     stroke="var(--text-secondary)"
                     tick={{ fontSize: 12 }}
@@ -206,11 +306,8 @@ function Dashboard() {
                   />
                   <Tooltip
                     labelFormatter={(value) => new Date(value).toLocaleTimeString()}
-                    formatter={(val, name) => [
-                      val,
-                      name === 'active' ? 'Aktywne' : 'Łącznie'
-                    ]}
                   />
+                  <Legend />
                   <Line
                     type="monotone"
                     dataKey="active"
@@ -218,14 +315,6 @@ function Dashboard() {
                     strokeWidth={2}
                     dot={chartHistory.length <= 2}
                     name="Aktywne"
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="total"
-                    stroke="#c084fc"
-                    strokeWidth={1.5}
-                    dot={chartHistory.length <= 2}
-                    name="Łącznie"
                   />
                 </LineChart>
               </ResponsiveContainer>
@@ -248,6 +337,9 @@ function Dashboard() {
                   <CartesianGrid stroke="rgba(148, 163, 184, 0.2)" strokeDasharray="3 3" />
                   <XAxis
                     dataKey="timestamp"
+                    domain={[timeWindow.start, timeWindow.end]}
+                    scale="time"
+                    type="number"
                     tickFormatter={(value) => new Date(value).toLocaleTimeString()}
                     stroke="var(--text-secondary)"
                     tick={{ fontSize: 12 }}
@@ -274,6 +366,7 @@ function Dashboard() {
             </div>
           </div>
         </div>
+        </>
       )}
 
       <div className="card">

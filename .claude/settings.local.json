@@ -77,7 +77,8 @@
       "Bash(/root/.cargo/bin/cargo clippy --all-features -- -D warnings)",
       "Bash(cargo audit:*)",
       "Bash(cargo install:*)",
-      "Bash(cargo update:*)"
+      "Bash(cargo update:*)",
+      "Bash(npm run build:*)"
     ],
     "deny": [],
     "ask": []

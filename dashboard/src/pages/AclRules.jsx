@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Play, RefreshCcw } from 'lucide-react'
+import { Play, RefreshCcw, Plus, X, Edit2, Trash2 } from 'lucide-react'
 import { getApiUrl } from '../lib/basePath'
 
 function AclRules() {
@@ -8,6 +8,28 @@ function AclRules() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [selectedGroup, setSelectedGroup] = useState(null)
+
+  // Create group modal
+  const [showCreateGroup, setShowCreateGroup] = useState(false)
+  const [newGroupName, setNewGroupName] = useState('')
+  const [createGroupLoading, setCreateGroupLoading] = useState(false)
+  const [createGroupError, setCreateGroupError] = useState(null)
+
+  // Add/Edit rule to group
+  const [showAddRuleToGroup, setShowAddRuleToGroup] = useState(false)
+  const [editingRuleIndex, setEditingRuleIndex] = useState(null)
+  const [ruleForm, setRuleForm] = useState({
+    action: 'allow',
+    description: '',
+    destinations: '',
+    ports: '',
+    protocols: ['tcp'],
+    priority: 50
+  })
+  const [addRuleLoading, setAddRuleLoading] = useState(false)
+  const [addRuleError, setAddRuleError] = useState(null)
+
+  // Test ACL
   const [testForm, setTestForm] = useState({
     user: '',
     destination: '',
@@ -111,6 +133,200 @@ function AclRules() {
     }
   }
 
+  const handleCreateGroup = async (e) => {
+    e.preventDefault()
+    if (!newGroupName.trim()) {
+      setCreateGroupError('Nazwa grupy jest wymagana')
+      return
+    }
+
+    setCreateGroupLoading(true)
+    setCreateGroupError(null)
+    try {
+      const response = await fetch(getApiUrl('/api/acl/groups'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newGroupName.trim() })
+      })
+
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(data?.message || 'Nie udało się stworzyć grupę')
+      }
+
+      setNewGroupName('')
+      setShowCreateGroup(false)
+      await fetchAclData()
+    } catch (err) {
+      setCreateGroupError(err.message)
+    } finally {
+      setCreateGroupLoading(false)
+    }
+  }
+
+  const handleAddRuleChange = (field, value) => {
+    setRuleForm(prev => ({
+      ...prev,
+      [field]: value
+    }))
+  }
+
+  const handleAddRuleToGroup = async (e) => {
+    e.preventDefault()
+    if (!selectedGroup) {
+      setAddRuleError('Wybierz grupę')
+      return
+    }
+
+    const destinations = ruleForm.destinations
+      .split(',')
+      .map(d => d.trim())
+      .filter(d => d.length > 0)
+
+    const ports = ruleForm.ports
+      .split(',')
+      .map(p => p.trim())
+      .filter(p => p.length > 0)
+
+    if (destinations.length === 0 || ports.length === 0) {
+      setAddRuleError('Podaj adresy i porty')
+      return
+    }
+
+    setAddRuleLoading(true)
+    setAddRuleError(null)
+    try {
+      const url = getApiUrl(`/api/acl/groups/${selectedGroup.name}/rules`)
+
+      let body
+      if (editingRuleIndex !== null) {
+        // UPDATE - musimy wysłać match (oryginalną regułę) i update (nową regułę)
+        const originalRule = selectedGroup.rules[editingRuleIndex]
+        body = JSON.stringify({
+          match: {
+            destinations: originalRule.destinations,
+            ports: originalRule.ports
+          },
+          update: {
+            action: ruleForm.action,
+            description: ruleForm.description || 'Custom rule',
+            destinations,
+            ports,
+            protocols: ruleForm.protocols,
+            priority: Number(ruleForm.priority)
+          }
+        })
+      } else {
+        // POST - zwykłe dodanie
+        body = JSON.stringify({
+          action: ruleForm.action,
+          description: ruleForm.description || 'Custom rule',
+          destinations,
+          ports,
+          protocols: ruleForm.protocols,
+          priority: Number(ruleForm.priority)
+        })
+      }
+
+      const response = await fetch(url, {
+        method: editingRuleIndex !== null ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body
+      })
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}))
+        throw new Error(data?.message || `Nie udało się ${editingRuleIndex !== null ? 'edytować' : 'dodać'} reguły`)
+      }
+
+      setRuleForm({
+        action: 'allow',
+        description: '',
+        destinations: '',
+        ports: '',
+        protocols: ['tcp'],
+        priority: 50
+      })
+      setEditingRuleIndex(null)
+      setShowAddRuleToGroup(false)
+      await fetchAclData()
+      if (selectedGroup) {
+        await fetchGroupDetail(selectedGroup.name)
+      }
+    } catch (err) {
+      setAddRuleError(err.message)
+    } finally {
+      setAddRuleLoading(false)
+    }
+  }
+
+  const handleEditRule = (rule, index) => {
+    setEditingRuleIndex(index)
+    setRuleForm({
+      action: rule.action,
+      description: rule.description,
+      destinations: rule.destinations.join(', '),
+      ports: rule.ports.join(', '),
+      protocols: rule.protocols,
+      priority: rule.priority
+    })
+    setShowAddRuleToGroup(true)
+  }
+
+  const handleDeleteRule = async (rule) => {
+    if (!selectedGroup) return
+    if (!window.confirm('Czy na pewno chcesz usunąć tę regułę?')) return
+
+    try {
+      const response = await fetch(
+        getApiUrl(`/api/acl/groups/${selectedGroup.name}/rules`),
+        {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            destinations: rule.destinations,
+            ports: rule.ports
+          })
+        }
+      )
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}))
+        throw new Error(data?.message || 'Nie udało się usunąć reguły')
+      }
+
+      await fetchAclData()
+      if (selectedGroup) {
+        await fetchGroupDetail(selectedGroup.name)
+      }
+    } catch (err) {
+      alert(`Błąd: ${err.message}`)
+    }
+  }
+
+  const handleDeleteGroup = async (groupName) => {
+    if (!window.confirm(`Czy na pewno chcesz usunąć grupę "${groupName}"?`)) return
+
+    try {
+      const response = await fetch(
+        getApiUrl(`/api/acl/groups/${groupName}`),
+        { method: 'DELETE' }
+      )
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}))
+        throw new Error(data?.message || 'Nie udało się usunąć grupy')
+      }
+
+      if (selectedGroup?.name === groupName) {
+        setSelectedGroup(null)
+      }
+      await fetchAclData()
+    } catch (err) {
+      alert(`Błąd: ${err.message}`)
+    }
+  }
+
   const handleReloadAcl = async () => {
     setReloadLoading(true)
     setReloadStatus(null)
@@ -156,6 +372,14 @@ function AclRules() {
         <div className="card">
           <div className="card-header">
             <h3>Groups</h3>
+            <button
+              className="btn btn-primary"
+              onClick={() => setShowCreateGroup(true)}
+              style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 16px' }}
+            >
+              <Plus size={16} />
+              <span>Nowa grupa</span>
+            </button>
           </div>
           <div>
             {groups.map((group, idx) => (
@@ -166,15 +390,33 @@ function AclRules() {
                   marginBottom: '8px',
                   backgroundColor: selectedGroup?.name === group.name ? 'rgba(59, 130, 246, 0.2)' : 'transparent',
                   borderRadius: '8px',
-                  cursor: 'pointer',
-                  border: '1px solid var(--border)'
+                  border: '1px solid var(--border)',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center'
                 }}
-                onClick={() => fetchGroupDetail(group.name)}
               >
-                <div style={{ fontWeight: 'bold' }}>{group.name}</div>
-                <div style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>
-                  {group.rule_count} rules
+                <div
+                  style={{ flex: 1, cursor: 'pointer' }}
+                  onClick={() => fetchGroupDetail(group.name)}
+                >
+                  <div style={{ fontWeight: 'bold' }}>{group.name}</div>
+                  <div style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>
+                    {group.rule_count} rules
+                  </div>
                 </div>
+                <button
+                  type="button"
+                  className="icon-button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    handleDeleteGroup(group.name)
+                  }}
+                  title="Usuń grupę"
+                  style={{ color: 'var(--danger)' }}
+                >
+                  <Trash2 size={16} />
+                </button>
               </div>
             ))}
             {groups.length === 0 && (
@@ -189,6 +431,16 @@ function AclRules() {
         <div className="card">
           <div className="card-header">
             <h3>{selectedGroup ? selectedGroup.name : 'Select a group'}</h3>
+            {selectedGroup && (
+              <button
+                className="btn btn-primary"
+                onClick={() => setShowAddRuleToGroup(true)}
+                style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 16px' }}
+              >
+                <Plus size={16} />
+                <span>Dodaj regułę</span>
+              </button>
+            )}
           </div>
           {selectedGroup ? (
             <div className="table-container">
@@ -201,6 +453,7 @@ function AclRules() {
                     <th>Ports</th>
                     <th>Protocol</th>
                     <th>Priority</th>
+                    <th>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -216,11 +469,32 @@ function AclRules() {
                       <td><code>{rule.ports.join(', ')}</code></td>
                       <td>{rule.protocols.join(', ')}</td>
                       <td>{rule.priority}</td>
+                      <td>
+                        <div style={{ display: 'flex', gap: '4px' }}>
+                          <button
+                            type="button"
+                            className="icon-button"
+                            onClick={() => handleEditRule(rule, idx)}
+                            title="Edytuj regułę"
+                          >
+                            <Edit2 size={14} />
+                          </button>
+                          <button
+                            type="button"
+                            className="icon-button"
+                            onClick={() => handleDeleteRule(rule)}
+                            title="Usuń regułę"
+                            style={{ color: 'var(--danger)' }}
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </td>
                     </tr>
                   ))}
                   {selectedGroup.rules.length === 0 && (
                     <tr>
-                      <td colSpan="6" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
+                      <td colSpan="7" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
                         No rules configured for this group
                       </td>
                     </tr>
@@ -371,6 +645,170 @@ function AclRules() {
           </div>
         </div>
       </div>
+
+      {/* Modal: Create Group */}
+      {showCreateGroup && (
+        <div className="modal-overlay">
+          <div className="modal" style={{ width: '100%', maxWidth: '400px' }}>
+            <div className="modal-header">
+              <h3>Nowa grupa</h3>
+              <button
+                type="button"
+                className="icon-button"
+                onClick={() => setShowCreateGroup(false)}
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <form onSubmit={handleCreateGroup}>
+              <div className="modal-content">
+                <div className="form-group">
+                  <label>Nazwa grupy</label>
+                  <input
+                    type="text"
+                    value={newGroupName}
+                    onChange={(e) => setNewGroupName(e.target.value)}
+                    placeholder="np. developers"
+                    autoFocus
+                  />
+                </div>
+                {createGroupError && <div className="error" style={{ marginTop: '12px' }}>{createGroupError}</div>}
+              </div>
+              <div className="modal-footer">
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() => setShowCreateGroup(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  disabled={createGroupLoading}
+                >
+                  {createGroupLoading ? 'Creating...' : 'Create'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Add Rule to Group */}
+      {showAddRuleToGroup && selectedGroup && (
+        <div className="modal-overlay">
+          <div className="modal" style={{ width: '100%', maxWidth: '540px' }}>
+            <div className="modal-header">
+              <h3>{editingRuleIndex !== null ? 'Edytuj regułę' : 'Dodaj regułę'} - grupa "{selectedGroup.name}"</h3>
+              <button
+                type="button"
+                className="icon-button"
+                onClick={() => {
+                  setShowAddRuleToGroup(false)
+                  setEditingRuleIndex(null)
+                }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <form onSubmit={handleAddRuleToGroup}>
+              <div className="modal-content">
+                <div className="form-group">
+                  <label>Akcja</label>
+                  <select
+                    value={ruleForm.action}
+                    onChange={(e) => handleAddRuleChange('action', e.target.value)}
+                  >
+                    <option value="allow">Allow</option>
+                    <option value="block">Block</option>
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label>Opis</label>
+                  <input
+                    type="text"
+                    value={ruleForm.description}
+                    onChange={(e) => handleAddRuleChange('description', e.target.value)}
+                    placeholder="np. Allow GitHub"
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Adresy docelowe (oddzielone przecinkami)</label>
+                  <input
+                    type="text"
+                    value={ruleForm.destinations}
+                    onChange={(e) => handleAddRuleChange('destinations', e.target.value)}
+                    placeholder="np. github.com, 192.168.0.0/16, *.example.com"
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Porty (oddzielone przecinkami lub zakresy)</label>
+                  <input
+                    type="text"
+                    value={ruleForm.ports}
+                    onChange={(e) => handleAddRuleChange('ports', e.target.value)}
+                    placeholder="np. 80,443,8000-9000, *"
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Protokół</label>
+                  <div style={{ display: 'flex', gap: '12px' }}>
+                    {['tcp', 'udp', 'both'].map(proto => (
+                      <label key={proto} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <input
+                          type="checkbox"
+                          checked={ruleForm.protocols.includes(proto)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              handleAddRuleChange('protocols', [...ruleForm.protocols, proto])
+                            } else {
+                              handleAddRuleChange('protocols', ruleForm.protocols.filter(p => p !== proto))
+                            }
+                          }}
+                        />
+                        {proto.toUpperCase()}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                <div className="form-group">
+                  <label>Priorytet</label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="1000"
+                    value={ruleForm.priority}
+                    onChange={(e) => handleAddRuleChange('priority', e.target.value)}
+                  />
+                </div>
+                {addRuleError && <div className="error" style={{ marginTop: '12px' }}>{addRuleError}</div>}
+              </div>
+              <div className="modal-footer">
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() => {
+                    setShowAddRuleToGroup(false)
+                    setEditingRuleIndex(null)
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  disabled={addRuleLoading}
+                >
+                  {addRuleLoading
+                    ? (editingRuleIndex !== null ? 'Updating...' : 'Adding...')
+                    : (editingRuleIndex !== null ? 'Update Rule' : 'Add Rule')}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

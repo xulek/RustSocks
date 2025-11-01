@@ -13,6 +13,8 @@ pub struct Config {
     #[serde(default)]
     pub sessions: SessionSettings,
     #[serde(default)]
+    pub metrics: MetricsSettings,
+    #[serde(default)]
     pub qos: crate::qos::QosConfig,
 }
 
@@ -112,6 +114,20 @@ pub struct SessionSettings {
     pub dashboard_enabled: bool,
     #[serde(default = "default_base_path")]
     pub base_path: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MetricsSettings {
+    #[serde(default = "default_metrics_enabled")]
+    pub enabled: bool,
+    #[serde(default = "default_metrics_storage")]
+    pub storage: String, // "memory" or "sqlite"
+    #[serde(default = "default_metrics_retention_hours")]
+    pub retention_hours: u64,
+    #[serde(default = "default_metrics_cleanup_interval_hours")]
+    pub cleanup_interval_hours: u64,
+    #[serde(default = "default_metrics_collection_interval_secs")]
+    pub collection_interval_secs: u64,
 }
 
 // Default values
@@ -227,6 +243,26 @@ fn default_base_path() -> String {
     "/".to_string()
 }
 
+fn default_metrics_enabled() -> bool {
+    true
+}
+
+fn default_metrics_storage() -> String {
+    "memory".to_string()
+}
+
+fn default_metrics_retention_hours() -> u64 {
+    24
+}
+
+fn default_metrics_cleanup_interval_hours() -> u64 {
+    6
+}
+
+fn default_metrics_collection_interval_secs() -> u64 {
+    5
+}
+
 fn normalize_base_path(raw: &str) -> String {
     let trimmed = raw.trim();
     if trimmed.is_empty() || trimmed == "/" {
@@ -321,6 +357,18 @@ impl Default for SessionSettings {
             swagger_enabled: default_swagger_enabled(),
             dashboard_enabled: default_dashboard_enabled(),
             base_path: default_base_path(),
+        }
+    }
+}
+
+impl Default for MetricsSettings {
+    fn default() -> Self {
+        Self {
+            enabled: default_metrics_enabled(),
+            storage: default_metrics_storage(),
+            retention_hours: default_metrics_retention_hours(),
+            cleanup_interval_hours: default_metrics_cleanup_interval_hours(),
+            collection_interval_secs: default_metrics_collection_interval_secs(),
         }
     }
 }
@@ -467,6 +515,26 @@ impl Config {
             ));
         }
 
+        // Validate metrics configuration
+        if !matches!(self.metrics.storage.as_str(), "memory" | "sqlite") {
+            return Err(RustSocksError::Config(format!(
+                "Invalid metrics storage: {}. Supported: memory, sqlite",
+                self.metrics.storage
+            )));
+        }
+
+        if self.metrics.cleanup_interval_hours == 0 {
+            return Err(RustSocksError::Config(
+                "metrics.cleanup_interval_hours must be greater than 0".to_string(),
+            ));
+        }
+
+        if self.metrics.collection_interval_secs == 0 {
+            return Err(RustSocksError::Config(
+                "metrics.collection_interval_secs must be greater than 0".to_string(),
+            ));
+        }
+
         Ok(())
     }
 
@@ -525,6 +593,13 @@ stats_api_port = 9090
 swagger_enabled = true
 dashboard_enabled = false
 base_path = "/"
+
+[metrics]
+enabled = true              # Enable metrics collection
+storage = "memory"          # Options: "memory", "sqlite" (uses sessions.database_url)
+retention_hours = 24        # Keep metrics for 24 hours
+cleanup_interval_hours = 6  # Cleanup old metrics every 6 hours
+collection_interval_secs = 5  # Collect metrics every 5 seconds
 
 [qos]
 enabled = false  # Enable QoS (Quality of Service) / Rate Limiting

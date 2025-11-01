@@ -6,7 +6,7 @@ use crate::config::Config;
 use crate::qos::QosEngine;
 use crate::server::handler::{handle_client, ClientHandlerContext};
 use crate::server::proxy::TrafficUpdateConfig;
-use crate::session::SessionManager;
+use crate::session::{start_metrics_collector, MetricsHistory, SessionManager};
 #[cfg(feature = "database")]
 use crate::session::{BatchConfig, SessionStore};
 use crate::utils::error::{Result, RustSocksError};
@@ -154,11 +154,79 @@ impl SocksServer {
                 None
             };
 
+            // Initialize metrics history based on config
+            let metrics_history = if config.metrics.enabled {
+                let max_snapshots = (config.metrics.retention_hours * 3600
+                    / config.metrics.collection_interval_secs) as usize;
+                let max_age_hours = config.metrics.retention_hours as i64;
+
+                let history = Arc::new(MetricsHistory::new(max_snapshots, max_age_hours));
+                let history_clone = history.clone();
+                let manager_clone = session_manager.clone();
+                let collection_interval = config.metrics.collection_interval_secs;
+
+                // Determine if we should persist to database
+                #[cfg(feature = "database")]
+                let use_database = config.metrics.storage == "sqlite"
+                    && session_manager.as_ref().session_store().is_some();
+
+                #[cfg(not(feature = "database"))]
+                let _use_database = false;
+
+                #[cfg(feature = "database")]
+                let store_for_collector = if use_database {
+                    session_manager.as_ref().session_store()
+                } else {
+                    None
+                };
+
+                #[cfg(feature = "database")]
+                tokio::spawn(async move {
+                    start_metrics_collector(
+                        manager_clone,
+                        history_clone,
+                        store_for_collector,
+                        collection_interval,
+                    )
+                    .await;
+                });
+
+                #[cfg(not(feature = "database"))]
+                tokio::spawn(async move {
+                    start_metrics_collector(manager_clone, history_clone, collection_interval)
+                        .await;
+                });
+
+                // Start metrics cleanup task if using database
+                #[cfg(feature = "database")]
+                if use_database {
+                    if let Some(store) = session_manager.as_ref().session_store() {
+                        store.spawn_metrics_cleanup(
+                            config.metrics.retention_hours,
+                            config.metrics.cleanup_interval_hours,
+                        );
+                    }
+                }
+
+                info!(
+                    storage = %config.metrics.storage,
+                    retention_hours = config.metrics.retention_hours,
+                    collection_interval_secs = config.metrics.collection_interval_secs,
+                    "Metrics collection initialized"
+                );
+
+                Some(history)
+            } else {
+                info!("Metrics collection disabled");
+                None
+            };
+
             match start_api_server(
                 api_config,
                 session_manager.clone(),
                 acl_engine.clone(),
                 acl_config_path,
+                metrics_history,
             )
             .await
             {

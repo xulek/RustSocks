@@ -440,7 +440,153 @@ impl SessionStore {
             interval_hours, "Session cleanup task started"
         );
     }
+
+    /// Insert a metrics snapshot.
+    pub async fn insert_metric(
+        &self,
+        timestamp: &DateTime<Utc>,
+        active_sessions: u64,
+        total_sessions: u64,
+        bandwidth: u64,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            r#"
+            INSERT INTO metrics_snapshots (timestamp, active_sessions, total_sessions, bandwidth)
+            VALUES (?, ?, ?, ?)
+            "#,
+        )
+        .bind(timestamp.to_rfc3339())
+        .bind(active_sessions as i64)
+        .bind(total_sessions as i64)
+        .bind(bandwidth as i64)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    /// Query metrics snapshots within a time range.
+    pub async fn query_metrics(
+        &self,
+        start: Option<&DateTime<Utc>>,
+        limit: Option<u64>,
+    ) -> Result<Vec<MetricsSnapshot>, sqlx::Error> {
+        let mut query = String::from(
+            r#"
+            SELECT timestamp, active_sessions, total_sessions, bandwidth
+            FROM metrics_snapshots
+            WHERE 1=1
+            "#,
+        );
+
+        if start.is_some() {
+            query.push_str(" AND datetime(timestamp) >= datetime(?)");
+        }
+
+        query.push_str(" ORDER BY timestamp DESC");
+
+        if let Some(limit_val) = limit {
+            query.push_str(&format!(" LIMIT {}", limit_val));
+        }
+
+        let mut q = sqlx::query_as::<_, MetricSnapshotRow>(&query);
+
+        if let Some(start_time) = start {
+            q = q.bind(start_time.to_rfc3339());
+        }
+
+        let rows = q.fetch_all(&self.pool).await?;
+
+        rows.into_iter()
+            .map(|row| row.into_metric())
+            .collect::<Result<Vec<_>, _>>()
+    }
+
+    /// Cleanup old metrics snapshots.
+    pub async fn cleanup_old_metrics(&self, retention_hours: u64) -> Result<u64, sqlx::Error> {
+        if retention_hours == 0 {
+            return Ok(0);
+        }
+
+        let cutoff = Utc::now() - ChronoDuration::hours(retention_hours as i64);
+
+        let affected = sqlx::query(
+            r#"
+            DELETE FROM metrics_snapshots
+            WHERE datetime(timestamp) < datetime(?);
+            "#,
+        )
+        .bind(cutoff.to_rfc3339())
+        .execute(&self.pool)
+        .await?
+        .rows_affected();
+
+        Ok(affected)
+    }
+
+    /// Spawn background task to cleanup old metrics.
+    pub fn spawn_metrics_cleanup(
+        self: &Arc<Self>,
+        retention_hours: u64,
+        interval_hours: u64,
+    ) {
+        if retention_hours == 0 {
+            info!("Metrics cleanup disabled (retention_hours = 0)");
+            return;
+        }
+
+        let interval_secs = interval_hours.max(1) * 3600;
+        let store = Arc::clone(self);
+
+        tokio::spawn(async move {
+            let mut ticker = interval(Duration::from_secs(interval_secs));
+            ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
+
+            loop {
+                ticker.tick().await;
+
+                match store.cleanup_old_metrics(retention_hours).await {
+                    Ok(affected) => {
+                        if affected > 0 {
+                            debug!(affected, "Metrics cleanup removed old records");
+                        }
+                    }
+                    Err(e) => {
+                        warn!(error = %e, "Metrics cleanup task failed");
+                    }
+                }
+            }
+        });
+
+        info!(
+            retention_hours,
+            interval_hours, "Metrics cleanup task started"
+        );
+    }
 }
+
+#[derive(Debug, FromRow)]
+struct MetricSnapshotRow {
+    timestamp: String,
+    active_sessions: i64,
+    total_sessions: i64,
+    bandwidth: i64,
+}
+
+impl MetricSnapshotRow {
+    fn into_metric(self) -> Result<MetricsSnapshot, sqlx::Error> {
+        let timestamp = parse_datetime("timestamp", &self.timestamp)?;
+
+        Ok(MetricsSnapshot {
+            timestamp,
+            active_sessions: self.active_sessions as u64,
+            total_sessions: self.total_sessions as u64,
+            bandwidth: self.bandwidth as u64,
+        })
+    }
+}
+
+use super::history::MetricsSnapshot;
 
 #[derive(Debug, FromRow)]
 struct SessionRow {

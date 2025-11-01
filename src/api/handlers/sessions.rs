@@ -28,6 +28,7 @@ pub struct ApiState {
     pub start_time: std::time::Instant,
     #[cfg(feature = "database")]
     pub session_store: Option<Arc<crate::session::SessionStore>>,
+    pub metrics_history: Option<Arc<crate::session::MetricsHistory>>,
 }
 
 /// GET /api/sessions/active - Get active sessions
@@ -411,6 +412,38 @@ pub async fn get_user_sessions(
         .collect();
 
     (StatusCode::OK, Json(user_sessions))
+}
+
+/// GET /api/metrics/history - Get historical metrics snapshots
+pub async fn get_metrics_history(
+    State(state): State<ApiState>,
+) -> (StatusCode, Json<Vec<crate::session::MetricsSnapshot>>) {
+    // Try to load from database first (persistent)
+    #[cfg(feature = "database")]
+    if let Some(store) = state.session_store.as_ref() {
+        // Get last 2 hours of metrics (1440 snapshots @ 5s intervals)
+        match store.query_metrics(None, Some(1440)).await {
+            Ok(mut snapshots) => {
+                // Reverse to get chronological order (query returns DESC)
+                snapshots.reverse();
+                return (StatusCode::OK, Json(snapshots));
+            }
+            Err(e) => {
+                warn!(
+                    error = %e,
+                    "Failed to load metrics from database, falling back to in-memory"
+                );
+            }
+        }
+    }
+
+    // Fallback to in-memory history
+    if let Some(history) = state.metrics_history.as_ref() {
+        let snapshots = history.get_snapshots().await;
+        (StatusCode::OK, Json(snapshots))
+    } else {
+        (StatusCode::OK, Json(Vec::new()))
+    }
 }
 
 /// Helper function to convert internal Session to API SessionResponse
