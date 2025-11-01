@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Shield, Plus, Trash2, Edit } from 'lucide-react'
+import { Play, RefreshCcw } from 'lucide-react'
 import { getApiUrl } from '../lib/basePath'
 
 function AclRules() {
@@ -8,6 +8,17 @@ function AclRules() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [selectedGroup, setSelectedGroup] = useState(null)
+  const [testForm, setTestForm] = useState({
+    user: '',
+    destination: '',
+    port: '',
+    protocol: 'tcp'
+  })
+  const [testResult, setTestResult] = useState(null)
+  const [testLoading, setTestLoading] = useState(false)
+  const [testError, setTestError] = useState(null)
+  const [reloadStatus, setReloadStatus] = useState(null)
+  const [reloadLoading, setReloadLoading] = useState(false)
 
   useEffect(() => {
     fetchAclData()
@@ -45,6 +56,87 @@ function AclRules() {
       setSelectedGroup(data)
     } catch (err) {
       setError(err.message)
+    }
+  }
+
+  const handleTestChange = (field, value) => {
+    setTestForm((prev) => ({
+      ...prev,
+      [field]: value
+    }))
+  }
+
+  const handleTestSubmit = async (event) => {
+    event.preventDefault()
+    setTestError(null)
+    setTestResult(null)
+
+    if (!testForm.user.trim() || !testForm.destination.trim() || !testForm.port) {
+      setTestError('Uzupełnij użytkownika, adres i port.')
+      return
+    }
+
+    const portValue = Number(testForm.port)
+    if (Number.isNaN(portValue) || portValue <= 0 || portValue > 65535) {
+      setTestError('Port musi być liczbą z zakresu 1-65535.')
+      return
+    }
+
+    setTestLoading(true)
+    try {
+      const response = await fetch(getApiUrl('/api/acl/test'), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          user: testForm.user.trim(),
+          destination: testForm.destination.trim(),
+          port: portValue,
+          protocol: testForm.protocol
+        })
+      })
+
+      const data = await response.json().catch(() => null)
+      if (!response.ok) {
+        throw new Error(data?.matched_rule || data?.message || 'ACL test failed')
+      }
+
+      setTestResult(data)
+      setTestError(null)
+    } catch (err) {
+      setTestError(err.message)
+    } finally {
+      setTestLoading(false)
+    }
+  }
+
+  const handleReloadAcl = async () => {
+    setReloadLoading(true)
+    setReloadStatus(null)
+    try {
+      const response = await fetch(getApiUrl('/api/admin/reload-acl'), {
+        method: 'POST'
+      })
+
+      const data = await response.json().catch(() => null)
+      if (!response.ok) {
+        throw new Error(data?.message || 'Nie udało się przeładować ACL')
+      }
+
+      setReloadStatus({
+        success: data?.success ?? true,
+        message: data?.message || 'Konfiguracja ACL została przeładowana.'
+      })
+
+      await fetchAclData()
+    } catch (err) {
+      setReloadStatus({
+        success: false,
+        message: err.message
+      })
+    } finally {
+      setReloadLoading(false)
     }
   }
 
@@ -181,6 +273,102 @@ function AclRules() {
               )}
             </tbody>
           </table>
+        </div>
+      </div>
+
+      <div className="card" style={{ marginTop: '24px' }}>
+        <div className="card-header">
+          <h3>ACL Toolbox</h3>
+        </div>
+        <div className="tools-grid">
+          <form className="tool-card" onSubmit={handleTestSubmit}>
+            <h4>Przetestuj decyzję ACL</h4>
+            <p className="subtle-text">Sprawdź czy połączenie zostanie przepuszczone lub zablokowane.</p>
+            <div className="form-group">
+              <label>Użytkownik</label>
+              <input
+                type="text"
+                value={testForm.user}
+                onChange={(e) => handleTestChange('user', e.target.value)}
+                placeholder="np. admin"
+              />
+            </div>
+            <div className="form-group">
+              <label>Adres docelowy</label>
+              <input
+                type="text"
+                value={testForm.destination}
+                onChange={(e) => handleTestChange('destination', e.target.value)}
+                placeholder="np. 8.8.8.8 lub domena"
+              />
+            </div>
+            <div className="form-group">
+              <label>Port</label>
+              <input
+                type="number"
+                min="1"
+                max="65535"
+                value={testForm.port}
+                onChange={(e) => handleTestChange('port', e.target.value)}
+                placeholder="np. 443"
+              />
+            </div>
+            <div className="form-group">
+              <label>Protokół</label>
+              <select
+                value={testForm.protocol}
+                onChange={(e) => handleTestChange('protocol', e.target.value)}
+              >
+                <option value="tcp">TCP</option>
+                <option value="udp">UDP</option>
+                <option value="both">TCP + UDP</option>
+              </select>
+            </div>
+            <button type="submit" className="btn btn-primary" disabled={testLoading}>
+              <Play size={16} style={{ marginRight: '8px' }} />
+              {testLoading ? 'Testowanie...' : 'Testuj reguły'}
+            </button>
+            {testError && (
+              <div className="status-message error">{testError}</div>
+            )}
+            {testResult && (
+              <div className={`status-message ${testResult.decision === 'allow' ? 'success' : 'error'}`}>
+                <div style={{ marginBottom: '8px' }}>
+                  Decyzja:{' '}
+                  <span className={`badge ${testResult.decision === 'allow' ? 'badge-success' : 'badge-danger'}`}>
+                    {testResult.decision.toUpperCase()}
+                  </span>
+                </div>
+                {testResult.matched_rule ? (
+                  <div>
+                    Dopasowana reguła: <code>{testResult.matched_rule}</code>
+                  </div>
+                ) : (
+                  <div>Brak dopasowanej reguły.</div>
+                )}
+              </div>
+            )}
+          </form>
+          <div className="tool-card">
+            <h4>Przeładuj konfigurację ACL</h4>
+            <p className="subtle-text">
+              Wczytaj zmiany z pliku konfiguracyjnego bez restartu usługi.
+            </p>
+            <button
+              type="button"
+              className="btn"
+              onClick={handleReloadAcl}
+              disabled={reloadLoading}
+            >
+              <RefreshCcw size={16} style={{ marginRight: '8px' }} />
+              {reloadLoading ? 'Przeładowywanie...' : 'Przeładuj teraz'}
+            </button>
+            {reloadStatus && (
+              <div className={`status-message ${reloadStatus.success ? 'success' : 'error'}`}>
+                {reloadStatus.message}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

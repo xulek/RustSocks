@@ -5,9 +5,12 @@ Modern web-based admin dashboard for RustSocks SOCKS5 proxy server.
 ## Features
 
 - **Real-time Session Monitoring**: View active and historical SOCKS5 sessions with live updates
+- **Advanced Session Tools**: Filter historical traffic, paginate results, export CSV, and inspect detailed session metadata
 - **ACL Management**: Browse and view Access Control List rules for groups and users
+- **ACL Toolbox**: Test ACL decisions and trigger live reloads without restarting the service
 - **User Management**: Manage users and their group memberships
 - **Statistics Dashboard**: Detailed analytics including bandwidth usage, top users, and destinations
+- **System Health Overview**: Inline health status with quick navigation shortcuts
 - **Configuration View**: Server health status and API endpoint documentation
 - **Clean, Modern UI**: Dark theme with intuitive navigation
 
@@ -49,6 +52,14 @@ npm run build
 
 Built files will be in `dashboard/dist/` directory.
 
+### Testing
+
+```bash
+npm test
+```
+
+Runs the Vitest-powered unit test suite (uses jsdom + Testing Library).
+
 > **Note:** When deploying with a URL base path (e.g., `/rustsocks`), see [Building with Base Path Guide](../docs/guides/building-with-base-path.md) for complete instructions.
 
 ## Configuration
@@ -80,23 +91,26 @@ For detailed instructions on building and deploying with custom base paths, see 
 ## Dashboard Pages
 
 ### 1. Dashboard (Home)
-- Active sessions count
-- Total sessions and bandwidth statistics
-- Top users by session count
-- Top destinations by connections
-- Real-time updates every 5 seconds
+- Active/total session counters with real-time updates
+- Inline health status (status, version, uptime)
+- Quick actions in top tables to jump into filtered session history
+- Total bandwidth tracker
+- Refreshes automatically every 5 seconds
 
 ### 2. Sessions
 - Real-time session monitoring
 - Toggle between active sessions and history
-- Session details: user, source, destination, protocol, status, bandwidth
-- Auto-refresh every 3 seconds
+- Flexible history filters (user, destination, status, time window)
+- Pagination controls and CSV export for current view
+- Detailed session drawer with ACL and transfer metadata
+- Auto-refresh every 3 seconds for active view (manual + filtered history loads)
 
 ### 3. ACL Rules
 - Browse ACL groups and their rules
 - View user ACL configurations
 - Rule details: action, destinations, ports, protocols, priority
 - Group membership visualization
+- ACL toolbox to test decisions and reload configuration live
 
 ### 4. Users
 - List all users with ACL rules

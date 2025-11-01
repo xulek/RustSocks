@@ -889,7 +889,7 @@ mod qos_engine_tests {
         // Verify limits are enforced
         for i in 0..5 {
             qos.check_and_inc_connection("user1", &custom_limits)
-                .expect(&format!("connection {}", i));
+                .unwrap_or_else(|_| panic!("connection {}", i));
         }
 
         let result = qos.check_and_inc_connection("user1", &custom_limits);
@@ -1135,10 +1135,10 @@ mod edge_cases_tests {
 
         for user in special_users {
             qos.check_and_inc_connection(user, &ConnectionLimits::default())
-                .expect(&format!("failed for user: {}", user));
+                .unwrap_or_else(|_| panic!("failed for user: {}", user));
             qos.allocate_bandwidth(user, 1000)
                 .await
-                .expect(&format!("failed allocation for: {}", user));
+                .unwrap_or_else(|_| panic!("failed allocation for: {}", user));
             assert_eq!(qos.get_user_connections(user), 1);
             qos.dec_user_connection(user);
         }

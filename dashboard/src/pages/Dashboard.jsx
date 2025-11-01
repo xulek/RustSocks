@@ -1,19 +1,18 @@
-import React, { useState, useEffect } from 'react'
-import { Activity, Users, Shield, TrendingUp } from 'lucide-react'
+import React, { useState, useEffect, useCallback } from 'react'
+import { ArrowUpRight } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import { getApiUrl } from '../lib/basePath'
+import { formatBytes, formatDuration } from '../lib/format'
 
 function Dashboard() {
   const [stats, setStats] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [health, setHealth] = useState(null)
+  const [healthError, setHealthError] = useState(null)
+  const navigate = useNavigate()
 
-  useEffect(() => {
-    fetchStats()
-    const interval = setInterval(fetchStats, 5000) // Refresh every 5 seconds
-    return () => clearInterval(interval)
-  }, [])
-
-  const fetchStats = async () => {
+  const fetchStats = useCallback(async () => {
     try {
       const response = await fetch(getApiUrl('/api/sessions/stats'))
       if (!response.ok) throw new Error('Failed to fetch stats')
@@ -25,18 +24,45 @@ function Dashboard() {
     } finally {
       setLoading(false)
     }
+  }, [])
+
+  const fetchHealth = useCallback(async () => {
+    try {
+      const response = await fetch(getApiUrl('/health'))
+      if (!response.ok) throw new Error('Failed to fetch health status')
+      const data = await response.json()
+      setHealth(data)
+      setHealthError(null)
+    } catch (err) {
+      setHealth(null)
+      setHealthError(err.message)
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchStats()
+    const interval = setInterval(fetchStats, 5000) // Refresh every 5 seconds
+    return () => clearInterval(interval)
+  }, [fetchStats])
+
+  useEffect(() => {
+    fetchHealth()
+    const interval = setInterval(fetchHealth, 15000)
+    return () => clearInterval(interval)
+  }, [fetchHealth])
+
+  const navigateToSessions = (params) => {
+    const search = new URLSearchParams({ view: 'history' })
+    if (params.user) search.set('user', params.user)
+    if (params.dest_ip) search.set('dest_ip', params.dest_ip)
+    navigate({
+      pathname: '/sessions',
+      search: `?${search.toString()}`
+    })
   }
 
   if (loading) return <div className="loading">Loading...</div>
   if (error) return <div className="error">Error: {error}</div>
-
-  const formatBytes = (bytes) => {
-    if (bytes === 0) return '0 B'
-    const k = 1024
-    const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
-    const i = Math.floor(Math.log(bytes) / Math.log(k))
-    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i]
-  }
 
   return (
     <div>
@@ -73,6 +99,33 @@ function Dashboard() {
         </div>
       </div>
 
+      {health && (
+        <div className="card">
+          <div className="card-header">
+            <h3>System Health</h3>
+          </div>
+          <div className="health-grid">
+            <div>
+              <div className="detail-label">Status</div>
+              <span className="badge badge-success" style={{ textTransform: 'capitalize' }}>
+                {health.status}
+              </span>
+            </div>
+            <div>
+              <div className="detail-label">Version</div>
+              <div className="detail-value">{health.version}</div>
+            </div>
+            <div>
+              <div className="detail-label">Uptime</div>
+              <div className="detail-value">{formatDuration(health.uptime_seconds)}</div>
+            </div>
+          </div>
+        </div>
+      )}
+      {healthError && (
+        <div className="error">Health check unavailable: {healthError}</div>
+      )}
+
       <div className="card">
         <div className="card-header">
           <h3>Top Users by Sessions</h3>
@@ -85,6 +138,7 @@ function Dashboard() {
                 <th>Sessions</th>
                 <th>Sent</th>
                 <th>Received</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -94,11 +148,21 @@ function Dashboard() {
                   <td>{user.session_count}</td>
                   <td>{formatBytes(user.bytes_sent)}</td>
                   <td>{formatBytes(user.bytes_received)}</td>
+                  <td>
+                    <button
+                      type="button"
+                      className="icon-button"
+                      title="Open filtered session history"
+                      onClick={() => navigateToSessions({ user: user.user })}
+                    >
+                      <ArrowUpRight size={16} />
+                    </button>
+                  </td>
                 </tr>
               ))}
               {stats.top_users.length === 0 && (
                 <tr>
-                  <td colSpan="4" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
+                  <td colSpan="5" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
                     No active users
                   </td>
                 </tr>
@@ -120,6 +184,7 @@ function Dashboard() {
                 <th>Connections</th>
                 <th>Sent</th>
                 <th>Received</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -129,11 +194,24 @@ function Dashboard() {
                   <td>{dest.session_count}</td>
                   <td>{formatBytes(dest.bytes_sent)}</td>
                   <td>{formatBytes(dest.bytes_received)}</td>
+                  <td>
+                    <button
+                      type="button"
+                      className="icon-button"
+                      title="Open history filtered by destination"
+                      onClick={() => {
+                        const [destIp] = dest.destination.split(':')
+                        navigateToSessions({ dest_ip: destIp })
+                      }}
+                    >
+                      <ArrowUpRight size={16} />
+                    </button>
+                  </td>
                 </tr>
               ))}
               {stats.top_destinations.length === 0 && (
                 <tr>
-                  <td colSpan="4" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
+                  <td colSpan="5" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
                     No destinations
                   </td>
                 </tr>

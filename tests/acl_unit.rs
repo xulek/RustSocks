@@ -1621,9 +1621,9 @@ mod acl_stats_tests {
             let handle = std::thread::spawn(move || {
                 for _ in 0..100 {
                     if i % 2 == 0 {
-                        stats_clone.record_allow(&format!("user{}", i));
+                        stats_clone.record_allow(format!("user{}", i));
                     } else {
-                        stats_clone.record_block(&format!("user{}", i));
+                        stats_clone.record_block(format!("user{}", i));
                     }
                 }
             });
