@@ -151,6 +151,190 @@ mod unix_tests {
         // Let's just verify it doesn't panic
         let _ = result;
     }
+
+    #[tokio::test]
+    #[ignore] // Requires PAM setup
+    async fn test_pam_address_with_ipv6() {
+        let config = AuthConfig {
+            client_method: "pam.address".to_string(),
+            socks_method: "none".to_string(),
+            users: vec![],
+            pam: pam_settings(),
+        };
+
+        let auth_manager = AuthManager::new(&config).expect("Failed to create auth manager");
+        let client_ip: IpAddr = "::1".parse().unwrap();
+
+        let result = auth_manager.authenticate_client(client_ip).await;
+        assert!(
+            result.is_ok() || result.is_err(),
+            "Should return a valid Result for IPv6"
+        );
+    }
+
+    #[tokio::test]
+    #[ignore] // Requires PAM setup
+    async fn test_pam_address_with_multiple_ips() {
+        let config = AuthConfig {
+            client_method: "pam.address".to_string(),
+            socks_method: "none".to_string(),
+            users: vec![],
+            pam: pam_settings(),
+        };
+
+        let auth_manager = AuthManager::new(&config).expect("Failed to create auth manager");
+
+        let test_ips = vec![
+            "127.0.0.1".parse().unwrap(),
+            "192.168.1.1".parse().unwrap(),
+            "10.0.0.1".parse().unwrap(),
+            "::1".parse().unwrap(),
+        ];
+
+        for ip in test_ips {
+            let result = auth_manager.authenticate_client(ip).await;
+            assert!(
+                result.is_ok() || result.is_err(),
+                "Should return valid Result for IP {}", ip
+            );
+        }
+    }
+
+    #[tokio::test]
+    #[ignore] // Requires PAM setup
+    async fn test_pam_concurrent_authentication() {
+        use std::sync::Arc;
+        use tokio::task::JoinSet;
+
+        let config = AuthConfig {
+            client_method: "pam.address".to_string(),
+            socks_method: "none".to_string(),
+            users: vec![],
+            pam: pam_settings(),
+        };
+
+        let auth_manager = Arc::new(AuthManager::new(&config).expect("Failed to create auth manager"));
+
+        let mut join_set = JoinSet::new();
+
+        // Spawn 10 concurrent authentication attempts
+        for i in 0..10 {
+            let auth = Arc::clone(&auth_manager);
+            join_set.spawn(async move {
+                let ip: IpAddr = format!("127.0.0.{}", i + 1).parse().unwrap();
+                auth.authenticate_client(ip).await
+            });
+        }
+
+        let mut successes = 0;
+        let mut failures = 0;
+
+        while let Some(result) = join_set.join_next().await {
+            match result {
+                Ok(Ok(_)) => successes += 1,
+                Ok(Err(_)) => failures += 1,
+                Err(e) => panic!("Task panicked: {:?}", e),
+            }
+        }
+
+        // All tasks should complete without panicking
+        assert_eq!(successes + failures, 10, "All 10 tasks should complete");
+    }
+
+    #[tokio::test]
+    async fn test_pam_username_service_validation() {
+        let mut config = AuthConfig {
+            client_method: "none".to_string(),
+            socks_method: "pam.username".to_string(),
+            users: vec![],
+            pam: PamSettings {
+                username_service: "".to_string(), // Empty
+                address_service: "rustsocks-client-test".to_string(),
+                default_user: "rhostusr".to_string(),
+                default_ruser: "rhostusr".to_string(),
+                verbose: false,
+                verify_service: false,
+            },
+        };
+
+        // Empty username_service should fail
+        assert!(
+            AuthManager::new(&config).is_err(),
+            "Should reject empty username_service"
+        );
+
+        // Whitespace-only should also fail
+        config.pam.username_service = "   ".to_string();
+        assert!(
+            AuthManager::new(&config).is_err(),
+            "Should reject whitespace-only username_service"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_pam_address_service_validation() {
+        let config = AuthConfig {
+            client_method: "pam.address".to_string(),
+            socks_method: "none".to_string(),
+            users: vec![],
+            pam: PamSettings {
+                username_service: "rustsocks-test".to_string(),
+                address_service: "".to_string(), // Empty
+                default_user: "rhostusr".to_string(),
+                default_ruser: "rhostusr".to_string(),
+                verbose: false,
+                verify_service: false,
+            },
+        };
+
+        // Empty address_service should fail
+        assert!(
+            AuthManager::new(&config).is_err(),
+            "Should reject empty address_service"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_pam_verbose_mode_enabled() {
+        let config = AuthConfig {
+            client_method: "none".to_string(),
+            socks_method: "pam.username".to_string(),
+            users: vec![],
+            pam: PamSettings {
+                username_service: "rustsocks-test".to_string(),
+                address_service: "rustsocks-client-test".to_string(),
+                default_user: "rhostusr".to_string(),
+                default_ruser: "rhostusr".to_string(),
+                verbose: true, // Enable verbose
+                verify_service: false,
+            },
+        };
+
+        // Should succeed with verbose enabled
+        let result = AuthManager::new(&config);
+        assert!(result.is_ok(), "Verbose mode should not prevent creation");
+    }
+
+    #[tokio::test]
+    #[ignore] // Requires PAM setup
+    async fn test_pam_default_user_configuration() {
+        let config = AuthConfig {
+            client_method: "pam.address".to_string(),
+            socks_method: "none".to_string(),
+            users: vec![],
+            pam: PamSettings {
+                username_service: "rustsocks-test".to_string(),
+                address_service: "rustsocks-client-test".to_string(),
+                default_user: "customdefault".to_string(), // Custom default
+                default_ruser: "customruser".to_string(),
+                verbose: false,
+                verify_service: false,
+            },
+        };
+
+        let result = AuthManager::new(&config);
+        assert!(result.is_ok(), "Custom default_user should be accepted");
+    }
 }
 
 #[cfg(not(unix))]

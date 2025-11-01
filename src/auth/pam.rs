@@ -246,6 +246,133 @@ mod unix {
             PamAuthenticator::new(PamMethod::Address, &settings)
                 .expect("expected valid PAM authenticator");
         }
+
+        #[test]
+        fn map_pam_error_handles_user_unknown() {
+            let error = PamError::from(PamReturnCode::USER_UNKNOWN);
+            match map_pam_error(error, "user ctx", false) {
+                PamAuthError::AuthFailed(msg) => assert!(
+                    msg.contains("user ctx"),
+                    "expected context in message, got {msg}"
+                ),
+                other => panic!("expected AuthFailed for USER_UNKNOWN, got {:?}", other),
+            }
+        }
+
+        #[test]
+        fn map_pam_error_handles_maxtries() {
+            let error = PamError::from(PamReturnCode::MAXTRIES);
+            match map_pam_error(error, "maxtries ctx", false) {
+                PamAuthError::AuthFailed(msg) => assert!(
+                    msg.contains("maxtries ctx"),
+                    "expected context in message, got {msg}"
+                ),
+                other => panic!("expected AuthFailed for MAXTRIES, got {:?}", other),
+            }
+        }
+
+        #[test]
+        fn map_pam_error_handles_perm_denied() {
+            let error = PamError::from(PamReturnCode::PERM_DENIED);
+            match map_pam_error(error, "perm ctx", false) {
+                PamAuthError::AuthFailed(msg) => assert!(
+                    msg.contains("perm ctx"),
+                    "expected context in message, got {msg}"
+                ),
+                other => panic!("expected AuthFailed for PERM_DENIED, got {:?}", other),
+            }
+        }
+
+        #[test]
+        fn map_pam_error_preserves_context_in_messages() {
+            let error = PamError::from(PamReturnCode::AUTH_ERR);
+            let custom_context = "custom authentication context";
+            match map_pam_error(error, custom_context, false) {
+                PamAuthError::AuthFailed(msg) => assert!(
+                    msg.contains(custom_context),
+                    "expected custom context '{custom_context}' in message, got {msg}"
+                ),
+                other => panic!("expected AuthFailed, got {:?}", other),
+            }
+        }
+
+        #[test]
+        fn new_rejects_whitespace_only_service_name() {
+            let settings = base_settings("   ", "pam_address");
+            match PamAuthenticator::new(PamMethod::Username, &settings) {
+                Ok(_) => panic!("expected config error for whitespace-only service"),
+                Err(PamAuthError::Config(msg)) => {
+                    assert!(msg.contains("cannot be empty"), "unexpected message: {msg}")
+                }
+                Err(other) => panic!("expected Config error, got {:?}", other),
+            }
+        }
+
+        #[test]
+        fn new_selects_correct_service_for_address_method() {
+            let settings = base_settings("username_svc", "address_svc");
+            let auth = PamAuthenticator::new(PamMethod::Address, &settings)
+                .expect("expected valid authenticator");
+            assert_eq!(auth.service_name, "address_svc");
+        }
+
+        #[test]
+        fn new_selects_correct_service_for_username_method() {
+            let settings = base_settings("username_svc", "address_svc");
+            let auth = PamAuthenticator::new(PamMethod::Username, &settings)
+                .expect("expected valid authenticator");
+            assert_eq!(auth.service_name, "username_svc");
+        }
+
+        #[test]
+        fn new_respects_verbose_setting() {
+            let mut settings = base_settings("svc", "addr_svc");
+            settings.verbose = true;
+            let auth = PamAuthenticator::new(PamMethod::Username, &settings)
+                .expect("expected valid authenticator");
+            assert!(auth.verbose, "verbose should be enabled");
+        }
+
+        #[test]
+        fn new_respects_default_user_setting() {
+            let mut settings = base_settings("svc", "addr_svc");
+            settings.default_user = "customuser".to_string();
+            let auth = PamAuthenticator::new(PamMethod::Address, &settings)
+                .expect("expected valid authenticator");
+            assert_eq!(auth.default_user, "customuser");
+        }
+
+        #[tokio::test]
+        async fn authenticate_address_rejects_wrong_method() {
+            let settings = base_settings("username_svc", "address_svc");
+            let auth = PamAuthenticator::new(PamMethod::Username, &settings)
+                .expect("expected valid authenticator");
+
+            let client_ip: IpAddr = "127.0.0.1".parse().unwrap();
+            match auth.authenticate_address(client_ip).await {
+                Err(PamAuthError::Config(msg)) => {
+                    assert!(msg.contains("non-address"), "expected method mismatch error, got {msg}");
+                }
+                Ok(_) => panic!("expected error for method mismatch"),
+                Err(other) => panic!("expected Config error, got {:?}", other),
+            }
+        }
+
+        #[tokio::test]
+        async fn authenticate_username_rejects_wrong_method() {
+            let settings = base_settings("username_svc", "address_svc");
+            let auth = PamAuthenticator::new(PamMethod::Address, &settings)
+                .expect("expected valid authenticator");
+
+            let client_ip: IpAddr = "127.0.0.1".parse().unwrap();
+            match auth.authenticate_username(client_ip, "user", "pass").await {
+                Err(PamAuthError::Config(msg)) => {
+                    assert!(msg.contains("non-username"), "expected method mismatch error, got {msg}");
+                }
+                Ok(_) => panic!("expected error for method mismatch"),
+                Err(other) => panic!("expected Config error, got {:?}", other),
+            }
+        }
     }
 }
 
