@@ -2,14 +2,22 @@ use crate::api::types::{
     DestinationStat, PagedResponse, SessionQueryParams, SessionResponse, SessionStatsResponse,
     UserStat,
 };
-use crate::session::SessionManager;
+#[cfg(feature = "database")]
+use crate::session::SessionFilter;
+use crate::session::{Session, SessionManager, SessionStatus};
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
     Json,
 };
-use chrono::Utc;
+use chrono::{Duration as ChronoDuration, Utc};
+use std::str::FromStr;
 use std::sync::Arc;
+#[cfg(feature = "database")]
+use uuid::Uuid;
+
+#[cfg(feature = "database")]
+use tracing::{error, warn};
 
 /// API state containing shared resources
 #[derive(Clone)]
@@ -17,6 +25,9 @@ pub struct ApiState {
     pub session_manager: Arc<SessionManager>,
     pub acl_engine: Option<Arc<crate::acl::AclEngine>>,
     pub acl_config_path: Option<String>,
+    pub start_time: std::time::Instant,
+    #[cfg(feature = "database")]
+    pub session_store: Option<Arc<crate::session::SessionStore>>,
 }
 
 /// GET /api/sessions/active - Get active sessions
@@ -36,62 +47,240 @@ pub async fn get_session_history(
     State(state): State<ApiState>,
     Query(params): Query<SessionQueryParams>,
 ) -> (StatusCode, Json<PagedResponse<SessionResponse>>) {
-    let mut sessions = state.session_manager.get_closed_sessions();
+    let page_size = params.page_size.clamp(1, 1000);
+    let page_size_usize = page_size as usize;
+    let page = params.page.max(1);
+    let offset = ((page - 1) as usize) * page_size_usize;
 
-    // Apply filters
-    if let Some(ref user) = params.user {
-        sessions.retain(|s| s.user == *user);
+    let mut status_filter: Option<SessionStatus> = None;
+    let mut invalid_status = false;
+    if let Some(ref status_str) = params.status {
+        match SessionStatus::from_str(status_str) {
+            Ok(status) => status_filter = Some(status),
+            Err(_) => invalid_status = true,
+        }
     }
 
-    if let Some(ref dest_ip) = params.dest_ip {
-        sessions.retain(|s| s.dest_ip == *dest_ip);
+    if invalid_status {
+        let response = PagedResponse {
+            data: Vec::new(),
+            total: 0,
+            page,
+            page_size,
+            total_pages: 0,
+        };
+        return (StatusCode::OK, Json(response));
     }
 
-    if let Some(ref status) = params.status {
-        sessions.retain(|s| s.status.as_str().to_lowercase() == status.to_lowercase());
-    }
+    let cutoff = params
+        .hours
+        .map(|hours| Utc::now() - ChronoDuration::hours(hours as i64));
 
-    // Apply time filter (hours)
-    if let Some(hours) = params.hours {
-        let cutoff = Utc::now() - chrono::Duration::hours(hours as i64);
-        sessions.retain(|s| {
-            if let Some(end) = s.end_time {
-                end > cutoff
-            } else {
-                false
+    let user_filter = params.user.clone();
+    let dest_filter = params.dest_ip.clone();
+
+    #[cfg(feature = "database")]
+    if let Some(store) = state.session_store.as_ref() {
+        match fetch_history_from_store(
+            store,
+            &state.session_manager,
+            &user_filter,
+            &dest_filter,
+            &status_filter,
+            cutoff.as_ref(),
+            offset,
+            page_size_usize,
+            page,
+            page_size,
+        )
+        .await
+        {
+            Ok(response) => return (StatusCode::OK, Json(response)),
+            Err(e) => {
+                error!(
+                    error = %e,
+                    "Failed to load session history from persistent store, falling back to in-memory data"
+                );
             }
-        });
+        }
     }
 
-    // Sort by end_time descending (newest first)
-    sessions.sort_by(|a, b| match (a.end_time, b.end_time) {
-        (Some(at), Some(bt)) => bt.cmp(&at),
-        _ => std::cmp::Ordering::Equal,
+    let response = build_memory_history_response(
+        &state.session_manager,
+        &user_filter,
+        &dest_filter,
+        &status_filter,
+        cutoff.as_ref(),
+        page,
+        page_size_usize,
+        offset,
+        page_size,
+    );
+
+    (StatusCode::OK, Json(response))
+}
+
+#[cfg(feature = "database")]
+async fn fetch_history_from_store(
+    store: &crate::session::SessionStore,
+    manager: &SessionManager,
+    user_filter: &Option<String>,
+    dest_filter: &Option<String>,
+    status_filter: &Option<SessionStatus>,
+    cutoff: Option<&chrono::DateTime<Utc>>,
+    offset: usize,
+    page_size: usize,
+    page: u32,
+    page_size_u32: u32,
+) -> Result<PagedResponse<SessionResponse>, sqlx::Error> {
+    let mut in_memory = manager.get_closed_sessions();
+    in_memory.retain(|session| {
+        matches_history_filters(session, user_filter, dest_filter, status_filter, cutoff)
     });
 
-    // Pagination
-    let total = sessions.len() as u64;
-    let page_size = params.page_size.clamp(1, 1000) as usize;
-    let page = params.page.max(1);
-    let offset = ((page - 1) as usize) * page_size;
-    let total_pages = ((total as f32) / (page_size as f32)).ceil() as u32;
+    let extra_ids: Vec<_> = in_memory.iter().map(|s| s.session_id).collect();
+    let persisted_ids = store.existing_session_ids(&extra_ids).await?;
 
-    let data: Vec<SessionResponse> = sessions
-        .iter()
-        .skip(offset)
-        .take(page_size)
-        .map(|s| session_to_response(s.clone()))
+    let mut extra_sessions: Vec<Session> = in_memory
+        .into_iter()
+        .filter(|session| !persisted_ids.contains(&session.session_id))
         .collect();
 
-    let response = PagedResponse {
+    extra_sessions.sort_by(|a, b| {
+        let a_time = a.end_time.unwrap_or(a.start_time);
+        let b_time = b.end_time.unwrap_or(b.start_time);
+        b_time.cmp(&a_time)
+    });
+
+    let extra_total = extra_sessions.len();
+    let extra_slice_start = extra_total.min(offset);
+    let extra_slice_end = extra_total.min(offset + page_size);
+    let extra_page_len = extra_slice_end.saturating_sub(extra_slice_start);
+    let extra_page: Vec<Session> = extra_sessions[extra_slice_start..extra_slice_end].to_vec();
+
+    let db_offset = offset.saturating_sub(extra_total);
+    let db_limit = page_size.saturating_sub(extra_page_len);
+
+    let mut filter = SessionFilter::default();
+    filter.user = user_filter.clone();
+    filter.dest_ip = dest_filter.clone();
+    filter.status = status_filter.clone();
+    filter.limit = Some(db_limit as u64);
+    filter.offset = Some(db_offset as u64);
+    filter.start_after = cutoff.cloned();
+
+    let mut count_filter = filter.clone();
+    count_filter.limit = None;
+    count_filter.offset = None;
+    let db_total = store.count_sessions(&count_filter).await?;
+
+    let db_sessions = if db_limit > 0 {
+        store.query_sessions(&filter).await?
+    } else {
+        Vec::new()
+    };
+
+    let mut combined = Vec::with_capacity(extra_page.len() + db_sessions.len());
+    combined.extend(extra_page);
+    combined.extend(db_sessions);
+
+    let total = db_total + extra_total as u64;
+    let total_pages = if total == 0 {
+        0
+    } else {
+        ((total as f64) / (page_size as f64)).ceil() as u32
+    };
+
+    let data = combined.into_iter().map(session_to_response).collect();
+
+    Ok(PagedResponse {
         data,
         total,
         page,
-        page_size: page_size as u32,
+        page_size: page_size_u32,
         total_pages,
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_memory_history_response(
+    manager: &SessionManager,
+    user_filter: &Option<String>,
+    dest_filter: &Option<String>,
+    status_filter: &Option<SessionStatus>,
+    cutoff: Option<&chrono::DateTime<Utc>>,
+    page: u32,
+    page_size_usize: usize,
+    offset: usize,
+    page_size_u32: u32,
+) -> PagedResponse<SessionResponse> {
+    let mut sessions = manager.get_closed_sessions();
+    sessions.retain(|session| {
+        matches_history_filters(session, user_filter, dest_filter, status_filter, cutoff)
+    });
+
+    sessions.sort_by(|a, b| {
+        let a_time = a.end_time.unwrap_or(a.start_time);
+        let b_time = b.end_time.unwrap_or(b.start_time);
+        b_time.cmp(&a_time)
+    });
+
+    let total = sessions.len() as u64;
+    let total_pages = if total == 0 {
+        0
+    } else {
+        ((total as f64) / (page_size_usize as f64)).ceil() as u32
     };
 
-    (StatusCode::OK, Json(response))
+    let data = sessions
+        .into_iter()
+        .skip(offset)
+        .take(page_size_usize)
+        .map(session_to_response)
+        .collect();
+
+    PagedResponse {
+        data,
+        total,
+        page,
+        page_size: page_size_u32,
+        total_pages,
+    }
+}
+
+fn matches_history_filters(
+    session: &Session,
+    user_filter: &Option<String>,
+    dest_filter: &Option<String>,
+    status_filter: &Option<SessionStatus>,
+    cutoff: Option<&chrono::DateTime<Utc>>,
+) -> bool {
+    if let Some(user) = user_filter.as_ref() {
+        if session.user != *user {
+            return false;
+        }
+    }
+
+    if let Some(dest) = dest_filter.as_ref() {
+        if session.dest_ip != *dest {
+            return false;
+        }
+    }
+
+    if let Some(status) = status_filter.as_ref() {
+        if &session.status != status {
+            return false;
+        }
+    }
+
+    if let Some(cutoff_time) = cutoff {
+        match session.end_time {
+            Some(end) if end > *cutoff_time => {}
+            _ => return false,
+        }
+    }
+
+    true
 }
 
 /// GET /api/sessions/{id} - Get specific session details
@@ -104,6 +293,26 @@ pub async fn get_session_detail(
     if let Some(session) = sessions.iter().find(|s| s.session_id.to_string() == id) {
         Ok((StatusCode::OK, Json(session_to_response(session.clone()))))
     } else {
+        #[cfg(feature = "database")]
+        {
+            if let Some(store) = state.session_store.as_ref() {
+                match Uuid::parse_str(&id) {
+                    Ok(uuid) => match store.get_session(&uuid).await {
+                        Ok(Some(session)) => {
+                            return Ok((StatusCode::OK, Json(session_to_response(session))));
+                        }
+                        Ok(None) => {}
+                        Err(e) => {
+                            warn!(session_id = %id, error = %e, "Failed to load session from store")
+                        }
+                    },
+                    Err(_) => {
+                        return Err((StatusCode::BAD_REQUEST, "Invalid session id").into());
+                    }
+                }
+            }
+        }
+
         Err((StatusCode::NOT_FOUND, "Session not found").into())
     }
 }

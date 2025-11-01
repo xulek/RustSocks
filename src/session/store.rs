@@ -1,8 +1,9 @@
 use super::types::{Protocol as SessionProtocol, Session, SessionFilter, SessionStatus};
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
-use sqlx::{FromRow, QueryBuilder, SqlitePool};
+use sqlx::{FromRow, QueryBuilder, Sqlite, SqlitePool};
 use std::borrow::Cow;
+use std::collections::HashSet;
 use std::path::Path;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -98,12 +99,115 @@ impl SessionStore {
             "#,
         );
 
+        Self::push_filters(&mut builder, filter);
+        builder.push(" ORDER BY datetime(start_time) DESC ");
+
+        if let Some(limit) = filter.limit {
+            builder.push(" LIMIT ").push_bind(limit as i64);
+        }
+
+        if let Some(offset) = filter.offset {
+            builder.push(" OFFSET ").push_bind(offset as i64);
+        }
+
+        let query = builder.build_query_as::<SessionRow>();
+        let rows = query.fetch_all(&self.pool).await?;
+
+        rows.into_iter().map(SessionRow::into_session).collect()
+    }
+
+    pub async fn count_sessions(&self, filter: &SessionFilter) -> Result<u64, sqlx::Error> {
+        let mut builder = QueryBuilder::new(
+            r#"
+            SELECT COUNT(*) as count
+            FROM sessions
+            WHERE 1=1
+            "#,
+        );
+
+        Self::push_filters(&mut builder, filter);
+        let query = builder.build_query_scalar();
+        let count: i64 = query.fetch_one(&self.pool).await?;
+        Ok(count as u64)
+    }
+
+    pub async fn existing_session_ids(&self, ids: &[Uuid]) -> Result<HashSet<Uuid>, sqlx::Error> {
+        if ids.is_empty() {
+            return Ok(HashSet::new());
+        }
+
+        let mut builder = QueryBuilder::new(
+            r#"
+            SELECT session_id FROM sessions WHERE session_id IN (
+            "#,
+        );
+
+        {
+            let mut separated = builder.separated(", ");
+            for id in ids {
+                separated.push_bind(id.to_string());
+            }
+        }
+
+        builder.push(")");
+
+        let rows = builder
+            .build_query_as::<SessionIdRow>()
+            .fetch_all(&self.pool)
+            .await?;
+
+        let mut set = HashSet::with_capacity(rows.len());
+        for row in rows {
+            if let Ok(id) = Uuid::parse_str(&row.session_id) {
+                set.insert(id);
+            }
+        }
+
+        Ok(set)
+    }
+
+    pub async fn get_session(&self, session_id: &Uuid) -> Result<Option<Session>, sqlx::Error> {
+        let mut builder = QueryBuilder::new(
+            r#"
+            SELECT
+                session_id,
+                user,
+                start_time,
+                end_time,
+                duration_secs,
+                source_ip,
+                source_port,
+                dest_ip,
+                dest_port,
+                protocol,
+                bytes_sent,
+                bytes_received,
+                packets_sent,
+                packets_received,
+                status,
+                close_reason,
+                acl_rule_matched,
+                acl_decision
+            FROM sessions
+            WHERE session_id = 
+            "#,
+        );
+        builder.push_bind(session_id.to_string());
+        let query = builder.build_query_as::<SessionRow>();
+
+        let row = query.fetch_optional(&self.pool).await?;
+        row.map(SessionRow::into_session).transpose()
+    }
+
+    fn push_filters(builder: &mut QueryBuilder<'_, Sqlite>, filter: &SessionFilter) {
         if let Some(user) = &filter.user {
-            builder.push(" AND user = ").push_bind(user);
+            builder.push(" AND user = ").push_bind(user.clone());
         }
 
         if let Some(status) = &filter.status {
-            builder.push(" AND status = ").push_bind(status.as_str());
+            builder
+                .push(" AND status = ")
+                .push_bind(status.as_str().to_string());
         }
 
         if let Some(start_after) = filter.start_after {
@@ -121,7 +225,7 @@ impl SessionStore {
         }
 
         if let Some(dest_ip) = &filter.dest_ip {
-            builder.push(" AND dest_ip = ").push_bind(dest_ip);
+            builder.push(" AND dest_ip = ").push_bind(dest_ip.clone());
         }
 
         if let Some(min_duration) = filter.min_duration_secs {
@@ -134,17 +238,6 @@ impl SessionStore {
             builder.push(" AND (bytes_sent + bytes_received) >= ");
             builder.push_bind(min_bytes as i64);
         }
-
-        builder.push(" ORDER BY datetime(start_time) DESC ");
-
-        if let Some(limit) = filter.limit {
-            builder.push(" LIMIT ").push_bind(limit as i64);
-        }
-
-        let query = builder.build_query_as::<SessionRow>();
-        let rows = query.fetch_all(&self.pool).await?;
-
-        rows.into_iter().map(SessionRow::into_session).collect()
     }
 
     async fn upsert_session(&self, session: &Session) -> Result<(), sqlx::Error> {
@@ -369,6 +462,11 @@ struct SessionRow {
     close_reason: Option<String>,
     acl_rule_matched: Option<String>,
     acl_decision: String,
+}
+
+#[derive(Debug, FromRow)]
+struct SessionIdRow {
+    session_id: String,
 }
 
 impl SessionRow {

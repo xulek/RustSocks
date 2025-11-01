@@ -1058,10 +1058,16 @@ pub async fn start_api_server(
         }
     );
 
+    #[cfg(feature = "database")]
+    let session_store = session_manager.session_store();
+
     let state = ApiState {
         session_manager,
         acl_engine,
         acl_config_path,
+        start_time: std::time::Instant::now(),
+        #[cfg(feature = "database")]
+        session_store,
     };
 
     // Build router with all endpoints
@@ -1075,14 +1081,20 @@ pub async fn start_api_server(
                 "/swagger-ui/",
                 get(move || swagger_ui(base_for_swagger.clone())),
             )
-            .route("/swagger-ui", get({
-                let base_for_swagger = base_prefix.to_string();
-                move || swagger_ui(base_for_swagger.clone())
-            }))
-            .route("/openapi.json", get({
-                let base_for_openapi = base_prefix.to_string();
-                move || openapi_spec(base_for_openapi.clone())
-            }));
+            .route(
+                "/swagger-ui",
+                get({
+                    let base_for_swagger = base_prefix.to_string();
+                    move || swagger_ui(base_for_swagger.clone())
+                }),
+            )
+            .route(
+                "/openapi.json",
+                get({
+                    let base_for_openapi = base_prefix.to_string();
+                    move || openapi_spec(base_for_openapi.clone())
+                }),
+            );
         let swagger_mount = if base_prefix.is_empty() {
             "/swagger-ui/".to_string()
         } else {
@@ -1253,19 +1265,13 @@ fn rewrite_dashboard_index(original: &str, base_prefix: &str) -> String {
                 "href=\"/assets/",
                 &format!("href=\"{}/assets/", base_prefix),
             )
-            .replace(
-                "src=\"/assets/",
-                &format!("src=\"{}/assets/", base_prefix),
-            )
+            .replace("src=\"/assets/", &format!("src=\"{}/assets/", base_prefix))
             // Rewrite relative paths (Vite builds with base: './')
             .replace(
                 "href=\"./assets/",
                 &format!("href=\"{}/assets/", base_prefix),
             )
-            .replace(
-                "src=\"./assets/",
-                &format!("src=\"{}/assets/", base_prefix),
-            )
+            .replace("src=\"./assets/", &format!("src=\"{}/assets/", base_prefix))
             // Rewrite favicon paths
             .replace(
                 "href=\"/vite.svg\"",

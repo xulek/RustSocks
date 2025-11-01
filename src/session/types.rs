@@ -173,6 +173,7 @@ pub struct SessionFilter {
     pub min_duration_secs: Option<u64>,
     pub min_bytes: Option<u64>,
     pub limit: Option<u64>,
+    pub offset: Option<u64>,
 }
 
 impl Default for SessionFilter {
@@ -186,6 +187,7 @@ impl Default for SessionFilter {
             min_duration_secs: None,
             min_bytes: None,
             limit: Some(100),
+            offset: None,
         }
     }
 }

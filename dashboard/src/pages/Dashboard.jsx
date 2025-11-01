@@ -23,20 +23,39 @@ function Dashboard() {
   const [healthError, setHealthError] = useState(null)
   const [statsHistory, setStatsHistory] = useState([])
   const navigate = useNavigate()
+
+  const chartHistory = useMemo(() => {
+    if (statsHistory.length === 0) {
+      return []
+    }
+
+    if (statsHistory.length === 1) {
+      const single = statsHistory[0]
+      const baseTime = new Date(single.timestamp)
+      const earlier = new Date(baseTime.getTime() - 1000).toISOString()
+      return [
+        { ...single, timestamp: earlier },
+        single
+      ]
+    }
+
+    return statsHistory
+  }, [statsHistory])
+
   const bandwidthSeries = useMemo(() => {
-    if (statsHistory.length === 0) return []
-    return statsHistory.map((point, index) => {
+    if (chartHistory.length === 0) return []
+    return chartHistory.map((point, index, array) => {
       if (index === 0) {
         return { ...point, mbTransferred: 0 }
       }
-      const prev = statsHistory[index - 1]
+      const prev = array[index - 1]
       const delta = Math.max(point.bandwidth - prev.bandwidth, 0)
       return {
         ...point,
         mbTransferred: Number((delta / (1024 * 1024)).toFixed(2))
       }
     })
-  }, [statsHistory])
+  }, [chartHistory])
 
   const fetchStats = useCallback(async () => {
     try {
@@ -164,7 +183,7 @@ function Dashboard() {
         <div className="error">Health check unavailable: {healthError}</div>
       )}
 
-      {statsHistory.length > 1 && (
+      {chartHistory.length > 0 && (
         <div className="chart-grid">
           <div className="card">
             <div className="card-header">
@@ -172,7 +191,7 @@ function Dashboard() {
             </div>
             <div className="chart-wrapper">
               <ResponsiveContainer width="100%" height={260}>
-                <LineChart data={statsHistory}>
+                <LineChart data={chartHistory}>
                   <CartesianGrid stroke="rgba(148, 163, 184, 0.2)" strokeDasharray="3 3" />
                   <XAxis
                     dataKey="timestamp"
@@ -197,7 +216,7 @@ function Dashboard() {
                     dataKey="active"
                     stroke="#38bdf8"
                     strokeWidth={2}
-                    dot={false}
+                    dot={chartHistory.length <= 2}
                     name="Aktywne"
                   />
                   <Line
@@ -205,7 +224,7 @@ function Dashboard() {
                     dataKey="total"
                     stroke="#c084fc"
                     strokeWidth={1.5}
-                    dot={false}
+                    dot={chartHistory.length <= 2}
                     name="Łącznie"
                   />
                 </LineChart>

@@ -476,6 +476,11 @@ impl SessionManager {
     pub fn get_closed_sessions(&self) -> Vec<Session> {
         self.closed_sessions.lock().unwrap().clone()
     }
+
+    #[cfg(feature = "database")]
+    pub fn session_store(&self) -> Option<Arc<SessionStore>> {
+        self.store.as_ref().map(Arc::clone)
+    }
 }
 
 impl Default for SessionManager {

@@ -21,6 +21,9 @@ async fn test_health_endpoint() {
         session_manager: session_manager.clone(),
         acl_engine: None,
         acl_config_path: None,
+        start_time: std::time::Instant::now(),
+        #[cfg(feature = "database")]
+        session_store: None,
     };
 
     let app = Router::new()
@@ -69,6 +72,9 @@ async fn test_metrics_endpoint() {
         session_manager: session_manager.clone(),
         acl_engine: None,
         acl_config_path: None,
+        start_time: std::time::Instant::now(),
+        #[cfg(feature = "database")]
+        session_store: None,
     };
 
     let app = Router::new()
@@ -121,6 +127,9 @@ async fn test_get_active_sessions() {
         session_manager: session_manager.clone(),
         acl_engine: None,
         acl_config_path: None,
+        start_time: std::time::Instant::now(),
+        #[cfg(feature = "database")]
+        session_store: None,
     };
 
     let app = Router::new()
@@ -178,6 +187,9 @@ async fn test_get_session_stats() {
         session_manager: session_manager.clone(),
         acl_engine: None,
         acl_config_path: None,
+        start_time: std::time::Instant::now(),
+        #[cfg(feature = "database")]
+        session_store: None,
     };
 
     let app = Router::new()
@@ -244,6 +256,9 @@ async fn test_get_user_sessions() {
         session_manager: session_manager.clone(),
         acl_engine: None,
         acl_config_path: None,
+        start_time: std::time::Instant::now(),
+        #[cfg(feature = "database")]
+        session_store: None,
     };
 
     let app = Router::new()
@@ -307,6 +322,9 @@ async fn test_session_history_with_filters() {
         session_manager: session_manager.clone(),
         acl_engine: None,
         acl_config_path: None,
+        start_time: std::time::Instant::now(),
+        #[cfg(feature = "database")]
+        session_store: None,
     };
 
     let app = Router::new()
@@ -367,6 +385,9 @@ async fn test_session_history_pagination() {
         session_manager: session_manager.clone(),
         acl_engine: None,
         acl_config_path: None,
+        start_time: std::time::Instant::now(),
+        #[cfg(feature = "database")]
+        session_store: None,
     };
 
     let app = Router::new()
@@ -405,6 +426,9 @@ async fn test_get_acl_rules_without_acl() {
         session_manager,
         acl_engine: None,
         acl_config_path: None,
+        start_time: std::time::Instant::now(),
+        #[cfg(feature = "database")]
+        session_store: None,
     };
 
     let app = Router::new()
@@ -438,6 +462,9 @@ async fn test_test_acl_decision_without_acl() {
         session_manager,
         acl_engine: None,
         acl_config_path: None,
+        start_time: std::time::Instant::now(),
+        #[cfg(feature = "database")]
+        session_store: None,
     };
 
     let app = Router::new()
@@ -481,6 +508,9 @@ async fn test_test_acl_decision_invalid_protocol() {
         session_manager,
         acl_engine: None,
         acl_config_path: None,
+        start_time: std::time::Instant::now(),
+        #[cfg(feature = "database")]
+        session_store: None,
     };
 
     let app = Router::new()
@@ -525,6 +555,9 @@ async fn test_test_acl_decision_valid_request() {
         session_manager,
         acl_engine: None, // ACL not enabled, so will return "allow" as default
         acl_config_path: None,
+        start_time: std::time::Instant::now(),
+        #[cfg(feature = "database")]
+        session_store: None,
     };
 
     let app = Router::new()

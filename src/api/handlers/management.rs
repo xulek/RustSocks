@@ -4,12 +4,11 @@ use axum::{extract::State, http::StatusCode, Json};
 use serde::{Deserialize, Serialize};
 
 /// GET /health - Health check endpoint
-pub async fn health_check(State(_state): State<ApiState>) -> (StatusCode, Json<HealthResponse>) {
-    // TODO: Get actual uptime from application start time
+pub async fn health_check(State(state): State<ApiState>) -> (StatusCode, Json<HealthResponse>) {
     let response = HealthResponse {
         status: "healthy".to_string(),
         version: env!("CARGO_PKG_VERSION").to_string(),
-        uptime_seconds: 0,
+        uptime_seconds: state.start_time.elapsed().as_secs(),
     };
 
     (StatusCode::OK, Json(response))
