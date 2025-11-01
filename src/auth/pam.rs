@@ -186,6 +186,8 @@ mod unix {
         }
     }
 
+    pub use PamAuthenticator as InnerPamAuthenticator;
+
     #[cfg(test)]
     mod tests {
         use super::*;
@@ -245,8 +247,6 @@ mod unix {
                 .expect("expected valid PAM authenticator");
         }
     }
-
-    pub use PamAuthenticator as InnerPamAuthenticator;
 }
 
 #[cfg(unix)]

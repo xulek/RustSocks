@@ -24,7 +24,7 @@ impl SessionStore {
         // Ensure parent directory exists for file-based databases
         let options_clone = options.clone();
         let filename = options_clone.get_filename();
-        let filename_path: &Path = filename.as_ref();
+        let filename_path: &Path = filename;
         if filename_path != Path::new(":memory:") {
             if let Some(parent) = filename_path.parent() {
                 if !parent.as_os_str().is_empty() {
