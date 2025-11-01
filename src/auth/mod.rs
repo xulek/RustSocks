@@ -8,7 +8,7 @@ use crate::utils::error::{Result, RustSocksError};
 pub use groups::get_user_groups;
 use std::collections::HashMap;
 use std::net::IpAddr;
-use tokio::net::TcpStream;
+use tokio::io::{AsyncRead, AsyncWrite};
 use tracing::{debug, info, warn};
 
 pub struct AuthManager {
@@ -107,12 +107,15 @@ impl AuthManager {
     /// Returns:
     /// - `Ok(None)` for no-auth methods
     /// - `Ok(Some((username, groups)))` for authenticated users with their LDAP groups
-    pub async fn authenticate(
+    pub async fn authenticate<S>(
         &self,
-        stream: &mut TcpStream,
+        stream: &mut S,
         method: AuthMethod,
         client_ip: IpAddr,
-    ) -> Result<Option<(String, Vec<String>)>> {
+    ) -> Result<Option<(String, Vec<String>)>>
+    where
+        S: AsyncRead + AsyncWrite + Unpin + Send,
+    {
         match (&self.socks_backend, method) {
             (AuthBackend::None, AuthMethod::NoAuth) => {
                 debug!("No authentication required");

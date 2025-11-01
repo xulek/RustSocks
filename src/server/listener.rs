@@ -2,7 +2,7 @@ use crate::acl::{load_acl_config_sync, AclEngine, AclStats, AclWatcher};
 use crate::api::start_api_server;
 use crate::api::types::ApiConfig;
 use crate::auth::AuthManager;
-use crate::config::Config;
+use crate::config::{Config, TlsSettings};
 use crate::qos::QosEngine;
 use crate::server::handler::{handle_client, ClientHandlerContext};
 use crate::server::proxy::TrafficUpdateConfig;
@@ -10,13 +10,18 @@ use crate::session::{start_metrics_collector, MetricsHistory, SessionManager};
 #[cfg(feature = "database")]
 use crate::session::{BatchConfig, SessionStore};
 use crate::utils::error::{Result, RustSocksError};
+use rustls::server::AllowAnyAuthenticatedClient;
+use rustls::{Certificate, PrivateKey, RootCertStore};
+use rustls_pemfile::{certs, pkcs8_private_keys, rsa_private_keys};
+use std::fs::File;
+use std::io::BufReader;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::net::TcpListener;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
+use tokio_rustls::{rustls, TlsAcceptor};
 use tracing::{error, info, warn};
-
 pub struct SocksServer {
     config: Arc<Config>,
     auth_manager: Arc<AuthManager>,
@@ -28,6 +33,172 @@ pub struct SocksServer {
     stats_handle: Option<JoinHandle<()>>,
     acl_watcher: Option<Mutex<AclWatcher>>,
     qos_engine: QosEngine,
+    tls_acceptor: Option<TlsAcceptor>,
+}
+
+/// Utwórz `TlsAcceptor` na podstawie ustawień TLS serwera.
+pub fn create_tls_acceptor(tls: &TlsSettings) -> Result<TlsAcceptor> {
+    if tls.key_password.is_some() {
+        return Err(RustSocksError::Config(
+            "server.tls.key_password is not supported (keys must be unencrypted)".to_string(),
+        ));
+    }
+
+    let cert_path = tls
+        .certificate_path
+        .as_deref()
+        .expect("validated: certificate_path must be set when TLS is enabled");
+    let key_path = tls
+        .private_key_path
+        .as_deref()
+        .expect("validated: private_key_path must be set when TLS is enabled");
+
+    let certs = load_certificates(cert_path)?;
+    let key = load_private_key(key_path)?;
+
+    let protocol_versions: &[&'static rustls::SupportedProtocolVersion] =
+        match tls.min_protocol_version.as_deref() {
+            Some("TLS13") => &[&rustls::version::TLS13],
+            _ => &[&rustls::version::TLS13, &rustls::version::TLS12],
+        };
+
+    let builder = rustls::ServerConfig::builder()
+        .with_safe_default_cipher_suites()
+        .with_safe_default_kx_groups()
+        .with_protocol_versions(protocol_versions)
+        .map_err(|e| {
+            RustSocksError::Config(format!("Failed to configure TLS protocol versions: {}", e))
+        })?;
+
+    let server_config = if tls.require_client_auth {
+        let ca_path = tls
+            .client_ca_path
+            .as_deref()
+            .expect("validated: client_ca_path must be set when client auth is enabled");
+        let root_store = build_client_root_store(ca_path)?;
+        builder
+            .with_client_cert_verifier(Arc::new(AllowAnyAuthenticatedClient::new(root_store)))
+            .with_single_cert(certs, key)
+            .map_err(|e| {
+                RustSocksError::Config(format!("Failed to configure TLS certificates: {}", e))
+            })?
+    } else {
+        builder
+            .with_no_client_auth()
+            .with_single_cert(certs, key)
+            .map_err(|e| {
+                RustSocksError::Config(format!("Failed to configure TLS certificates: {}", e))
+            })?
+    };
+
+    let mut server_config = server_config;
+
+    if !tls.alpn_protocols.is_empty() {
+        server_config.alpn_protocols = tls
+            .alpn_protocols
+            .iter()
+            .map(|proto| proto.as_bytes().to_vec())
+            .collect();
+    }
+
+    Ok(TlsAcceptor::from(Arc::new(server_config)))
+}
+
+fn load_certificates(path: &str) -> Result<Vec<Certificate>> {
+    let file = File::open(path).map_err(|e| {
+        RustSocksError::Config(format!(
+            "Failed to open TLS certificate file '{}': {}",
+            path, e
+        ))
+    })?;
+    let mut reader = BufReader::new(file);
+    let certs = certs(&mut reader).map_err(|e| {
+        RustSocksError::Config(format!(
+            "Failed to parse certificates from '{}': {}",
+            path, e
+        ))
+    })?;
+
+    if certs.is_empty() {
+        return Err(RustSocksError::Config(format!(
+            "TLS certificate file '{}' did not contain any certificates",
+            path
+        )));
+    }
+
+    Ok(certs.into_iter().map(Certificate).collect())
+}
+
+fn load_private_key(path: &str) -> Result<PrivateKey> {
+    let file = File::open(path).map_err(|e| {
+        RustSocksError::Config(format!(
+            "Failed to open TLS private key file '{}': {}",
+            path, e
+        ))
+    })?;
+    let mut reader = BufReader::new(file);
+    let pkcs8_keys = pkcs8_private_keys(&mut reader).map_err(|e| {
+        RustSocksError::Config(format!(
+            "Failed to parse PKCS#8 private key from '{}': {}",
+            path, e
+        ))
+    })?;
+    if let Some(key) = pkcs8_keys.into_iter().next() {
+        return Ok(PrivateKey(key));
+    }
+
+    let file = File::open(path).map_err(|e| {
+        RustSocksError::Config(format!(
+            "Failed to reopen TLS private key file '{}': {}",
+            path, e
+        ))
+    })?;
+    let mut reader = BufReader::new(file);
+    let rsa_keys = rsa_private_keys(&mut reader).map_err(|e| {
+        RustSocksError::Config(format!(
+            "Failed to parse RSA private key from '{}': {}",
+            path, e
+        ))
+    })?;
+    if let Some(key) = rsa_keys.into_iter().next() {
+        return Ok(PrivateKey(key));
+    }
+
+    Err(RustSocksError::Config(format!(
+        "No supported private key found in '{}' (expected PKCS#8 or RSA)",
+        path
+    )))
+}
+
+fn build_client_root_store(path: &str) -> Result<RootCertStore> {
+    let file = File::open(path).map_err(|e| {
+        RustSocksError::Config(format!("Failed to open client CA file '{}': {}", path, e))
+    })?;
+    let mut reader = BufReader::new(file);
+    let certs = certs(&mut reader).map_err(|e| {
+        RustSocksError::Config(format!(
+            "Failed to parse client CA certificates from '{}': {}",
+            path, e
+        ))
+    })?;
+
+    if certs.is_empty() {
+        return Err(RustSocksError::Config(format!(
+            "Client CA file '{}' did not contain any certificates",
+            path
+        )));
+    }
+
+    let mut store = RootCertStore::empty();
+    let (added, _) = store.add_parsable_certificates(&certs);
+    if added == 0 {
+        return Err(RustSocksError::Config(format!(
+            "No valid client CA certificates could be loaded from '{}'",
+            path
+        )));
+    }
+
+    Ok(store)
 }
 
 impl SocksServer {
@@ -73,6 +244,12 @@ impl SocksServer {
 
         let anonymous_user = Arc::new(config.acl.anonymous_user.clone());
         let config = Arc::new(config);
+
+        let tls_acceptor = if config.server.tls.enabled {
+            Some(create_tls_acceptor(&config.server.tls)?)
+        } else {
+            None
+        };
 
         #[cfg_attr(not(feature = "database"), allow(unused_mut))]
         let mut session_manager_inner = SessionManager::new();
@@ -157,7 +334,8 @@ impl SocksServer {
             // Initialize metrics history based on config
             let metrics_history = if config.metrics.enabled {
                 let max_snapshots = (config.metrics.retention_hours * 3600
-                    / config.metrics.collection_interval_secs) as usize;
+                    / config.metrics.collection_interval_secs)
+                    as usize;
                 let max_age_hours = config.metrics.retention_hours as i64;
 
                 let history = Arc::new(MetricsHistory::new(max_snapshots, max_age_hours));
@@ -259,6 +437,7 @@ impl SocksServer {
             stats_handle,
             acl_watcher,
             qos_engine,
+            tls_acceptor,
         })
     }
 
@@ -295,6 +474,8 @@ impl SocksServer {
             connection_limits: self.config.qos.connection_limits.clone(),
         });
 
+        let tls_acceptor = self.tls_acceptor.clone();
+
         loop {
             match listener.accept().await {
                 Ok((stream, addr)) => {
@@ -306,9 +487,22 @@ impl SocksServer {
                     }
 
                     let ctx = handler_ctx.clone();
+                    let tls_acceptor = tls_acceptor.clone();
 
                     tokio::spawn(async move {
-                        if let Err(e) = handle_client(stream, ctx, addr).await {
+                        let result = if let Some(acceptor) = tls_acceptor {
+                            match acceptor.accept(stream).await {
+                                Ok(tls_stream) => handle_client(tls_stream, ctx, addr).await,
+                                Err(e) => {
+                                    error!("TLS handshake failed for {}: {}", addr, e);
+                                    return;
+                                }
+                            }
+                        } else {
+                            handle_client(stream, ctx, addr).await
+                        };
+
+                        if let Err(e) = result {
                             error!("Client error from {}: {}", addr, e);
                         }
                     });

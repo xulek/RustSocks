@@ -154,6 +154,26 @@ level = "info"
 format = "pretty"
 ```
 
+### Szyfrowanie ruchu (SOCKS over TLS)
+
+Od wersji z TLS możesz opakować ruch SOCKS w kanał TLS bez zmian po stronie logiki proxy.
+
+```toml
+[server.tls]
+enabled = true
+certificate_path = "config/server.crt"
+private_key_path = "config/server.key"
+require_client_auth = false
+# Opcjonalnie:
+# client_ca_path = "config/clients-ca.crt"
+# alpn_protocols = ["socks"]
+# min_protocol_version = "TLS13"
+```
+
+- Klucz prywatny musi być w formacie PKCS#8 lub klasycznym RSA (bez hasła).
+- Certyfikat i klucz mogą być samopodpisane – pamiętaj, by dodać je do magazynu zaufanych certów po stronie klienta.
+- `require_client_auth = true` pozwala wymusić wzajemne TLS (klient musi dostarczyć certyfikat zaufany przez `client_ca_path`).
+
 ### Przykład z ACL
 
 ```toml

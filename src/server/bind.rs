@@ -1,12 +1,13 @@
 use crate::protocol::{Address, ReplyCode};
 use crate::qos::QosEngine;
+use crate::server::handler::IoStream;
 use crate::server::proxy::{proxy_data, TrafficUpdateConfig};
 use crate::session::{ConnectionInfo, SessionManager, SessionProtocol, SessionStatus};
 use crate::utils::error::{Result, RustSocksError};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::net::{TcpListener, TcpStream};
+use tokio::net::TcpListener;
 use tokio::time::timeout;
 use tracing::{debug, info, warn};
 
@@ -24,13 +25,16 @@ pub struct BindContext {
 
 /// Handle BIND command
 /// Returns the bound address/port where server listens for incoming connection
-pub async fn handle_bind(
-    mut client_stream: TcpStream,
+pub async fn handle_bind<S>(
+    mut client_stream: S,
     dest_addr: &Address,
     dest_port: u16,
     session_manager: Arc<SessionManager>,
     bind_ctx: BindContext,
-) -> Result<()> {
+) -> Result<()>
+where
+    S: IoStream,
+{
     let client_addr = bind_ctx.client_addr;
     let dest_string = dest_addr.to_string();
 
@@ -150,11 +154,14 @@ pub async fn handle_bind(
 /// RFC 1928: +----+-----+-------+------+----------+----------+
 ///           |VER | REP |  RSV  | ATYP | BND.ADDR | BND.PORT |
 ///           +----+-----+-------+------+----------+----------+
-async fn send_bind_response(
-    stream: &mut TcpStream,
+async fn send_bind_response<S>(
+    stream: &mut S,
     reply: ReplyCode,
     bind_addr: SocketAddr,
-) -> Result<()> {
+) -> Result<()>
+where
+    S: IoStream,
+{
     use tokio::io::AsyncWriteExt as _;
 
     let mut response = vec![0x05, reply as u8, 0x00]; // version, reply, reserved

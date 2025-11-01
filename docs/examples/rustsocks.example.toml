@@ -3,6 +3,15 @@ bind_address = "127.0.0.1"
 bind_port = 1080
 max_connections = 10000
 
+[server.tls]
+enabled = false
+certificate_path = "config/server.crt"
+private_key_path = "config/server.key"
+require_client_auth = false
+# client_ca_path = "config/clients-ca.crt"
+# alpn_protocols = ["socks"]
+# min_protocol_version = "TLS13"
+
 [auth]
 client_method = "none"  # Options: "none", "pam.address"
 socks_method = "none"   # Options: "none", "userpass", "pam.address", "pam.username"

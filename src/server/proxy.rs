@@ -4,8 +4,7 @@ use crate::utils::error::{Result, RustSocksError};
 use std::io;
 use std::num::NonZeroU64;
 use std::sync::Arc;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
+use tokio::io::{split, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, trace};
@@ -61,8 +60,8 @@ struct TrafficTotals {
 
 /// Proxy data bidirectionally between client and upstream server while tracking traffic.
 #[allow(clippy::too_many_arguments)]
-pub async fn proxy_data(
-    client: TcpStream,
+pub async fn proxy_data<S>(
+    client: S,
     upstream: TcpStream,
     session_manager: Arc<SessionManager>,
     session_id: Uuid,
@@ -70,8 +69,11 @@ pub async fn proxy_data(
     update_config: TrafficUpdateConfig,
     qos_engine: QosEngine,
     user: String,
-) -> Result<()> {
-    let (client_read, client_write) = client.into_split();
+) -> Result<()>
+where
+    S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
+{
+    let (client_read, client_write) = split(client);
     let (upstream_read, upstream_write) = upstream.into_split();
 
     let upload_handle = tokio::spawn(proxy_direction(
@@ -135,9 +137,9 @@ fn join_error_to_rustsocks(err: tokio::task::JoinError) -> RustSocksError {
 }
 
 #[allow(clippy::too_many_arguments)]
-async fn proxy_direction(
-    mut reader: OwnedReadHalf,
-    mut writer: OwnedWriteHalf,
+async fn proxy_direction<R, W>(
+    mut reader: R,
+    mut writer: W,
     session_manager: Arc<SessionManager>,
     session_id: Uuid,
     cancel_token: CancellationToken,
@@ -145,7 +147,11 @@ async fn proxy_direction(
     direction: TrafficDirection,
     qos_engine: QosEngine,
     user: String,
-) -> Result<TrafficTotals> {
+) -> Result<TrafficTotals>
+where
+    R: AsyncRead + Unpin + Send + 'static,
+    W: AsyncWrite + Unpin + Send + 'static,
+{
     let mut buffer = [0u8; BUFFER_SIZE];
     let mut totals = TrafficTotals::default();
     let mut pending_bytes = 0u64;

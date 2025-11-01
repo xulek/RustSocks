@@ -525,11 +525,7 @@ impl SessionStore {
     }
 
     /// Spawn background task to cleanup old metrics.
-    pub fn spawn_metrics_cleanup(
-        self: &Arc<Self>,
-        retention_hours: u64,
-        interval_hours: u64,
-    ) {
+    pub fn spawn_metrics_cleanup(self: &Arc<Self>, retention_hours: u64, interval_hours: u64) {
         if retention_hours == 0 {
             info!("Metrics cleanup disabled (retention_hours = 0)");
             return;

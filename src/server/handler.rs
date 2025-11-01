@@ -10,7 +10,7 @@ use crate::session::{ConnectionInfo, SessionManager, SessionProtocol, SessionSta
 use crate::utils::error::{Result, RustSocksError};
 use std::net::IpAddr;
 use std::sync::Arc;
-use tokio::io::AsyncReadExt;
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite};
 use tokio::net::TcpStream;
 use tokio::sync::broadcast;
 use tracing::{debug, info, warn};
@@ -37,11 +37,17 @@ pub struct ClientHandlerContext {
     pub connection_limits: ConnectionLimits,
 }
 
-pub async fn handle_client(
-    mut client_stream: TcpStream,
+pub trait IoStream: AsyncRead + AsyncWrite + Unpin + Send + 'static {}
+impl<T> IoStream for T where T: AsyncRead + AsyncWrite + Unpin + Send + 'static {}
+
+pub async fn handle_client<S>(
+    mut client_stream: S,
     ctx: Arc<ClientHandlerContext>,
     client_addr: std::net::SocketAddr,
-) -> Result<()> {
+) -> Result<()>
+where
+    S: IoStream,
+{
     ctx.auth_manager
         .authenticate_client(client_addr.ip())
         .await?;
@@ -58,13 +64,16 @@ pub async fn handle_client(
     }
 }
 
-async fn send_socks_response(
-    stream: &mut TcpStream,
+async fn send_socks_response<S>(
+    stream: &mut S,
     protocol: SocksProtocol,
     reply: ReplyCode,
     bind_addr: Address,
     bind_port: u16,
-) -> Result<()> {
+) -> Result<()>
+where
+    S: IoStream,
+{
     match protocol {
         SocksProtocol::V5 => send_socks5_response(stream, reply, bind_addr, bind_port).await,
         SocksProtocol::V4 => {
@@ -89,12 +98,15 @@ async fn send_socks_response(
     }
 }
 
-async fn handle_socks5(
-    mut client_stream: TcpStream,
+async fn handle_socks5<S>(
+    mut client_stream: S,
     ctx: Arc<ClientHandlerContext>,
     client_addr: std::net::SocketAddr,
     version: u8,
-) -> Result<()> {
+) -> Result<()>
+where
+    S: IoStream,
+{
     // Step 1: Method selection
     let greeting = parse_socks5_client_greeting(&mut client_stream, version).await?;
 
@@ -326,11 +338,14 @@ async fn handle_socks5(
     Ok(())
 }
 
-async fn handle_socks4(
-    mut client_stream: TcpStream,
+async fn handle_socks4<S>(
+    mut client_stream: S,
     ctx: Arc<ClientHandlerContext>,
     client_addr: std::net::SocketAddr,
-) -> Result<()> {
+) -> Result<()>
+where
+    S: IoStream,
+{
     if !ctx.auth_manager.supports(AuthMethod::NoAuth) {
         warn!(
             client = %client_addr,
@@ -529,15 +544,18 @@ struct SessionContext {
     qos_engine: QosEngine,
 }
 
-async fn handle_connect(
-    mut client_stream: TcpStream,
+async fn handle_connect<S>(
+    mut client_stream: S,
     dest_addr: &Address,
     dest_port: u16,
     session_manager: Arc<SessionManager>,
     session_ctx: SessionContext,
     traffic_config: TrafficUpdateConfig,
     protocol: SocksProtocol,
-) -> Result<()> {
+) -> Result<()>
+where
+    S: IoStream,
+{
     let dest_host = match dest_addr {
         Address::IPv4(octets) => std::net::Ipv4Addr::from(*octets).to_string(),
         Address::IPv6(octets) => std::net::Ipv6Addr::from(*octets).to_string(),
@@ -721,13 +739,16 @@ async fn handle_connect(
     }
 }
 
-async fn handle_udp_associate(
-    mut client_stream: TcpStream,
+async fn handle_udp_associate<S>(
+    mut client_stream: S,
     _dest_addr: &Address,
     _dest_port: u16,
     session_manager: Arc<SessionManager>,
     session_ctx: SessionContext,
-) -> Result<()> {
+) -> Result<()>
+where
+    S: IoStream,
+{
     let dest_host = "0.0.0.0".to_string(); // UDP ASSOCIATE doesn't specify real destination yet
 
     // Create shutdown channel for UDP relay

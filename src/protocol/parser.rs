@@ -1,15 +1,14 @@
 use super::types::*;
 use crate::utils::error::{Result, RustSocksError};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::TcpStream;
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tracing::{debug, trace};
 
 /// Parse client greeting (method selection) for SOCKS5.
 /// The caller must provide the already-read version byte.
-pub async fn parse_socks5_client_greeting(
-    stream: &mut TcpStream,
-    version: u8,
-) -> Result<ClientGreeting> {
+pub async fn parse_socks5_client_greeting<S>(stream: &mut S, version: u8) -> Result<ClientGreeting>
+where
+    S: AsyncRead + AsyncWrite + Unpin + Send,
+{
     if version != SOCKS_VERSION {
         return Err(RustSocksError::Protocol(format!(
             "Unsupported SOCKS version: 0x{:02x}",
@@ -37,7 +36,10 @@ pub async fn parse_socks5_client_greeting(
 }
 
 /// Send server choice
-pub async fn send_server_choice(stream: &mut TcpStream, method: AuthMethod) -> Result<()> {
+pub async fn send_server_choice<S>(stream: &mut S, method: AuthMethod) -> Result<()>
+where
+    S: AsyncRead + AsyncWrite + Unpin + Send,
+{
     let buf = [SOCKS_VERSION, method as u8];
     stream.write_all(&buf).await?;
     stream.flush().await?;
@@ -48,7 +50,10 @@ pub async fn send_server_choice(stream: &mut TcpStream, method: AuthMethod) -> R
 }
 
 /// Parse username/password authentication (RFC 1929)
-pub async fn parse_userpass_auth(stream: &mut TcpStream) -> Result<(String, String)> {
+pub async fn parse_userpass_auth<S>(stream: &mut S) -> Result<(String, String)>
+where
+    S: AsyncRead + AsyncWrite + Unpin + Send,
+{
     // Read version
     let version = stream.read_u8().await?;
 
@@ -79,7 +84,10 @@ pub async fn parse_userpass_auth(stream: &mut TcpStream) -> Result<(String, Stri
 }
 
 /// Send authentication response
-pub async fn send_auth_response(stream: &mut TcpStream, success: bool) -> Result<()> {
+pub async fn send_auth_response<S>(stream: &mut S, success: bool) -> Result<()>
+where
+    S: AsyncRead + AsyncWrite + Unpin + Send,
+{
     let status = if success { 0x00 } else { 0x01 };
     let buf = [0x01, status];
     stream.write_all(&buf).await?;
@@ -94,7 +102,10 @@ pub async fn send_auth_response(stream: &mut TcpStream, success: bool) -> Result
 }
 
 /// Parse SOCKS5 request
-pub async fn parse_socks5_request(stream: &mut TcpStream) -> Result<Socks5Request> {
+pub async fn parse_socks5_request<S>(stream: &mut S) -> Result<Socks5Request>
+where
+    S: AsyncRead + AsyncWrite + Unpin + Send,
+{
     // Read fixed part: version, command, reserved, address type
     let mut buf = [0u8; 4];
     stream.read_exact(&mut buf).await?;
@@ -159,12 +170,15 @@ pub async fn parse_socks5_request(stream: &mut TcpStream) -> Result<Socks5Reques
 }
 
 /// Send SOCKS5 response
-pub async fn send_socks5_response(
-    stream: &mut TcpStream,
+pub async fn send_socks5_response<S>(
+    stream: &mut S,
     reply: ReplyCode,
     bind_addr: Address,
     bind_port: u16,
-) -> Result<()> {
+) -> Result<()>
+where
+    S: AsyncRead + AsyncWrite + Unpin + Send,
+{
     // Write version, reply, reserved
     let mut buf = vec![SOCKS_VERSION, reply as u8, 0x00];
 
@@ -202,7 +216,10 @@ pub async fn send_socks5_response(
 }
 
 /// Parse SOCKS4/4a request (SOCKS version byte must be consumed by caller)
-pub async fn parse_socks4_request(stream: &mut TcpStream) -> Result<Socks4Request> {
+pub async fn parse_socks4_request<S>(stream: &mut S) -> Result<Socks4Request>
+where
+    S: AsyncRead + AsyncWrite + Unpin + Send,
+{
     let command_byte = stream.read_u8().await?;
     let command = Command::try_from(command_byte)?;
 
@@ -248,12 +265,15 @@ pub async fn parse_socks4_request(stream: &mut TcpStream) -> Result<Socks4Reques
 }
 
 /// Send SOCKS4 response
-pub async fn send_socks4_response(
-    stream: &mut TcpStream,
+pub async fn send_socks4_response<S>(
+    stream: &mut S,
     reply: Socks4Reply,
     bind_addr: [u8; 4],
     bind_port: u16,
-) -> Result<()> {
+) -> Result<()>
+where
+    S: AsyncRead + AsyncWrite + Unpin + Send,
+{
     let mut buf = Vec::with_capacity(8);
     buf.push(0x00);
     buf.push(reply as u8);
@@ -271,7 +291,10 @@ pub async fn send_socks4_response(
     Ok(())
 }
 
-async fn read_null_terminated_string(stream: &mut TcpStream) -> Result<String> {
+async fn read_null_terminated_string<S>(stream: &mut S) -> Result<String>
+where
+    S: AsyncRead + AsyncWrite + Unpin + Send,
+{
     const MAX_LEN: usize = 255;
     let mut bytes = Vec::new();
 

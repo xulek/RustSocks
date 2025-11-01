@@ -26,6 +26,28 @@ pub struct ServerConfig {
     pub bind_port: u16,
     #[serde(default = "default_max_connections")]
     pub max_connections: usize,
+    #[serde(default)]
+    pub tls: TlsSettings,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TlsSettings {
+    #[serde(default = "default_tls_enabled")]
+    pub enabled: bool,
+    #[serde(default)]
+    pub certificate_path: Option<String>,
+    #[serde(default)]
+    pub private_key_path: Option<String>,
+    #[serde(default)]
+    pub key_password: Option<String>,
+    #[serde(default = "default_tls_require_client_auth")]
+    pub require_client_auth: bool,
+    #[serde(default)]
+    pub client_ca_path: Option<String>,
+    #[serde(default)]
+    pub alpn_protocols: Vec<String>,
+    #[serde(default)]
+    pub min_protocol_version: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -141,6 +163,14 @@ fn default_bind_port() -> u16 {
 
 fn default_max_connections() -> usize {
     1000
+}
+
+fn default_tls_enabled() -> bool {
+    false
+}
+
+fn default_tls_require_client_auth() -> bool {
+    false
 }
 
 fn default_client_method() -> String {
@@ -291,6 +321,22 @@ impl Default for ServerConfig {
             bind_address: default_bind_address(),
             bind_port: default_bind_port(),
             max_connections: default_max_connections(),
+            tls: TlsSettings::default(),
+        }
+    }
+}
+
+impl Default for TlsSettings {
+    fn default() -> Self {
+        Self {
+            enabled: default_tls_enabled(),
+            certificate_path: None,
+            private_key_path: None,
+            key_password: None,
+            require_client_auth: default_tls_require_client_auth(),
+            client_ca_path: None,
+            alpn_protocols: Vec::new(),
+            min_protocol_version: None,
         }
     }
 }
@@ -449,6 +495,54 @@ impl Config {
             ));
         }
 
+        if self.server.tls.enabled {
+            let cert_path = self.server.tls.certificate_path.as_ref().ok_or_else(|| {
+                RustSocksError::Config(
+                    "server.tls.enabled is true but certificate_path is not set".to_string(),
+                )
+            })?;
+            if cert_path.trim().is_empty() {
+                return Err(RustSocksError::Config(
+                    "server.tls.certificate_path cannot be empty when TLS is enabled".to_string(),
+                ));
+            }
+
+            let key_path = self.server.tls.private_key_path.as_ref().ok_or_else(|| {
+                RustSocksError::Config(
+                    "server.tls.enabled is true but private_key_path is not set".to_string(),
+                )
+            })?;
+            if key_path.trim().is_empty() {
+                return Err(RustSocksError::Config(
+                    "server.tls.private_key_path cannot be empty when TLS is enabled".to_string(),
+                ));
+            }
+
+            if self.server.tls.require_client_auth
+                && self
+                    .server
+                    .tls
+                    .client_ca_path
+                    .as_ref()
+                    .map(|s| s.trim().is_empty())
+                    .unwrap_or(true)
+            {
+                return Err(RustSocksError::Config(
+                    "server.tls.client_ca_path is required when require_client_auth is true"
+                        .to_string(),
+                ));
+            }
+
+            if let Some(min_ver) = self.server.tls.min_protocol_version.as_deref() {
+                if !matches!(min_ver, "TLS12" | "TLS13") {
+                    return Err(RustSocksError::Config(format!(
+                        "Invalid server.tls.min_protocol_version '{}'. Supported values: TLS12, TLS13",
+                        min_ver
+                    )));
+                }
+            }
+        }
+
         if self.acl.enabled {
             let path = self.acl.config_file.as_ref().ok_or_else(|| {
                 RustSocksError::Config("ACL enabled but no config_file provided".to_string())
@@ -544,6 +638,15 @@ impl Config {
 bind_address = "127.0.0.1"
 bind_port = 1080
 max_connections = 1000
+
+[server.tls]
+enabled = false
+certificate_path = "config/server.crt"
+private_key_path = "config/server.key"
+require_client_auth = false
+# client_ca_path = "config/ca.crt"
+# alpn_protocols = ["socks"]
+# min_protocol_version = "TLS13"
 
 [auth]
 client_method = "none"       # Options: "none", "pam.address"
