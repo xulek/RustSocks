@@ -78,7 +78,8 @@
       "Bash(cargo audit:*)",
       "Bash(cargo install:*)",
       "Bash(cargo update:*)",
-      "Bash(npm run build:*)"
+      "Bash(npm run build:*)",
+      "Bash(npm test)"
     ],
     "deny": [],
     "ask": []

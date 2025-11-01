@@ -126,6 +126,26 @@ pub struct AclTestRequest {
     pub protocol: String,
 }
 
+/// Connectivity test request payload
+#[derive(Debug, Deserialize)]
+pub struct ConnectivityTestRequest {
+    pub address: String,
+    pub port: u16,
+    #[serde(default)]
+    pub timeout_ms: Option<u64>,
+}
+
+/// Connectivity test response payload
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ConnectivityTestResponse {
+    pub address: String,
+    pub port: u16,
+    pub success: bool,
+    pub latency_ms: Option<u64>,
+    pub message: String,
+    pub error: Option<String>,
+}
+
 /// API error response
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ErrorResponse {

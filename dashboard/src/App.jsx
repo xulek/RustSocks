@@ -6,7 +6,8 @@ import {
   Shield,
   Users,
   Settings,
-  FileText
+  FileText,
+  Stethoscope
 } from 'lucide-react'
 
 import Dashboard from './pages/Dashboard'
@@ -15,6 +16,7 @@ import AclRules from './pages/AclRules'
 import UserManagement from './pages/UserManagement'
 import Statistics from './pages/Statistics'
 import Configuration from './pages/Configuration'
+import Diagnostics from './pages/Diagnostics'
 import { ROUTER_BASENAME } from './lib/basePath'
 
 function App() {
@@ -48,6 +50,10 @@ function App() {
               <FileText />
               <span>Statistics</span>
             </NavLink>
+            <NavLink to="/diagnostics" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+              <Stethoscope />
+              <span>Diagnostics</span>
+            </NavLink>
             <NavLink to="/config" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
               <Settings />
               <span>Configuration</span>
@@ -62,6 +68,7 @@ function App() {
             <Route path="/acl" element={<AclRules />} />
             <Route path="/users" element={<UserManagement />} />
             <Route path="/statistics" element={<Statistics />} />
+            <Route path="/diagnostics" element={<Diagnostics />} />
             <Route path="/config" element={<Configuration />} />
           </Routes>
         </main>

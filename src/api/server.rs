@@ -27,6 +27,7 @@ use crate::api::handlers::{
         get_active_sessions, get_metrics_history, get_session_detail, get_session_history,
         get_session_stats, get_user_sessions,
     },
+    test_tcp_connectivity,
 };
 use crate::api::types::ApiConfig;
 use crate::session::SessionManager;
@@ -129,6 +130,10 @@ fn get_openapi_spec(base_path: String) -> serde_json::Value {
             {
                 "name": "Admin",
                 "description": "Administrative operations"
+            },
+            {
+                "name": "Diagnostics",
+                "description": "Troubleshooting and connectivity checks"
             }
         ],
         "paths": {
@@ -168,6 +173,68 @@ fn get_openapi_spec(base_path: String) -> serde_json::Value {
                             "content": {
                                 "text/plain": {
                                     "schema": {"type": "string"}
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "/api/diagnostics/connectivity": {
+                "post": {
+                    "summary": "Test TCP connectivity",
+                    "description": "Attempt a TCP connection to the specified IP address and port",
+                    "tags": ["Diagnostics"],
+                    "operationId": "testTcpConnectivity",
+                    "requestBody": {
+                        "required": true,
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "address": {"type": "string", "example": "8.8.8.8"},
+                                        "port": {"type": "integer", "format": "int32", "example": 53},
+                                        "timeout_ms": {"type": "integer", "format": "int64", "example": 3000}
+                                    },
+                                    "required": ["address", "port"]
+                                }
+                            }
+                        }
+                    },
+                    "responses": {
+                        "200": {
+                            "description": "Connectivity test result",
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "address": {"type": "string"},
+                                            "port": {"type": "integer", "format": "int32"},
+                                            "success": {"type": "boolean"},
+                                            "latency_ms": {"type": "integer", "format": "int64", "nullable": true},
+                                            "message": {"type": "string"},
+                                            "error": {"type": "string", "nullable": true}
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "400": {
+                            "description": "Invalid request payload",
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "address": {"type": "string"},
+                                            "port": {"type": "integer", "format": "int32"},
+                                            "success": {"type": "boolean"},
+                                            "latency_ms": {"type": "integer", "format": "int64", "nullable": true},
+                                            "message": {"type": "string"},
+                                            "error": {"type": "string", "nullable": true}
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -1117,6 +1184,8 @@ pub async fn start_api_server(
         .route("/api/sessions/:id", get(get_session_detail))
         .route("/api/users/:user/sessions", get(get_user_sessions))
         .route("/api/metrics/history", get(get_metrics_history))
+        // Diagnostics endpoints
+        .route("/api/diagnostics/connectivity", post(test_tcp_connectivity))
         // Management endpoints
         .route("/api/admin/reload-acl", post(reload_acl))
         .route("/api/acl/rules", get(get_acl_rules))
