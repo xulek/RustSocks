@@ -14,17 +14,22 @@ use std::net::IpAddr;
 use std::sync::Arc;
 use tower::util::ServiceExt;
 
-#[tokio::test]
-async fn test_health_endpoint() {
-    let session_manager = Arc::new(SessionManager::new());
-    let state = ApiState {
-        session_manager: session_manager.clone(),
+fn create_api_state(session_manager: Arc<SessionManager>) -> ApiState {
+    ApiState {
+        session_manager,
         acl_engine: None,
         acl_config_path: None,
         start_time: std::time::Instant::now(),
         #[cfg(feature = "database")]
         session_store: None,
-    };
+        metrics_history: None,
+    }
+}
+
+#[tokio::test]
+async fn test_health_endpoint() {
+    let session_manager = Arc::new(SessionManager::new());
+    let state = create_api_state(session_manager.clone());
 
     let app = Router::new()
         .route("/health", get(health_check))
@@ -68,14 +73,7 @@ async fn test_metrics_endpoint() {
         .new_session("testuser", conn_info, "allow", None)
         .await;
 
-    let state = ApiState {
-        session_manager: session_manager.clone(),
-        acl_engine: None,
-        acl_config_path: None,
-        start_time: std::time::Instant::now(),
-        #[cfg(feature = "database")]
-        session_store: None,
-    };
+    let state = create_api_state(session_manager.clone());
 
     let app = Router::new()
         .route("/metrics", get(get_metrics))
@@ -123,14 +121,7 @@ async fn test_get_active_sessions() {
             .await;
     }
 
-    let state = ApiState {
-        session_manager: session_manager.clone(),
-        acl_engine: None,
-        acl_config_path: None,
-        start_time: std::time::Instant::now(),
-        #[cfg(feature = "database")]
-        session_store: None,
-    };
+    let state = create_api_state(session_manager.clone());
 
     let app = Router::new()
         .route("/api/sessions/active", get(get_active_sessions))
@@ -183,14 +174,7 @@ async fn test_get_session_stats() {
             .await;
     }
 
-    let state = ApiState {
-        session_manager: session_manager.clone(),
-        acl_engine: None,
-        acl_config_path: None,
-        start_time: std::time::Instant::now(),
-        #[cfg(feature = "database")]
-        session_store: None,
-    };
+    let state = create_api_state(session_manager.clone());
 
     let app = Router::new()
         .route("/api/sessions/stats", get(get_session_stats))
@@ -252,14 +236,7 @@ async fn test_get_user_sessions() {
             .await;
     }
 
-    let state = ApiState {
-        session_manager: session_manager.clone(),
-        acl_engine: None,
-        acl_config_path: None,
-        start_time: std::time::Instant::now(),
-        #[cfg(feature = "database")]
-        session_store: None,
-    };
+    let state = create_api_state(session_manager.clone());
 
     let app = Router::new()
         .route("/api/users/:user/sessions", get(get_user_sessions))
@@ -318,14 +295,7 @@ async fn test_session_history_with_filters() {
         }
     }
 
-    let state = ApiState {
-        session_manager: session_manager.clone(),
-        acl_engine: None,
-        acl_config_path: None,
-        start_time: std::time::Instant::now(),
-        #[cfg(feature = "database")]
-        session_store: None,
-    };
+    let state = create_api_state(session_manager.clone());
 
     let app = Router::new()
         .route("/api/sessions/history", get(get_session_history))
@@ -381,14 +351,7 @@ async fn test_session_history_pagination() {
             .await;
     }
 
-    let state = ApiState {
-        session_manager: session_manager.clone(),
-        acl_engine: None,
-        acl_config_path: None,
-        start_time: std::time::Instant::now(),
-        #[cfg(feature = "database")]
-        session_store: None,
-    };
+    let state = create_api_state(session_manager.clone());
 
     let app = Router::new()
         .route("/api/sessions/history", get(get_session_history))
@@ -422,14 +385,7 @@ async fn test_session_history_pagination() {
 #[tokio::test]
 async fn test_get_acl_rules_without_acl() {
     let session_manager = Arc::new(SessionManager::new());
-    let state = ApiState {
-        session_manager,
-        acl_engine: None,
-        acl_config_path: None,
-        start_time: std::time::Instant::now(),
-        #[cfg(feature = "database")]
-        session_store: None,
-    };
+    let state = create_api_state(session_manager);
 
     let app = Router::new()
         .route("/api/acl/rules", get(get_acl_rules))
@@ -458,14 +414,7 @@ async fn test_get_acl_rules_without_acl() {
 #[tokio::test]
 async fn test_test_acl_decision_without_acl() {
     let session_manager = Arc::new(SessionManager::new());
-    let state = ApiState {
-        session_manager,
-        acl_engine: None,
-        acl_config_path: None,
-        start_time: std::time::Instant::now(),
-        #[cfg(feature = "database")]
-        session_store: None,
-    };
+    let state = create_api_state(session_manager);
 
     let app = Router::new()
         .route("/api/acl/test", post(test_acl_decision))
@@ -504,14 +453,7 @@ async fn test_test_acl_decision_without_acl() {
 #[tokio::test]
 async fn test_test_acl_decision_invalid_protocol() {
     let session_manager = Arc::new(SessionManager::new());
-    let state = ApiState {
-        session_manager,
-        acl_engine: None,
-        acl_config_path: None,
-        start_time: std::time::Instant::now(),
-        #[cfg(feature = "database")]
-        session_store: None,
-    };
+    let state = create_api_state(session_manager);
 
     let app = Router::new()
         .route("/api/acl/test", post(test_acl_decision))
@@ -551,14 +493,7 @@ async fn test_test_acl_decision_invalid_protocol() {
 #[tokio::test]
 async fn test_test_acl_decision_valid_request() {
     let session_manager = Arc::new(SessionManager::new());
-    let state = ApiState {
-        session_manager,
-        acl_engine: None, // ACL not enabled, so will return "allow" as default
-        acl_config_path: None,
-        start_time: std::time::Instant::now(),
-        #[cfg(feature = "database")]
-        session_store: None,
-    };
+    let state = create_api_state(session_manager);
 
     let app = Router::new()
         .route("/api/acl/test", post(test_acl_decision))

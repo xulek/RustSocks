@@ -122,6 +122,8 @@ pub async fn get_session_history(
 }
 
 #[cfg(feature = "database")]
+// Helper needs to accept separate filter and pagination arguments without additional structs.
+#[allow(clippy::too_many_arguments)]
 async fn fetch_history_from_store(
     store: &crate::session::SessionStore,
     manager: &SessionManager,
@@ -162,13 +164,15 @@ async fn fetch_history_from_store(
     let db_offset = offset.saturating_sub(extra_total);
     let db_limit = page_size.saturating_sub(extra_page_len);
 
-    let mut filter = SessionFilter::default();
-    filter.user = user_filter.clone();
-    filter.dest_ip = dest_filter.clone();
-    filter.status = status_filter.clone();
-    filter.limit = Some(db_limit as u64);
-    filter.offset = Some(db_offset as u64);
-    filter.start_after = cutoff.cloned();
+    let filter = SessionFilter {
+        user: user_filter.clone(),
+        dest_ip: dest_filter.clone(),
+        status: status_filter.clone(),
+        limit: Some(db_limit as u64),
+        offset: Some(db_offset as u64),
+        start_after: cutoff.cloned(),
+        ..Default::default()
+    };
 
     let mut count_filter = filter.clone();
     count_filter.limit = None;
