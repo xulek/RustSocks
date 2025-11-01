@@ -22,8 +22,9 @@ impl SessionStore {
         let options = SqliteConnectOptions::from_str(database_url)?;
 
         // Ensure parent directory exists for file-based databases
-        let filename = options.clone().get_filename();
-        let filename_path = filename.as_ref();
+        let options_clone = options.clone();
+        let filename = options_clone.get_filename();
+        let filename_path: &Path = filename.as_ref();
         if filename_path != Path::new(":memory:") {
             if let Some(parent) = filename_path.parent() {
                 if !parent.as_os_str().is_empty() {

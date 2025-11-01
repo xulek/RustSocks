@@ -70,7 +70,14 @@
       "Bash(/root/.cargo/bin/cargo test --all-features --test ldap_groups)",
       "Bash(/root/.cargo/bin/cargo test --all-features --test acl_api)",
       "Bash(cargo fmt:*)",
-      "Bash(printf:*)"
+      "Bash(printf:*)",
+      "Bash(/root/.cargo/bin/cargo test --release --test acl_integration acl_performance_under_seven_ms -- --ignored --nocapture)",
+      "Bash(for i in {1..10})",
+      "Bash(do time curl -s -w '\\nTime: %{time_total}s\\n' http://127.0.0.1:9090/rustsocks/api/sessions/stats)",
+      "Bash(/root/.cargo/bin/cargo clippy --all-features -- -D warnings)",
+      "Bash(cargo audit:*)",
+      "Bash(cargo install:*)",
+      "Bash(cargo update:*)"
     ],
     "deny": [],
     "ask": []
