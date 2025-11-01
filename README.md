@@ -7,10 +7,16 @@
 
 ## ✨ Kluczowe Funkcje
 
-- **🔐 Autentykacja**
+- **🔐 Autentykacja & Szyfrowanie**
   - No-Auth, Username/Password
   - PAM integration (IP-based & username/password)
   - Two-tier authentication (client + SOCKS levels)
+  - **SOCKS over TLS** z mTLS support
+
+- **🔒 Transport Security**
+  - Full TLS 1.2 & TLS 1.3 support
+  - Mutual TLS (mTLS) with client certificates
+  - Configurable protocol versions
 
 - **🛡️ Access Control Lists (ACL)**
   - Per-user i per-group rules
@@ -154,25 +160,39 @@ level = "info"
 format = "pretty"
 ```
 
-### Szyfrowanie ruchu (SOCKS over TLS)
+### Szyfrowanie ruchu (SOCKS over TLS) ✅
 
-Od wersji z TLS możesz opakować ruch SOCKS w kanał TLS bez zmian po stronie logiki proxy.
+Od wersji 0.8.0 możesz opakować ruch SOCKS w kanał TLS bez zmian po stronie logiki proxy. **Pełna wsparcie dla TLS 1.2/1.3 i mTLS**.
 
 ```toml
 [server.tls]
 enabled = true
 certificate_path = "config/server.crt"
 private_key_path = "config/server.key"
-require_client_auth = false
-# Opcjonalnie:
-# client_ca_path = "config/clients-ca.crt"
-# alpn_protocols = ["socks"]
-# min_protocol_version = "TLS13"
+min_protocol_version = "TLS13"       # TLS13 lub TLS12
+
+# Opcjonalnie - Mutual TLS (mTLS):
+require_client_auth = true
+client_ca_path = "config/clients-ca.crt"
 ```
 
-- Klucz prywatny musi być w formacie PKCS#8 lub klasycznym RSA (bez hasła).
-- Certyfikat i klucz mogą być samopodpisane – pamiętaj, by dodać je do magazynu zaufanych certów po stronie klienta.
-- `require_client_auth = true` pozwala wymusić wzajemne TLS (klient musi dostarczyć certyfikat zaufany przez `client_ca_path`).
+**Cechy:**
+- ✅ Full TLS 1.2 & TLS 1.3 support
+- ✅ Mutual TLS with client authentication
+- ✅ Self-signed certificates supported
+- ✅ Integration z PAM - credentials nigdy nie są w plaintext
+- ✅ ACL rules działają normalne, ruch jest encrypted
+
+**Setup:**
+```bash
+# Generate self-signed certificate for testing
+openssl req -x509 -newkey rsa:4096 -keyout server.key -out server.crt \
+  -days 365 -nodes -subj "/CN=localhost"
+```
+
+- Klucz prywatny: PKCS#8 lub klasyczny RSA (bez hasła)
+- Certyfikat: samopodpisany lub od CA
+- `require_client_auth = true`: wymusza mTLS (klient musi certyfikat)
 
 ### Przykład z ACL
 

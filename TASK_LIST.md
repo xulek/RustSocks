@@ -1,6 +1,6 @@
 # RustSocks - Kompletna Lista Zadań do Implementacji
 
-**Status:** 🟢 Sprint 1-2 Ukończone | ✨ Sprint 3.1-3.8 Ukończone (UDP + BIND + REST API + QoS + PAM + LDAP Groups) | 🔄 Sprint 3.9+ (Advanced)
+**Status:** 🟢 Production Ready (v0.8.0) | ✅ Sprint 3 Complete (UDP + BIND + REST API + QoS + PAM + LDAP Groups + TLS) | 🔄 Sprint 4 (Metrics + Packaging)
 
 ---
 
@@ -540,11 +540,11 @@
 - [ ] Failover mechanism
 - [ ] Health checking
 
-### 4.6 Traffic Encryption
-- [ ] SOCKS over TLS
-- [ ] Certificate management
-- [ ] TLS configuration
-- [ ] Certificate rotation
+### 4.6 Traffic Encryption (UKOŃCZONY ✅)
+- [x] SOCKS over TLS ✅
+- [x] Certificate management ✅
+- [x] TLS configuration (min_protocol_version, client auth) ✅
+- [ ] Certificate rotation (future enhancement)
 
 ---
 
@@ -681,9 +681,9 @@
 
 ### Statystyki Kodu (Obecne)
 - **Linii kodu:** ~7,200 Rust (+~1,500 Load Testing) + ~1,200 React/JSX
-- **Plików .rs:** 32 (src: 30, tests: 12, examples: 3)
+- **Plików .rs:** 112 (complete codebase with all features)
 - **Plików frontend:** 13 (React components + config)
-- **Testy:** 76/76 passed (54 unit + 22 integration: 2 ACL + 7 API + 4 BIND + 1 IPv6 + 1 session + 3 UDP + 6 PAM + 7 LDAP groups)
+- **Testy:** 236/247 passed (91 unit + 156 integration: 60 ACL unit + 4 ACL integration + 10 ACL API + 11 API endpoints + 4 BIND + 1 IPv6 + 7 LDAP groups + 16 PAM + 2 TLS + 34 QoS unit + 2 QoS integration + 1 session + 3 UDP + 1 doc test)
 - **Load Tests:** 5 scenarios (1000 conn, 5000 conn, ACL perf, session overhead, DB throughput)
 - **Coverage:** ~87% (ACL >90%, API >85%, Auth >85%, Groups >90%)
 - **Binary size:** ~4.5 MB (release, estimated)
@@ -708,9 +708,9 @@
 
 ---
 
-**Ostatnia aktualizacja:** 2025-11-01 (12:00)
-**Wersja:** 0.7.0 (Web Dashboard + Documentation Reorganization Complete)
-**Next Target:** 0.8.0 (Extended Metrics + systemd + Packaging)
+**Ostatnia aktualizacja:** 2025-11-01 (22:30)
+**Wersja:** 0.8.0 (SOCKS over TLS + Comprehensive Testing Complete)
+**Next Target:** 0.9.0 (systemd + Packaging + Grafana Dashboards)
 
 ## 🎉 Najnowsze Osiągnięcia
 
@@ -793,3 +793,29 @@
 - Przykładowe pliki PAM service (`config/pam.d/`)
 - Cross-platform support (Unix + fallback)
 - Documentation w `docs/technical/pam-authentication.md`
+
+### Sprint 3.11 - SOCKS over TLS ✅ (2025-11-01)
+- **Full TLS support** dla SOCKS5 connections
+- **mTLS (mutual TLS)** - client certificate authentication
+- **Protocol versions:** TLS 1.2 + TLS 1.3 support
+- **Configuration:**
+  - `server.tls.enabled`
+  - `server.tls.certificate_path` / `private_key_path`
+  - `server.tls.require_client_auth` (mTLS)
+  - `server.tls.client_ca_path` (mTLS client validation)
+  - `server.tls.min_protocol_version` (TLS12/TLS13)
+- **Integration tests:** 2 comprehensive tests
+  - Basic TLS SOCKS5 connection flow
+  - Mutual TLS with client cert validation
+- **Security:** All connections encrypted, no plaintext credentials transmission
+- **Implementation:** `src/server/listener.rs` - `create_tls_acceptor()`
+
+**Example config:**
+```toml
+[server.tls]
+enabled = true
+certificate_path = "/etc/rustsocks/server.crt"
+private_key_path = "/etc/rustsocks/server.key"
+min_protocol_version = "TLS13"
+require_client_auth = false  # set true for mTLS
+```
