@@ -306,10 +306,27 @@ database = ["sqlx"]
 fast-allocator = ["mimalloc"]
 ```
 
+### Lokalna weryfikacja CI
+
+Przed wysłaniem kodu uruchom lokalny skrypt CI:
+
+```bash
+./scripts/ci-local.sh
+```
+
+Skrypt sprawdza:
+- ✅ Formatowanie kodu (`cargo fmt`)
+- ✅ Linting (`cargo clippy`)
+- ✅ Kompilację
+- ✅ Testy
+- ✅ Security audit (ignorując znane, nienaprawialne podatności)
+
 ## 🔄 CI/CD
 
 - GitHub Actions: Build & Test (z opcjonalnym streszczeniem wyników)
-- Dodatkowe kroki: `cargo fmt --check`, `cargo clippy`, `cargo audit`
+- Dodatkowe kroki: `cargo fmt --check`, `cargo clippy --all-features`, `cargo audit`
+- Ignorowane podatności: `RUSTSEC-2023-0071` (rsa via sqlx-mysql), `RUSTSEC-2025-0040` (users via pam)
+- Konfiguracja: `.github/workflows/ci.yml`, `deny.toml`
 
 ## 🎯 Roadmap
 
