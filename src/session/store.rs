@@ -211,17 +211,17 @@ impl SessionStore {
         }
 
         if let Some(start_after) = filter.start_after {
+            // Direct comparison works with RFC3339 format (sortable strings)
             builder
-                .push(" AND datetime(start_time) >= datetime(")
-                .push_bind(start_after.to_rfc3339())
-                .push(")");
+                .push(" AND start_time >= ")
+                .push_bind(start_after.to_rfc3339());
         }
 
         if let Some(start_before) = filter.start_before {
+            // Direct comparison works with RFC3339 format (sortable strings)
             builder
-                .push(" AND datetime(start_time) <= datetime(")
-                .push_bind(start_before.to_rfc3339())
-                .push(")");
+                .push(" AND start_time <= ")
+                .push_bind(start_before.to_rfc3339());
         }
 
         if let Some(dest_ip) = &filter.dest_ip {
@@ -395,7 +395,7 @@ impl SessionStore {
         let affected = sqlx::query(
             r#"
             DELETE FROM sessions
-            WHERE datetime(start_time) < datetime(?);
+            WHERE start_time < ?;
             "#,
         )
         .bind(cutoff.to_rfc3339())
@@ -480,7 +480,7 @@ impl SessionStore {
         );
 
         if start.is_some() {
-            query.push_str(" AND datetime(timestamp) >= datetime(?)");
+            query.push_str(" AND timestamp >= ?");
         }
 
         query.push_str(" ORDER BY timestamp DESC");
@@ -513,7 +513,7 @@ impl SessionStore {
         let affected = sqlx::query(
             r#"
             DELETE FROM metrics_snapshots
-            WHERE datetime(timestamp) < datetime(?);
+            WHERE timestamp < ?;
             "#,
         )
         .bind(cutoff.to_rfc3339())

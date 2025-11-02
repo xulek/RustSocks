@@ -23,14 +23,16 @@ struct CompiledUserAcl {
     #[allow(dead_code)]
     username: String,
     groups: Vec<String>,
-    rules: Vec<CompiledAclRule>,
+    // Use Arc to make cloning cheap (just atomic counter increment)
+    rules: Vec<Arc<CompiledAclRule>>,
 }
 
 #[derive(Debug, Clone)]
 struct CompiledGroupAcl {
     #[allow(dead_code)]
     name: String,
-    rules: Vec<CompiledAclRule>,
+    // Use Arc to make cloning cheap (just atomic counter increment)
+    rules: Vec<Arc<CompiledAclRule>>,
 }
 
 impl AclEngine {
@@ -48,12 +50,12 @@ impl AclEngine {
         let mut users = std::collections::HashMap::new();
         let mut groups = std::collections::HashMap::new();
 
-        // Compile user rules
+        // Compile user rules (wrap in Arc for cheap cloning)
         for user_acl in &config.users {
             let compiled_rules: Result<Vec<_>, _> = user_acl
                 .rules
                 .iter()
-                .map(CompiledAclRule::compile)
+                .map(|r| CompiledAclRule::compile(r).map(Arc::new))
                 .collect();
 
             users.insert(
@@ -66,12 +68,12 @@ impl AclEngine {
             );
         }
 
-        // Compile group rules
+        // Compile group rules (wrap in Arc for cheap cloning)
         for group_acl in &config.groups {
             let compiled_rules: Result<Vec<_>, _> = group_acl
                 .rules
                 .iter()
-                .map(CompiledAclRule::compile)
+                .map(|r| CompiledAclRule::compile(r).map(Arc::new))
                 .collect();
 
             groups.insert(
@@ -239,16 +241,19 @@ impl AclEngine {
     }
 
     /// Collect all rules for a user (user rules + group rules), sorted by priority
-    fn collect_rules(&self, config: &CompiledAclConfig, user: &str) -> Vec<CompiledAclRule> {
+    /// Now returns Vec<Arc<CompiledAclRule>> - cloning Arc is cheap (atomic counter increment)
+    fn collect_rules(&self, config: &CompiledAclConfig, user: &str) -> Vec<Arc<CompiledAclRule>> {
         let mut all_rules = Vec::new();
 
         // Get user's rules
         if let Some(user_acl) = config.users.get(user) {
+            // Cheap clone - just Arc increment, no deep copy
             all_rules.extend(user_acl.rules.clone());
 
             // Add rules from user's groups
             for group_name in &user_acl.groups {
                 if let Some(group_acl) = config.groups.get(group_name) {
+                    // Cheap clone - just Arc increment, no deep copy
                     all_rules.extend(group_acl.rules.clone());
                 }
             }
@@ -302,11 +307,12 @@ impl AclEngine {
         config: &CompiledAclConfig,
         user: &str,
         user_groups: &[String],
-    ) -> Vec<CompiledAclRule> {
+    ) -> Vec<Arc<CompiledAclRule>> {
         let mut all_rules = Vec::new();
 
         // Add per-user rules first (highest priority)
         if let Some(user_acl) = config.users.get(user) {
+            // Cheap clone - just Arc increment, no deep copy
             all_rules.extend(user_acl.rules.clone());
         }
 
@@ -321,6 +327,7 @@ impl AclEngine {
                         rule_count = group_acl.rules.len(),
                         "Matched LDAP group to ACL group (case-insensitive)"
                     );
+                    // Cheap clone - just Arc increment, no deep copy
                     all_rules.extend(group_acl.rules.clone());
                     break; // Found match, move to next LDAP group
                 }
