@@ -9,7 +9,6 @@
 /// 6. BIND Command - Reverse connections
 ///
 /// These tests ensure that all components work together correctly in real-world scenarios.
-
 use rustsocks::acl::types::{AclRule, GlobalAclConfig, UserAcl};
 use rustsocks::acl::{AclConfig, AclEngine, AclStats, Action, Protocol};
 use rustsocks::auth::AuthManager;
@@ -107,9 +106,7 @@ async fn spawn_socks_server(ctx: Arc<ClientHandlerContext>) -> SocketAddr {
 }
 
 /// Performs SOCKS5 handshake with no authentication
-async fn socks5_handshake_noauth(
-    client: &mut TcpStream,
-) -> Result<(), Box<dyn std::error::Error>> {
+async fn socks5_handshake_noauth(client: &mut TcpStream) -> Result<(), Box<dyn std::error::Error>> {
     // Send greeting (no auth)
     client.write_all(&[0x05, 0x01, 0x00]).await?;
 
@@ -408,11 +405,7 @@ async fn e2e_acl_block() {
     // Verify rejected session was tracked
     tokio::time::sleep(Duration::from_millis(100)).await;
     let rejected_sessions = session_manager.rejected_snapshot();
-    assert_eq!(
-        rejected_sessions.len(),
-        1,
-        "Should have 1 rejected session"
-    );
+    assert_eq!(rejected_sessions.len(), 1, "Should have 1 rejected session");
     assert_eq!(rejected_sessions[0].user, "anonymous");
     assert_eq!(rejected_sessions[0].status, SessionStatus::RejectedByAcl);
 
@@ -475,7 +468,9 @@ async fn e2e_session_tracking() {
 
     let closed_sessions = session_manager.get_closed_sessions();
     assert!(
-        closed_sessions.iter().any(|s| s.status == SessionStatus::Closed),
+        closed_sessions
+            .iter()
+            .any(|s| s.status == SessionStatus::Closed),
         "Should have a closed session"
     );
 
@@ -530,7 +525,10 @@ async fn e2e_udp_associate() {
     let active_sessions = session_manager.get_active_sessions().await;
     assert_eq!(active_sessions.len(), 1, "Should have 1 active UDP session");
 
-    println!("✅ E2E Test 5: UDP ASSOCIATE - PASSED (relay on port {})", udp_port);
+    println!(
+        "✅ E2E Test 5: UDP ASSOCIATE - PASSED (relay on port {})",
+        udp_port
+    );
 }
 
 // ============================================================================

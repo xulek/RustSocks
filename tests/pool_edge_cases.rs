@@ -1,12 +1,13 @@
 /// Connection Pool Edge Cases & Error Handling Tests
 ///
 /// Comprehensive tests for error scenarios, edge cases, and robustness
-
-use rustsocks::server::{ConnectionPool, PoolConfig};
+use rustsocks::server::{ConnectionPool, PoolConfig, ReuseHint};
+use std::io::ErrorKind;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
+use tokio::sync::mpsc;
 
 #[tokio::test]
 async fn pool_handles_closed_server_gracefully() {
@@ -95,7 +96,7 @@ async fn pool_evicts_expired_connections() {
 
     // Create and pool a connection
     let stream = pool.get(addr).await.unwrap();
-    pool.put(addr, stream).await;
+    pool.put(addr, stream, ReuseHint::Reuse).await;
 
     // Verify it's in pool
     let stats = pool.stats().await;
@@ -146,14 +147,11 @@ async fn pool_enforces_per_destination_limit_strictly() {
 
     // Put them all back (should only keep 2)
     for stream in streams {
-        pool.put(addr, stream).await;
+        pool.put(addr, stream, ReuseHint::Reuse).await;
     }
 
     let stats = pool.stats().await;
-    assert_eq!(
-        stats.total_idle, 2,
-        "Should enforce per-dest limit of 2"
-    );
+    assert_eq!(stats.total_idle, 2, "Should enforce per-dest limit of 2");
 }
 
 #[tokio::test]
@@ -197,14 +195,11 @@ async fn pool_enforces_global_limit_with_multiple_destinations() {
 
     // Put them all back (should only keep 5 total)
     for (addr, stream) in streams {
-        pool.put(addr, stream).await;
+        pool.put(addr, stream, ReuseHint::Reuse).await;
     }
 
     let stats = pool.stats().await;
-    assert_eq!(
-        stats.total_idle, 5,
-        "Should enforce global limit of 5"
-    );
+    assert_eq!(stats.total_idle, 5, "Should enforce global limit of 5");
     assert!(
         stats.destinations <= 3,
         "Should have connections from at most 3 destinations"
@@ -249,7 +244,7 @@ async fn pool_stats_accurate_after_operations() {
 
     // Put them back
     for stream in streams {
-        pool.put(addr, stream).await;
+        pool.put(addr, stream, ReuseHint::Reuse).await;
     }
 
     let stats = pool.stats().await;
@@ -263,7 +258,7 @@ async fn pool_stats_accurate_after_operations() {
     assert_eq!(stats.total_idle, 2, "Getting should reduce idle count");
 
     // Put it back
-    pool.put(addr, _stream).await;
+    pool.put(addr, _stream, ReuseHint::Reuse).await;
 
     let stats = pool.stats().await;
     assert_eq!(stats.total_idle, 3, "Putting should increase idle count");
@@ -294,7 +289,7 @@ async fn pool_disabled_never_stores_connections() {
     // Try to use pool
     for _ in 0..5 {
         let stream = pool.get(addr).await.unwrap();
-        pool.put(addr, stream).await;
+        pool.put(addr, stream, ReuseHint::Reuse).await;
     }
 
     // Pool should remain empty
@@ -334,7 +329,7 @@ async fn pool_handles_simultaneous_put_operations() {
         let pool_clone = pool.clone();
         tasks.push(tokio::spawn(async move {
             let stream = pool_clone.get(addr).await.unwrap();
-            pool_clone.put(addr, stream).await;
+            pool_clone.put(addr, stream, ReuseHint::Reuse).await;
         }));
     }
 
@@ -382,7 +377,7 @@ async fn pool_reuses_most_recent_connection() {
 
     // Put them back
     for stream in streams {
-        pool.put(addr, stream).await;
+        pool.put(addr, stream, ReuseHint::Reuse).await;
     }
 
     // Get should return most recently used (LIFO behavior via pop())
@@ -463,7 +458,7 @@ async fn pool_handles_multiple_destinations_correctly() {
 
     // Put them all back
     for (addr, stream) in streams {
-        pool.put(addr, stream).await;
+        pool.put(addr, stream, ReuseHint::Reuse).await;
     }
 
     let stats = pool.stats().await;
@@ -511,7 +506,7 @@ async fn pool_cleanup_task_runs_periodically() {
 
     // Put them back
     for stream in streams {
-        pool.put(addr, stream).await;
+        pool.put(addr, stream, ReuseHint::Reuse).await;
     }
 
     let stats = pool.stats().await;
@@ -568,7 +563,7 @@ async fn pool_handles_rapid_get_put_cycles() {
     // Rapid cycles
     for _ in 0..50 {
         let stream = pool.get(addr).await.unwrap();
-        pool.put(addr, stream).await;
+        pool.put(addr, stream, ReuseHint::Reuse).await;
     }
 
     let stats = pool.stats().await;
@@ -623,7 +618,7 @@ async fn pool_connection_actually_works() {
     assert_eq!(&buf, b"test", "Connection should actually work");
 
     // Return to pool
-    pool.put(addr, stream).await;
+    pool.put(addr, stream, ReuseHint::Reuse).await;
 
     // Get again and verify it still works (should reuse the same connection)
     let mut stream = pool.get(addr).await.unwrap();
@@ -631,4 +626,68 @@ async fn pool_connection_actually_works() {
     let mut buf = [0u8; 4];
     stream.read_exact(&mut buf).await.unwrap();
     assert_eq!(&buf, b"work", "Reused connection should work");
+}
+
+#[tokio::test]
+async fn pool_refresh_hint_replenishes_idle_connection() {
+    let pool_config = PoolConfig {
+        enabled: true,
+        max_idle_per_dest: 4,
+        max_total_idle: 10,
+        idle_timeout_secs: 90,
+        connect_timeout_ms: 5000,
+    };
+    let pool = Arc::new(ConnectionPool::new(pool_config));
+
+    let listener = match TcpListener::bind("127.0.0.1:0").await {
+        Ok(listener) => listener,
+        Err(e) if e.kind() == ErrorKind::PermissionDenied => {
+            eprintln!(
+                "Skipping pool_refresh_hint_replenishes_idle_connection due to bind permissions: {}",
+                e
+            );
+            return;
+        }
+        Err(e) => panic!("failed to bind test listener: {}", e),
+    };
+
+    let addr = listener.local_addr().unwrap();
+    let (tx, mut rx) = mpsc::unbounded_channel();
+
+    tokio::spawn(async move {
+        loop {
+            match listener.accept().await {
+                Ok((stream, _)) => {
+                    if tx.send(stream).is_err() {
+                        break;
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+    });
+
+    let stream = pool.get(addr).await.unwrap();
+    let server_side = rx.recv().await.expect("initial connection not accepted");
+
+    drop(server_side);
+    pool.put(addr, stream, ReuseHint::Refresh).await;
+
+    let refreshed = tokio::time::timeout(Duration::from_secs(1), rx.recv())
+        .await
+        .expect("refresh connection was not established in time")
+        .expect("refresh channel closed unexpectedly");
+
+    let stats = pool.stats().await;
+    assert_eq!(stats.total_idle, 1, "Refreshed connection should be cached");
+    assert_eq!(stats.destinations, 1, "Destination should remain tracked");
+
+    let pooled = pool.get(addr).await.unwrap();
+    assert!(
+        rx.try_recv().is_err(),
+        "Reusing idle connection should not create an extra upstream dial"
+    );
+
+    drop(pooled);
+    drop(refreshed);
 }

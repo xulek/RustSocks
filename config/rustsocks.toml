@@ -47,6 +47,13 @@ swagger_enabled = true      # Enable Swagger UI at /swagger-ui/
 dashboard_enabled = true    # Enable Web Dashboard at /
 base_path = "/rustsocks/"            # Base URL path prefix ("/" or e.g. "/rustsocks")
 
+[server.pool]
+enabled = true
+max_idle_per_dest = 8       # Idle connections cached per destination
+max_total_idle = 200        # Global idle connection cap
+idle_timeout_secs = 120     # Drop idle connections after 2 minutes
+connect_timeout_ms = 3000   # Timeout when creating new upstream connections
+
 [metrics]
 enabled = true              # Enable metrics collection
 storage = "sqlite"          # Options: "memory", "sqlite" (uses sessions.database_url)

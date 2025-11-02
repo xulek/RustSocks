@@ -1,8 +1,7 @@
 /// Connection Pool Concurrency Stress Tests
 ///
 /// Tests pool performance under high concurrent load
-
-use rustsocks::server::{ConnectionPool, PoolConfig};
+use rustsocks::server::{ConnectionPool, PoolConfig, ReuseHint};
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::net::TcpListener;
@@ -30,8 +29,13 @@ async fn pool_handles_hundred_concurrent_gets() {
                 if let Ok((mut stream, _)) = listener.accept().await {
                     tokio::spawn(async move {
                         let mut buf = [0u8; 4];
-                        if tokio::io::AsyncReadExt::read_exact(&mut stream, &mut buf).await.is_ok() {
-                            tokio::io::AsyncWriteExt::write_all(&mut stream, &buf).await.ok();
+                        if tokio::io::AsyncReadExt::read_exact(&mut stream, &mut buf)
+                            .await
+                            .is_ok()
+                        {
+                            tokio::io::AsyncWriteExt::write_all(&mut stream, &buf)
+                                .await
+                                .ok();
                         }
                     });
                 }
@@ -51,9 +55,7 @@ async fn pool_handles_hundred_concurrent_gets() {
         let pool_clone = pool.clone();
         let addr = servers[i % servers.len()];
 
-        tasks.push(tokio::spawn(async move {
-            pool_clone.get(addr).await
-        }));
+        tasks.push(tokio::spawn(async move { pool_clone.get(addr).await }));
     }
 
     let mut successes = 0;
@@ -77,7 +79,10 @@ async fn pool_handles_hundred_concurrent_gets() {
     println!("Avg per request: {:?}", elapsed / 200);
 
     assert!(successes > 190, "Should have >95% success rate");
-    assert!(elapsed.as_millis() < 5000, "Should complete within 5 seconds");
+    assert!(
+        elapsed.as_millis() < 5000,
+        "Should complete within 5 seconds"
+    );
 }
 
 #[tokio::test]
@@ -101,8 +106,13 @@ async fn pool_put_get_concurrent_stress() {
             if let Ok((mut stream, _)) = listener.accept().await {
                 tokio::spawn(async move {
                     let mut buf = [0u8; 4];
-                    if tokio::io::AsyncReadExt::read_exact(&mut stream, &mut buf).await.is_ok() {
-                        tokio::io::AsyncWriteExt::write_all(&mut stream, &buf).await.ok();
+                    if tokio::io::AsyncReadExt::read_exact(&mut stream, &mut buf)
+                        .await
+                        .is_ok()
+                    {
+                        tokio::io::AsyncWriteExt::write_all(&mut stream, &buf)
+                            .await
+                            .ok();
                     }
                 });
             }
@@ -126,7 +136,7 @@ async fn pool_put_get_concurrent_stress() {
             tokio::time::sleep(tokio::time::Duration::from_micros(100)).await;
 
             // Put back to pool
-            pool_clone.put(server_addr, stream).await;
+            pool_clone.put(server_addr, stream, ReuseHint::Reuse).await;
 
             Ok::<_, std::io::Error>(())
         }));
@@ -151,7 +161,10 @@ async fn pool_put_get_concurrent_stress() {
 
     // Check pool stats
     let stats = pool.stats().await;
-    println!("Pool stats: {} idle in {} destinations", stats.total_idle, stats.destinations);
+    println!(
+        "Pool stats: {} idle in {} destinations",
+        stats.total_idle, stats.destinations
+    );
     assert!(stats.total_idle <= stats.config.max_total_idle);
 }
 

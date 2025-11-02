@@ -314,6 +314,20 @@ impl SocksServer {
         let traffic_config =
             TrafficUpdateConfig::new(config.sessions.traffic_update_packet_interval);
 
+        // Shared connection pool (used by proxy handlers and API telemetry)
+        let pool_config = crate::server::pool::PoolConfig::from(config.server.pool.clone());
+        let connection_pool = Arc::new(ConnectionPool::new(pool_config));
+        if config.server.pool.enabled {
+            info!(
+                max_idle_per_dest = config.server.pool.max_idle_per_dest,
+                max_total_idle = config.server.pool.max_total_idle,
+                idle_timeout_secs = config.server.pool.idle_timeout_secs,
+                "Connection pool enabled"
+            );
+        } else {
+            info!("Connection pool disabled");
+        }
+
         let mut stats_handle = None;
 
         if config.sessions.stats_api_enabled {
@@ -406,6 +420,7 @@ impl SocksServer {
                 session_manager.clone(),
                 acl_engine.clone(),
                 acl_config_path,
+                connection_pool.clone(),
                 metrics_history,
             )
             .await
@@ -426,18 +441,6 @@ impl SocksServer {
         let qos_engine = QosEngine::from_config(config.qos.clone()).await?;
         if qos_engine.is_enabled() {
             info!("QoS engine initialized and started");
-        }
-
-        // Initialize connection pool
-        let pool_config = crate::server::pool::PoolConfig::from(config.server.pool.clone());
-        let connection_pool = Arc::new(ConnectionPool::new(pool_config));
-        if config.server.pool.enabled {
-            info!(
-                max_idle_per_dest = config.server.pool.max_idle_per_dest,
-                max_total_idle = config.server.pool.max_total_idle,
-                idle_timeout_secs = config.server.pool.idle_timeout_secs,
-                "Connection pool enabled"
-            );
         }
 
         Ok(Self {

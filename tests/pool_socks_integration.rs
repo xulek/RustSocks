@@ -1,7 +1,6 @@
 /// Connection Pool Integration with SOCKS5 Handler
 ///
 /// Tests verifying pool works correctly in real SOCKS5 scenarios
-
 use rustsocks::acl::AclStats;
 use rustsocks::auth::AuthManager;
 use rustsocks::config::AuthConfig;
@@ -126,10 +125,7 @@ async fn pool_integrates_with_socks5_multiple_requests() {
 
     // Check pool stats
     let stats = connection_pool.stats().await;
-    assert!(
-        stats.total_idle <= 5,
-        "Pool should respect global limit"
-    );
+    assert!(stats.total_idle <= 5, "Pool should respect global limit");
     assert!(
         stats.destinations <= 3,
         "Should have connections to at most 3 destinations"
@@ -416,7 +412,10 @@ async fn pool_stats_reflect_real_usage() {
     );
 
     assert_eq!(stats.config.enabled, true);
-    assert_eq!(stats.config.max_idle_per_dest, pool_config.max_idle_per_dest);
+    assert_eq!(
+        stats.config.max_idle_per_dest,
+        pool_config.max_idle_per_dest
+    );
     assert_eq!(stats.config.max_total_idle, pool_config.max_total_idle);
 
     // May have some connections pooled

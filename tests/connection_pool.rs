@@ -1,7 +1,6 @@
 /// Connection Pool Integration Tests
 ///
 /// These tests verify end-to-end connection pooling functionality through the SOCKS5 proxy.
-
 use rustsocks::acl::AclStats;
 use rustsocks::auth::AuthManager;
 use rustsocks::config::AuthConfig;
@@ -89,7 +88,6 @@ async fn connection_pool_reuses_upstream_connections() {
 
     // First SOCKS client connection
     {
-
         let mut client = TcpStream::connect(server_addr).await.unwrap();
 
         // SOCKS5 handshake
@@ -180,7 +178,7 @@ async fn connection_pool_respects_timeout() {
         enabled: true,
         max_idle_per_dest: 4,
         max_total_idle: 100,
-        idle_timeout_secs: 1, // Very short timeout
+        idle_timeout_secs: 1,    // Very short timeout
         connect_timeout_ms: 100, // Short connect timeout
     };
     let pool = Arc::new(ConnectionPool::new(pool_config));

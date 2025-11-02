@@ -22,6 +22,7 @@ use crate::api::handlers::{
         delete_user_rule, get_global_settings, get_group_detail, get_user_detail, list_groups,
         list_users, search_rules, update_global_settings, update_group_rule, update_user_rule,
     },
+    get_pool_stats,
     management::{get_acl_rules, get_metrics, health_check, reload_acl, test_acl_decision},
     sessions::{
         get_active_sessions, get_metrics_history, get_session_detail, get_session_history,
@@ -30,6 +31,7 @@ use crate::api::handlers::{
     test_tcp_connectivity,
 };
 use crate::api::types::ApiConfig;
+use crate::server::pool::ConnectionPool;
 use crate::session::SessionManager;
 use crate::utils::error::{Result, RustSocksError};
 
@@ -1099,6 +1101,7 @@ pub async fn start_api_server(
     session_manager: Arc<SessionManager>,
     acl_engine: Option<Arc<crate::acl::AclEngine>>,
     acl_config_path: Option<String>,
+    connection_pool: Arc<ConnectionPool>,
     metrics_history: Option<Arc<crate::session::MetricsHistory>>,
 ) -> Result<JoinHandle<()>> {
     if !config.enable_api {
@@ -1137,6 +1140,7 @@ pub async fn start_api_server(
         #[cfg(feature = "database")]
         session_store,
         metrics_history,
+        connection_pool,
     };
 
     // Build router with all endpoints
@@ -1177,6 +1181,7 @@ pub async fn start_api_server(
         // Health and metrics
         .route("/health", get(health_check))
         .route("/metrics", get(get_metrics))
+        .route("/api/pool/stats", get(get_pool_stats))
         // Session endpoints
         .route("/api/sessions/active", get(get_active_sessions))
         .route("/api/sessions/history", get(get_session_history))

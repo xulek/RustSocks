@@ -25,6 +25,7 @@ pub struct ApiState {
     pub session_manager: Arc<SessionManager>,
     pub acl_engine: Option<Arc<crate::acl::AclEngine>>,
     pub acl_config_path: Option<String>,
+    pub connection_pool: Arc<crate::server::pool::ConnectionPool>,
     pub start_time: std::time::Instant,
     #[cfg(feature = "database")]
     pub session_store: Option<Arc<crate::session::SessionStore>>,

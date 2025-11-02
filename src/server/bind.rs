@@ -1,6 +1,7 @@
 use crate::protocol::{Address, ReplyCode};
 use crate::qos::QosEngine;
 use crate::server::handler::IoStream;
+use crate::server::pool::{ConnectionPool, ReuseHint};
 use crate::server::proxy::{proxy_data, TrafficUpdateConfig};
 use crate::session::{ConnectionInfo, SessionManager, SessionProtocol, SessionStatus};
 use crate::utils::error::{Result, RustSocksError};
@@ -21,6 +22,7 @@ pub struct BindContext {
     pub acl_decision: String,
     pub acl_rule: Option<String>,
     pub qos_engine: QosEngine,
+    pub connection_pool: Arc<ConnectionPool>,
 }
 
 /// Handle BIND command
@@ -95,7 +97,24 @@ where
             )
             .await
             {
-                Ok(_) => {
+                Ok(Some(reuse)) => {
+                    bind_ctx
+                        .connection_pool
+                        .put(peer_addr, reuse.stream, reuse.hint)
+                        .await;
+                    session_manager
+                        .close_session(
+                            &session_id,
+                            Some("BIND connection closed normally".to_string()),
+                            SessionStatus::Closed,
+                        )
+                        .await;
+                }
+                Ok(None) => {
+                    bind_ctx
+                        .connection_pool
+                        .release(peer_addr, ReuseHint::Refresh)
+                        .await;
                     session_manager
                         .close_session(
                             &session_id,
@@ -105,10 +124,25 @@ where
                         .await;
                 }
                 Err(RustSocksError::ConnectionClosed) => {
-                    info!("BIND session cancelled for client {}", client_addr);
+                    bind_ctx
+                        .connection_pool
+                        .release(peer_addr, ReuseHint::Refresh)
+                        .await;
+                    session_manager
+                        .close_session(
+                            &session_id,
+                            Some("BIND connection closed by client".to_string()),
+                            SessionStatus::Closed,
+                        )
+                        .await;
+                    info!("BIND session closed by client {}", client_addr);
                 }
                 Err(e) => {
                     let reason = format!("BIND proxy error: {}", e);
+                    bind_ctx
+                        .connection_pool
+                        .release(peer_addr, ReuseHint::Refresh)
+                        .await;
                     session_manager
                         .close_session(&session_id, Some(reason), SessionStatus::Failed)
                         .await;

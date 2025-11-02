@@ -23,6 +23,8 @@ function Dashboard() {
   const [health, setHealth] = useState(null)
   const [healthError, setHealthError] = useState(null)
   const [statsHistory, setStatsHistory] = useState([])
+  const [poolStats, setPoolStats] = useState(null)
+  const [poolError, setPoolError] = useState(null)
 
   // Load timeRange from localStorage
   const [timeRange, setTimeRange] = useState(() => {
@@ -106,6 +108,20 @@ function Dashboard() {
     })
   }, [chartHistory])
 
+  const topDestinations = useMemo(() => {
+    if (!poolStats || !poolStats.destinations_breakdown) return []
+    return poolStats.destinations_breakdown.slice(0, 8)
+  }, [poolStats])
+
+  const formatPoolTimestamp = (value) => {
+    if (!value) return '—'
+    try {
+      return new Date(value).toLocaleTimeString()
+    } catch (err) {
+      return value
+    }
+  }
+
   const fetchStats = useCallback(async () => {
     try {
       const response = await fetch(getApiUrl('/api/sessions/stats'))
@@ -153,16 +169,31 @@ function Dashboard() {
     }
   }, [])
 
+  const fetchPoolStats = useCallback(async () => {
+    try {
+      const response = await fetch(getApiUrl('/api/pool/stats'))
+      if (!response.ok) throw new Error('Failed to fetch pool stats')
+      const data = await response.json()
+      setPoolStats(data)
+      setPoolError(null)
+    } catch (err) {
+      setPoolError(err.message)
+    }
+  }, [])
+
   useEffect(() => {
     fetchStats()
     fetchMetricsHistory()
+    fetchPoolStats()
     const statsInterval = setInterval(fetchStats, 5000) // Refresh every 5 seconds
     const historyInterval = setInterval(fetchMetricsHistory, 5000) // Refresh history every 5 seconds
+    const poolInterval = setInterval(fetchPoolStats, 5000)
     return () => {
       clearInterval(statsInterval)
       clearInterval(historyInterval)
+      clearInterval(poolInterval)
     }
-  }, [fetchStats, fetchMetricsHistory])
+  }, [fetchStats, fetchMetricsHistory, fetchPoolStats])
 
   useEffect(() => {
     fetchHealth()
@@ -225,6 +256,23 @@ function Dashboard() {
           </div>
           <div className="change">Transferred</div>
         </div>
+
+        <div className="stat-card">
+          <h4>Connection Pool</h4>
+          {poolStats ? (
+            <>
+              <div className="value">{poolStats.total_idle} idle</div>
+              <div className="change">
+                {poolStats.active_in_use} in use · hit {(poolStats.hit_rate * 100).toFixed(1)}%
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="value">-</div>
+              <div className="change">{poolError ? 'Unavailable' : 'Loading...'}</div>
+            </>
+          )}
+        </div>
       </div>
 
       {health && (
@@ -252,6 +300,96 @@ function Dashboard() {
       )}
       {healthError && (
         <div className="error">Health check unavailable: {healthError}</div>
+      )}
+
+      {poolError && !poolStats && (
+        <div className="error">Pool telemetry unavailable: {poolError}</div>
+      )}
+
+      {poolStats && (
+        <div className="card">
+          <div className="card-header">
+            <h3>Connection Pool Overview</h3>
+            <span
+              className={`badge ${poolStats.enabled ? 'badge-success' : 'badge-warning'}`}
+              style={{ textTransform: 'uppercase' }}
+            >
+              {poolStats.enabled ? 'Enabled' : 'Disabled'}
+            </span>
+          </div>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+              gap: '16px',
+              padding: '16px 16px 0'
+            }}
+          >
+            <div>
+              <div className="detail-label">Idle / Active</div>
+              <div className="detail-value">
+                {poolStats.total_idle} / {poolStats.active_in_use}
+              </div>
+            </div>
+            <div>
+              <div className="detail-label">Hit Ratio</div>
+              <div className="detail-value">
+                {(poolStats.hit_rate * 100).toFixed(1)}% ({poolStats.pool_hits} hits / {poolStats.pool_misses} misses)
+              </div>
+            </div>
+            <div>
+              <div className="detail-label">Drops / Evicted</div>
+              <div className="detail-value">
+                {poolStats.dropped_full} drops / {poolStats.evicted} evicted
+              </div>
+            </div>
+            <div>
+              <div className="detail-label">Pending / Max Idle</div>
+              <div className="detail-value">
+                {poolStats.pending_creates} pending · cap {poolStats.config.max_total_idle}
+              </div>
+            </div>
+          </div>
+          {topDestinations.length > 0 ? (
+            <div className="table-container" style={{ marginTop: '16px' }}>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Destination</th>
+                    <th>Idle</th>
+                    <th>In Use</th>
+                    <th>Hits</th>
+                    <th>Misses</th>
+                    <th>Drops</th>
+                    <th>Evicted</th>
+                    <th>Last Activity</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {topDestinations.map((dest, idx) => {
+                    const lastEvent = dest.last_activity || dest.last_miss
+                    return (
+                      <tr key={`${dest.destination}-${idx}`}>
+                        <td>{dest.destination}</td>
+                        <td>{dest.idle_connections}</td>
+                        <td>{dest.in_use}</td>
+                        <td>{dest.pool_hits}</td>
+                        <td>{dest.pool_misses}</td>
+                        <td>{dest.drops}</td>
+                        <td>{dest.evicted}</td>
+                        <td>{formatPoolTimestamp(lastEvent)}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div style={{ padding: '16px', color: 'var(--text-secondary)' }}>
+              No pooled destinations yet
+            </div>
+          )}
+        </div>
       )}
 
       {chartHistory.length > 0 && (

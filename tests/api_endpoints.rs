@@ -9,16 +9,19 @@ use rustsocks::api::handlers::{
     get_acl_rules, get_active_sessions, get_metrics, get_session_history, get_session_stats,
     get_user_sessions, health_check, test_acl_decision,
 };
+use rustsocks::server::pool::{ConnectionPool, PoolConfig};
 use rustsocks::session::{ConnectionInfo, SessionManager, SessionProtocol, SessionStatus};
 use std::net::IpAddr;
 use std::sync::Arc;
 use tower::util::ServiceExt;
 
 fn create_api_state(session_manager: Arc<SessionManager>) -> ApiState {
+    let connection_pool = Arc::new(ConnectionPool::new(PoolConfig::default()));
     ApiState {
         session_manager,
         acl_engine: None,
         acl_config_path: None,
+        connection_pool,
         start_time: std::time::Instant::now(),
         #[cfg(feature = "database")]
         session_store: None,

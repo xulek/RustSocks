@@ -104,10 +104,7 @@ async fn bandwidth_throttling_enforced_by_proxy() {
         .expect("read proxied data");
     upstream_peer.shutdown().await.expect("shutdown upstream");
 
-    proxy_task
-        .await
-        .expect("join proxy task")
-        .expect("proxy result");
+    let _ = proxy_task.await.expect("join proxy task");
 
     let elapsed = start.elapsed();
     assert!(

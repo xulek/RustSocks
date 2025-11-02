@@ -1,7 +1,9 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
+use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 use tokio::sync::Mutex;
 use tokio::time::timeout;
@@ -56,6 +58,59 @@ impl PooledConnection {
     }
 }
 
+#[derive(Debug, Default)]
+struct PoolMetrics {
+    total_created: AtomicU64,
+    total_reused: AtomicU64,
+    pool_hits: AtomicU64,
+    pool_misses: AtomicU64,
+    dropped_full: AtomicU64,
+    expired: AtomicU64,
+    evicted: AtomicU64,
+    connections_in_use: AtomicU64,
+    pending_creates: AtomicU64,
+}
+
+#[derive(Debug, Clone, Default)]
+struct DestinationMetrics {
+    total_created: u64,
+    total_reused: u64,
+    pool_hits: u64,
+    pool_misses: u64,
+    drops: u64,
+    evicted: u64,
+    expired: u64,
+    in_use: u64,
+    last_activity: Option<SystemTime>,
+    last_miss: Option<SystemTime>,
+}
+
+/// Snapshot of per-destination pool state
+#[derive(Debug, Clone)]
+pub struct DestinationPoolStats {
+    pub destination: SocketAddr,
+    pub idle_connections: usize,
+    pub in_use: u64,
+    pub total_created: u64,
+    pub total_reused: u64,
+    pub pool_hits: u64,
+    pub pool_misses: u64,
+    pub drops: u64,
+    pub evicted: u64,
+    pub expired: u64,
+    pub last_activity: Option<SystemTime>,
+    pub last_miss: Option<SystemTime>,
+}
+
+/// Guidance for how a returned upstream connection should be handled.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReuseHint {
+    /// Stream is clean and can be handed to the next client as-is.
+    Reuse,
+    /// Drop the used stream and establish a fresh connection to keep the pool warm.
+    Refresh,
+}
+
 /// Connection pool for upstream TCP connections
 ///
 /// Manages a pool of idle TCP connections to upstream servers, enabling connection reuse
@@ -64,15 +119,92 @@ pub struct ConnectionPool {
     config: PoolConfig,
     /// Map: destination address -> Vec of idle connections
     pools: Arc<Mutex<HashMap<SocketAddr, Vec<PooledConnection>>>>,
+    destination_metrics: Arc<Mutex<HashMap<SocketAddr, DestinationMetrics>>>,
+    metrics: Arc<PoolMetrics>,
+    active_counts: Arc<Mutex<HashMap<SocketAddr, usize>>>,
 }
 
 impl ConnectionPool {
+    async fn update_destination_metrics<F>(&self, addr: SocketAddr, update: F)
+    where
+        F: FnOnce(&mut DestinationMetrics),
+    {
+        let mut metrics = self.destination_metrics.lock().await;
+        let entry = metrics.entry(addr).or_default();
+        update(entry);
+    }
+
+    async fn record_expired(&self, addr: SocketAddr, count: usize) {
+        if count == 0 {
+            return;
+        }
+
+        self.metrics
+            .expired
+            .fetch_add(count as u64, Ordering::Relaxed);
+
+        self.update_destination_metrics(addr, |entry| {
+            entry.expired += count as u64;
+            entry.last_activity = Some(SystemTime::now());
+        })
+        .await;
+    }
+
+    async fn record_evicted(&self, addr: SocketAddr) {
+        self.metrics.evicted.fetch_add(1, Ordering::Relaxed);
+
+        self.update_destination_metrics(addr, |entry| {
+            entry.evicted += 1;
+            entry.last_activity = Some(SystemTime::now());
+        })
+        .await;
+    }
+
+    fn decrement_in_use(&self) {
+        loop {
+            let current = self.metrics.connections_in_use.load(Ordering::Relaxed);
+            if current == 0 {
+                break;
+            }
+            if self
+                .metrics
+                .connections_in_use
+                .compare_exchange(current, current - 1, Ordering::Relaxed, Ordering::Relaxed)
+                .is_ok()
+            {
+                break;
+            }
+        }
+    }
+
+    async fn increment_active(&self, addr: SocketAddr) {
+        let mut guard = self.active_counts.lock().await;
+        *guard.entry(addr).or_insert(0) += 1;
+    }
+
+    async fn decrement_active(&self, addr: SocketAddr) {
+        let mut guard = self.active_counts.lock().await;
+        if let Some(count) = guard.get_mut(&addr) {
+            if *count > 1 {
+                *count -= 1;
+            } else {
+                guard.remove(&addr);
+            }
+        }
+    }
+
     /// Create a new connection pool with the given configuration
     pub fn new(config: PoolConfig) -> Self {
         let enabled = config.enabled;
+        let pools = Arc::new(Mutex::new(HashMap::new()));
+        let destination_metrics = Arc::new(Mutex::new(HashMap::new()));
+        let metrics = Arc::new(PoolMetrics::default());
         let pool = Self {
             config,
-            pools: Arc::new(Mutex::new(HashMap::new())),
+            pools,
+            destination_metrics,
+            metrics,
+            active_counts: Arc::new(Mutex::new(HashMap::new())),
         };
 
         // Start background cleanup task if pooling is enabled
@@ -98,51 +230,157 @@ impl ConnectionPool {
 
         // Try to get from pool first
         if let Some(stream) = self.try_get_from_pool(addr).await {
-            trace!("Reusing pooled connection to {}", addr);
+            debug!("♻️  Reusing pooled connection to {}", addr);
+            self.metrics.pool_hits.fetch_add(1, Ordering::Relaxed);
+            self.metrics.total_reused.fetch_add(1, Ordering::Relaxed);
+            self.metrics
+                .connections_in_use
+                .fetch_add(1, Ordering::Relaxed);
+
+            let now = SystemTime::now();
+            self.update_destination_metrics(addr, |entry| {
+                entry.pool_hits += 1;
+                entry.total_reused += 1;
+                entry.in_use += 1;
+                entry.last_activity = Some(now);
+            })
+            .await;
+
+            self.increment_active(addr).await;
+
             return Ok(stream);
         }
 
         // Pool miss - create new connection
-        debug!("Pool miss for {}, creating new connection", addr);
-        self.connect_new(addr).await
+        debug!("🔌 Pool miss for {}, creating new connection", addr);
+        self.metrics.pool_misses.fetch_add(1, Ordering::Relaxed);
+        let miss_time = SystemTime::now();
+        self.update_destination_metrics(addr, |entry| {
+            entry.pool_misses += 1;
+            entry.last_miss = Some(miss_time);
+        })
+        .await;
+
+        self.metrics.pending_creates.fetch_add(1, Ordering::Relaxed);
+        let result = self.connect_new(addr).await;
+        self.metrics.pending_creates.fetch_sub(1, Ordering::Relaxed);
+
+        if result.is_ok() {
+            self.metrics.total_created.fetch_add(1, Ordering::Relaxed);
+            self.metrics
+                .connections_in_use
+                .fetch_add(1, Ordering::Relaxed);
+
+            let now = SystemTime::now();
+            self.update_destination_metrics(addr, |entry| {
+                entry.total_created += 1;
+                entry.in_use += 1;
+                entry.last_activity = Some(now);
+            })
+            .await;
+
+            self.increment_active(addr).await;
+        }
+
+        result
     }
 
-    /// Return a connection to the pool for potential reuse
-    ///
-    /// # Arguments
-    /// * `addr` - The destination address
-    /// * `stream` - The TCP stream to return to the pool
-    pub async fn put(&self, addr: SocketAddr, stream: TcpStream) {
+    /// Return a connection to the pool and decide whether to reuse or refresh it.
+    pub async fn put(self: &Arc<Self>, addr: SocketAddr, stream: TcpStream, hint: ReuseHint) {
         if !self.config.enabled {
             // Pooling disabled - just drop the connection
             return;
         }
 
-        let mut pools = self.pools.lock().await;
+        self.decrement_in_use();
 
-        // Check if we're at capacity for this destination
-        if let Some(pool) = pools.get(&addr) {
-            if pool.len() >= self.config.max_idle_per_dest {
-                trace!("Pool for {} is full, discarding connection", addr);
-                return;
+        match hint {
+            ReuseHint::Reuse => {
+                let (inserted, dropped_for_capacity, evicted_addr) =
+                    self.insert_stream(addr, stream).await;
+
+                if dropped_for_capacity {
+                    self.metrics.dropped_full.fetch_add(1, Ordering::Relaxed);
+                    self.update_destination_metrics(addr, |entry| {
+                        entry.drops += 1;
+                        entry.in_use = entry.in_use.saturating_sub(1);
+                    })
+                    .await;
+                } else if inserted {
+                    self.update_destination_metrics(addr, |entry| {
+                        entry.in_use = entry.in_use.saturating_sub(1);
+                        entry.last_activity = Some(SystemTime::now());
+                    })
+                    .await;
+                } else {
+                    self.update_destination_metrics(addr, |entry| {
+                        entry.in_use = entry.in_use.saturating_sub(1);
+                    })
+                    .await;
+                }
+
+                if let Some(evicted) = evicted_addr {
+                    self.record_evicted(evicted).await;
+                }
+
+                self.decrement_active(addr).await;
+            }
+            ReuseHint::Refresh => {
+                let mut stream = stream;
+                if let Err(e) = stream.shutdown().await {
+                    trace!("Failed to shutdown used upstream connection: {}", e);
+                }
+
+                self.update_destination_metrics(addr, |entry| {
+                    entry.in_use = entry.in_use.saturating_sub(1);
+                })
+                .await;
+
+                self.decrement_active(addr).await;
+
+                let pool = Arc::clone(self);
+                tokio::spawn(async move {
+                    if let Err(e) = pool.refresh_connection(addr).await {
+                        trace!(
+                            target = "rustsocks::server::pool",
+                            error = %e,
+                            "Failed to refresh pooled connection for {}",
+                            addr
+                        );
+                    }
+                });
             }
         }
+    }
 
-        // Check global pool size and evict if needed
-        let total_idle: usize = pools.values().map(|v| v.len()).sum();
-        if total_idle >= self.config.max_total_idle {
-            // Find and remove the oldest connection from any pool
-            self.evict_oldest(&mut pools);
+    /// Release a connection that cannot be returned to the idle pool.
+    pub async fn release(self: &Arc<Self>, addr: SocketAddr, hint: ReuseHint) {
+        if !self.config.enabled {
+            return;
         }
 
-        // Get or create the pool for this destination and add connection
-        let pool = pools.entry(addr).or_insert_with(Vec::new);
-        pool.push(PooledConnection::new(stream));
-        trace!(
-            "Returned connection to pool for {} (pool size: {})",
-            addr,
-            pool.len()
-        );
+        self.decrement_in_use();
+
+        self.update_destination_metrics(addr, |entry| {
+            entry.in_use = entry.in_use.saturating_sub(1);
+        })
+        .await;
+
+        self.decrement_active(addr).await;
+
+        if matches!(hint, ReuseHint::Refresh) {
+            let pool = Arc::clone(self);
+            tokio::spawn(async move {
+                if let Err(e) = pool.refresh_connection(addr).await {
+                    trace!(
+                        target = "rustsocks::server::pool",
+                        error = %e,
+                        "Failed to refresh pooled connection for {}",
+                        addr
+                    );
+                }
+            });
+        }
     }
 
     /// Try to get a connection from the pool
@@ -151,8 +389,9 @@ impl ConnectionPool {
 
         let pool = pools.get_mut(&addr)?;
         let idle_timeout = Duration::from_secs(self.config.idle_timeout_secs);
+        let mut expired = 0usize;
+        let mut stream: Option<TcpStream> = None;
 
-        // Remove and return the most recently used non-expired connection
         while let Some(mut conn) = pool.pop() {
             if conn.is_expired(idle_timeout) {
                 trace!(
@@ -160,12 +399,14 @@ impl ConnectionPool {
                     addr,
                     conn.last_used.elapsed()
                 );
+                expired += 1;
                 continue;
             }
 
             // Update last_used time
             conn.last_used = Instant::now();
-            return Some(conn.stream);
+            stream = Some(conn.stream);
+            break;
         }
 
         // No valid connections found
@@ -173,7 +414,92 @@ impl ConnectionPool {
             pools.remove(&addr);
         }
 
-        None
+        drop(pools);
+
+        if expired > 0 {
+            self.record_expired(addr, expired).await;
+        }
+
+        stream
+    }
+
+    /// Insert a connection into the idle pool, returning whether it was stored.
+    async fn insert_stream(
+        &self,
+        addr: SocketAddr,
+        stream: TcpStream,
+    ) -> (bool, bool, Option<SocketAddr>) {
+        let mut pools = self.pools.lock().await;
+        let mut dropped_for_capacity = false;
+        let mut inserted = false;
+        let mut evicted_addr = None;
+
+        if let Some(pool) = pools.get(&addr) {
+            if pool.len() >= self.config.max_idle_per_dest {
+                trace!("Pool for {} is full, discarding connection", addr);
+                dropped_for_capacity = true;
+            }
+        }
+
+        if !dropped_for_capacity {
+            let total_idle: usize = pools.values().map(|v| v.len()).sum();
+            if total_idle >= self.config.max_total_idle {
+                evicted_addr = self.evict_oldest(&mut pools);
+            }
+
+            let pool = pools.entry(addr).or_insert_with(Vec::new);
+            pool.push(PooledConnection::new(stream));
+            debug!(
+                "💾 Returned connection to pool for {} (pool size: {})",
+                addr,
+                pool.len()
+            );
+            inserted = true;
+        } else {
+            drop(stream);
+        }
+
+        drop(pools);
+        (inserted, dropped_for_capacity, evicted_addr)
+    }
+
+    /// Establish a fresh upstream connection and add it to the pool.
+    async fn refresh_connection(&self, addr: SocketAddr) -> std::io::Result<()> {
+        self.metrics.pending_creates.fetch_add(1, Ordering::Relaxed);
+        let result = self.connect_new(addr).await;
+        self.metrics.pending_creates.fetch_sub(1, Ordering::Relaxed);
+
+        let stream = result?;
+
+        self.metrics.total_created.fetch_add(1, Ordering::Relaxed);
+
+        let now = SystemTime::now();
+        self.update_destination_metrics(addr, |entry| {
+            entry.total_created += 1;
+            entry.last_activity = Some(now);
+        })
+        .await;
+
+        let (inserted, dropped_for_capacity, evicted_addr) = self.insert_stream(addr, stream).await;
+
+        if dropped_for_capacity {
+            self.metrics.dropped_full.fetch_add(1, Ordering::Relaxed);
+            self.update_destination_metrics(addr, |entry| {
+                entry.drops += 1;
+            })
+            .await;
+        } else if !inserted {
+            trace!(
+                "Refresh connection for {} was not inserted due to concurrent updates",
+                addr
+            );
+        }
+
+        if let Some(evicted) = evicted_addr {
+            self.record_evicted(evicted).await;
+        }
+
+        Ok(())
     }
 
     /// Create a new TCP connection with timeout
@@ -194,7 +520,10 @@ impl ConnectionPool {
     }
 
     /// Evict the oldest connection from all pools
-    fn evict_oldest(&self, pools: &mut HashMap<SocketAddr, Vec<PooledConnection>>) {
+    fn evict_oldest(
+        &self,
+        pools: &mut HashMap<SocketAddr, Vec<PooledConnection>>,
+    ) -> Option<SocketAddr> {
         let mut oldest_addr: Option<SocketAddr> = None;
         let mut oldest_time = Instant::now();
 
@@ -218,6 +547,8 @@ impl ConnectionPool {
                 trace!("Evicted oldest connection to {}", addr);
             }
         }
+
+        oldest_addr
     }
 
     /// Clean up expired connections (called periodically)
@@ -226,6 +557,7 @@ impl ConnectionPool {
         let mut pools = self.pools.lock().await;
         let idle_timeout = Duration::from_secs(self.config.idle_timeout_secs);
         let mut total_removed = 0;
+        let mut removed_by_addr = Vec::new();
 
         pools.retain(|addr, pool| {
             let original_len = pool.len();
@@ -235,10 +567,17 @@ impl ConnectionPool {
             if removed > 0 {
                 trace!("Cleaned up {} expired connections to {}", removed, addr);
                 total_removed += removed;
+                removed_by_addr.push((*addr, removed));
             }
 
             !pool.is_empty()
         });
+
+        drop(pools);
+
+        for (addr, removed) in removed_by_addr {
+            self.record_expired(addr, removed).await;
+        }
 
         if total_removed > 0 {
             debug!("Cleanup removed {} expired connections", total_removed);
@@ -247,20 +586,77 @@ impl ConnectionPool {
 
     /// Get pool statistics
     pub async fn stats(&self) -> PoolStats {
-        let pools = self.pools.lock().await;
-        let total_idle: usize = pools.values().map(|v| v.len()).sum();
-        let destinations = pools.len();
+        let pools_guard = self.pools.lock().await;
+        let mut idle_counts: HashMap<SocketAddr, usize> = HashMap::new();
+        let mut total_idle: usize = 0;
+
+        for (addr, pool) in pools_guard.iter() {
+            total_idle += pool.len();
+            idle_counts.insert(*addr, pool.len());
+        }
+
+        drop(pools_guard);
+
+        let metrics_guard = self.destination_metrics.lock().await;
+        let mut all_addresses: HashSet<SocketAddr> = idle_counts.keys().copied().collect();
+        all_addresses.extend(metrics_guard.keys().copied());
+
+        let mut per_destination = Vec::with_capacity(all_addresses.len());
+        for addr in all_addresses {
+            let entry = metrics_guard.get(&addr).cloned().unwrap_or_default();
+            let idle_connections = idle_counts.get(&addr).copied().unwrap_or(0);
+            per_destination.push(DestinationPoolStats {
+                destination: addr,
+                idle_connections,
+                in_use: entry.in_use,
+                total_created: entry.total_created,
+                total_reused: entry.total_reused,
+                pool_hits: entry.pool_hits,
+                pool_misses: entry.pool_misses,
+                drops: entry.drops,
+                evicted: entry.evicted,
+                expired: entry.expired,
+                last_activity: entry.last_activity,
+                last_miss: entry.last_miss,
+            });
+        }
+        drop(metrics_guard);
+
+        per_destination.sort_by(|a, b| {
+            b.in_use
+                .cmp(&a.in_use)
+                .then_with(|| b.idle_connections.cmp(&a.idle_connections))
+                .then_with(|| b.total_created.cmp(&a.total_created))
+        });
+
+        let destinations = per_destination.len();
+
+        let active_counts = self.active_counts.lock().await;
+        let connections_in_use: u64 = active_counts.values().map(|&v| v as u64).sum();
+        drop(active_counts);
 
         PoolStats {
             total_idle,
             destinations,
             config: self.config.clone(),
+            total_created: self.metrics.total_created.load(Ordering::Relaxed),
+            total_reused: self.metrics.total_reused.load(Ordering::Relaxed),
+            pool_hits: self.metrics.pool_hits.load(Ordering::Relaxed),
+            pool_misses: self.metrics.pool_misses.load(Ordering::Relaxed),
+            dropped_full: self.metrics.dropped_full.load(Ordering::Relaxed),
+            expired: self.metrics.expired.load(Ordering::Relaxed),
+            evicted: self.metrics.evicted.load(Ordering::Relaxed),
+            connections_in_use,
+            pending_creates: self.metrics.pending_creates.load(Ordering::Relaxed),
+            per_destination,
         }
     }
 
     /// Start background task to clean up expired connections
     fn start_cleanup_task(&self) {
         let pools = Arc::clone(&self.pools);
+        let destination_metrics = Arc::clone(&self.destination_metrics);
+        let metrics = Arc::clone(&self.metrics);
         let idle_timeout_secs = self.config.idle_timeout_secs;
 
         tokio::spawn(async move {
@@ -275,6 +671,7 @@ impl ConnectionPool {
                 let mut pools_guard = pools.lock().await;
                 let idle_timeout = Duration::from_secs(idle_timeout_secs);
                 let mut total_removed = 0;
+                let mut removed_by_addr = Vec::new();
 
                 pools_guard.retain(|addr, pool| {
                     let original_len = pool.len();
@@ -288,10 +685,23 @@ impl ConnectionPool {
                             addr
                         );
                         total_removed += removed;
+                        removed_by_addr.push((*addr, removed));
                     }
 
                     !pool.is_empty()
                 });
+
+                drop(pools_guard);
+
+                if !removed_by_addr.is_empty() {
+                    let mut dest_guard = destination_metrics.lock().await;
+                    for (addr, removed) in removed_by_addr {
+                        metrics.expired.fetch_add(removed as u64, Ordering::Relaxed);
+                        let entry = dest_guard.entry(addr).or_default();
+                        entry.expired += removed as u64;
+                        entry.last_activity = Some(SystemTime::now());
+                    }
+                }
 
                 if total_removed > 0 {
                     debug!(
@@ -313,6 +723,26 @@ pub struct PoolStats {
     pub destinations: usize,
     /// Pool configuration
     pub config: PoolConfig,
+    /// Connections currently checked out
+    pub connections_in_use: u64,
+    /// Total connections ever created
+    pub total_created: u64,
+    /// Total times a pooled connection was reused
+    pub total_reused: u64,
+    /// Number of times a pooled connection was returned successfully
+    pub pool_hits: u64,
+    /// Number of times pool lookup failed
+    pub pool_misses: u64,
+    /// Connections dropped due to per-destination cap
+    pub dropped_full: u64,
+    /// Connections expired due to idle timeout
+    pub expired: u64,
+    /// Connections evicted due to global cap
+    pub evicted: u64,
+    /// Connections currently being created
+    pub pending_creates: u64,
+    /// Detailed stats per destination
+    pub per_destination: Vec<DestinationPoolStats>,
 }
 
 #[cfg(test)]
@@ -322,7 +752,7 @@ mod tests {
     #[tokio::test]
     async fn pool_creation_with_defaults() {
         let config = PoolConfig::default();
-        let pool = ConnectionPool::new(config);
+        let pool = Arc::new(ConnectionPool::new(config));
         let stats = pool.stats().await;
 
         assert_eq!(stats.total_idle, 0);
@@ -335,14 +765,15 @@ mod tests {
             enabled: false,
             ..Default::default()
         };
-        let pool = ConnectionPool::new(config);
+        let pool = Arc::new(ConnectionPool::new(config));
 
         // Bind a test server
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
 
         // Get a connection (should create new)
-        let conn_task = tokio::spawn(async move { pool.get(addr).await });
+        let pool_clone = Arc::clone(&pool);
+        let conn_task = tokio::spawn(async move { pool_clone.get(addr).await });
 
         // Accept the connection
         let (_, _) = listener.accept().await.unwrap();
@@ -371,7 +802,7 @@ mod tests {
         let client_stream1 = conn1_task.await.unwrap().unwrap();
 
         // Return to pool
-        pool.put(addr, client_stream1).await;
+        pool.put(addr, client_stream1, ReuseHint::Reuse).await;
 
         // Stats should show 1 idle connection
         let stats = pool.stats().await;
@@ -398,7 +829,7 @@ mod tests {
             max_total_idle: 100,
             ..Default::default()
         };
-        let pool = ConnectionPool::new(config);
+        let pool = Arc::new(ConnectionPool::new(config));
 
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
@@ -410,7 +841,7 @@ mod tests {
             let client_stream = connect_task.await.unwrap().unwrap();
 
             // Add to pool (but only 2 should be kept due to max_idle_per_dest)
-            pool.put(addr, client_stream).await;
+            pool.put(addr, client_stream, ReuseHint::Reuse).await;
 
             // Drop server stream
             drop(server_stream);
@@ -429,7 +860,7 @@ mod tests {
             max_total_idle: 2, // Low global limit
             ..Default::default()
         };
-        let pool = ConnectionPool::new(config);
+        let pool = Arc::new(ConnectionPool::new(config));
 
         // Create two listeners for different destinations
         let listener1 = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -443,7 +874,7 @@ mod tests {
             let connect_task = tokio::spawn(async move { TcpStream::connect(addr1).await });
             let (server_stream, _) = listener1.accept().await.unwrap();
             let client_stream = connect_task.await.unwrap().unwrap();
-            pool.put(addr1, client_stream).await;
+            pool.put(addr1, client_stream, ReuseHint::Reuse).await;
             drop(server_stream);
         }
 
@@ -454,7 +885,7 @@ mod tests {
         let connect_task = tokio::spawn(async move { TcpStream::connect(addr2).await });
         let (server_stream, _) = listener2.accept().await.unwrap();
         let client_stream = connect_task.await.unwrap().unwrap();
-        pool.put(addr2, client_stream).await;
+        pool.put(addr2, client_stream, ReuseHint::Reuse).await;
         drop(server_stream);
 
         let stats = pool.stats().await;
@@ -468,7 +899,7 @@ mod tests {
             connect_timeout_ms: 100, // Very short timeout
             ..Default::default()
         };
-        let pool = ConnectionPool::new(config);
+        let pool = Arc::new(ConnectionPool::new(config));
 
         // Try to connect to non-routable address (should timeout)
         let addr: SocketAddr = "192.0.2.1:9999".parse().unwrap(); // TEST-NET-1 (non-routable)

@@ -3,7 +3,7 @@ use crate::auth::AuthManager;
 use crate::protocol::*;
 use crate::qos::{ConnectionLimits, QosEngine};
 use crate::server::bind::handle_bind as handle_bind_relay;
-use crate::server::pool::ConnectionPool;
+use crate::server::pool::{ConnectionPool, ReuseHint};
 use crate::server::proxy::{proxy_data, TrafficUpdateConfig};
 use crate::server::resolver::resolve_address;
 use crate::server::udp::handle_udp_associate as handle_udp_relay;
@@ -310,6 +310,7 @@ where
                 acl_decision,
                 acl_rule: acl_rule_match,
                 qos_engine: ctx.qos_engine.clone(),
+                connection_pool: ctx.connection_pool.clone(),
             };
 
             handle_bind_relay(
@@ -637,7 +638,7 @@ where
         }
     }
 
-    let (upstream_stream, _upstream_addr) = match upstream_stream_opt {
+    let (upstream_stream, upstream_addr) = match upstream_stream_opt {
         Some((stream, addr)) => (stream, addr),
         None => {
             if let Some(ref err) = last_err {
@@ -671,7 +672,8 @@ where
         protocol: session_ctx.protocol,
     };
 
-    let (session_id, cancel_token) = connect_ctx.session_manager
+    let (session_id, cancel_token) = connect_ctx
+        .session_manager
         .new_session_with_control(
             &session_ctx.user,
             connection_info,
@@ -689,8 +691,7 @@ where
     };
     let bind_port = local_addr.port();
 
-    if matches!(connect_ctx.protocol, SocksProtocol::V4)
-        && !matches!(&bind_addr, Address::IPv4(_))
+    if matches!(connect_ctx.protocol, SocksProtocol::V4) && !matches!(&bind_addr, Address::IPv4(_))
     {
         warn!(
             "SOCKS4 client received non-IPv4 bind address {}:{}",
@@ -732,7 +733,18 @@ where
     )
     .await
     {
-        Ok(_) => {
+        Ok(reusable_stream) => {
+            if let Some(reuse) = reusable_stream {
+                connect_ctx
+                    .connection_pool
+                    .put(upstream_addr, reuse.stream, reuse.hint)
+                    .await;
+            } else {
+                connect_ctx
+                    .connection_pool
+                    .release(upstream_addr, ReuseHint::Refresh)
+                    .await;
+            }
             connect_ctx
                 .session_manager
                 .close_session(
@@ -744,11 +756,27 @@ where
             Ok(())
         }
         Err(RustSocksError::ConnectionClosed) => {
-            debug!(session = %session_id, "Session cancelled");
+            connect_ctx
+                .connection_pool
+                .release(upstream_addr, ReuseHint::Refresh)
+                .await;
+            connect_ctx
+                .session_manager
+                .close_session(
+                    &session_id,
+                    Some("Connection closed by client".to_string()),
+                    SessionStatus::Closed,
+                )
+                .await;
+            debug!(session = %session_id, "Session closed by client");
             Ok(())
         }
         Err(e) => {
             let reason = format!("Proxy error: {}", e);
+            connect_ctx
+                .connection_pool
+                .release(upstream_addr, ReuseHint::Refresh)
+                .await;
             connect_ctx
                 .session_manager
                 .close_session(&session_id, Some(reason), SessionStatus::Failed)

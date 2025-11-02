@@ -1,4 +1,8 @@
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use std::time::SystemTime;
+
+use crate::server::pool::PoolStats;
 
 /// API health check response
 #[derive(Debug, Serialize, Deserialize)]
@@ -359,4 +363,112 @@ pub struct DeleteGroupResponse {
     pub success: bool,
     pub message: String,
     pub deleted_group: Option<crate::acl::types::GroupAcl>,
+}
+
+// ============================================================================
+// Connection Pool API Types
+// ============================================================================
+
+#[derive(Debug, Serialize)]
+pub struct PoolStatsResponse {
+    pub enabled: bool,
+    pub total_idle: usize,
+    pub active_in_use: u64,
+    pub destinations: usize,
+    pub total_created: u64,
+    pub total_reused: u64,
+    pub pool_hits: u64,
+    pub pool_misses: u64,
+    pub dropped_full: u64,
+    pub expired: u64,
+    pub evicted: u64,
+    pub pending_creates: u64,
+    pub hit_rate: f64,
+    pub config: PoolConfigResponse,
+    pub destinations_breakdown: Vec<PoolDestinationResponse>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct PoolConfigResponse {
+    pub enabled: bool,
+    pub max_idle_per_dest: usize,
+    pub max_total_idle: usize,
+    pub idle_timeout_secs: u64,
+    pub connect_timeout_ms: u64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct PoolDestinationResponse {
+    pub destination: String,
+    pub idle_connections: usize,
+    pub in_use: u64,
+    pub total_created: u64,
+    pub total_reused: u64,
+    pub pool_hits: u64,
+    pub pool_misses: u64,
+    pub drops: u64,
+    pub evicted: u64,
+    pub expired: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_activity: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_miss: Option<String>,
+}
+
+impl From<PoolStats> for PoolStatsResponse {
+    fn from(stats: PoolStats) -> Self {
+        let destinations_breakdown = stats
+            .per_destination
+            .into_iter()
+            .map(|dest| PoolDestinationResponse {
+                destination: dest.destination.to_string(),
+                idle_connections: dest.idle_connections,
+                in_use: dest.in_use,
+                total_created: dest.total_created,
+                total_reused: dest.total_reused,
+                pool_hits: dest.pool_hits,
+                pool_misses: dest.pool_misses,
+                drops: dest.drops,
+                evicted: dest.evicted,
+                expired: dest.expired,
+                last_activity: format_system_time(dest.last_activity),
+                last_miss: format_system_time(dest.last_miss),
+            })
+            .collect();
+
+        let total_checks = stats.pool_hits + stats.pool_misses;
+        let hit_rate = if total_checks > 0 {
+            stats.pool_hits as f64 / total_checks as f64
+        } else {
+            0.0
+        };
+
+        Self {
+            enabled: stats.config.enabled,
+            total_idle: stats.total_idle,
+            active_in_use: stats.connections_in_use,
+            destinations: stats.destinations,
+            total_created: stats.total_created,
+            total_reused: stats.total_reused,
+            pool_hits: stats.pool_hits,
+            pool_misses: stats.pool_misses,
+            dropped_full: stats.dropped_full,
+            expired: stats.expired,
+            evicted: stats.evicted,
+            pending_creates: stats.pending_creates,
+            hit_rate,
+            config: PoolConfigResponse {
+                enabled: stats.config.enabled,
+                max_idle_per_dest: stats.config.max_idle_per_dest,
+                max_total_idle: stats.config.max_total_idle,
+                idle_timeout_secs: stats.config.idle_timeout_secs,
+                connect_timeout_ms: stats.config.connect_timeout_ms,
+            },
+            destinations_breakdown,
+        }
+    }
+}
+
+fn format_system_time(time: Option<SystemTime>) -> Option<String> {
+    time.map(|ts| DateTime::<Utc>::from(ts).to_rfc3339())
 }

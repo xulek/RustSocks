@@ -94,7 +94,9 @@
       "Bash(/root/.cargo/bin/cargo test --all-features --lib acl)",
       "Bash(cargo doc:*)",
       "Bash(./test_arc_sort:*)",
-      "Bash(sqlite3:*)"
+      "Bash(sqlite3:*)",
+      "Bash(jobs)",
+      "Bash(/tmp/test_pooling_system_level.sh)"
     ],
     "deny": [],
     "ask": []
