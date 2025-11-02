@@ -1,0 +1,155 @@
+# RustSocks ACL Configuration Example for Docker
+# Access Control List rules for fine-grained access control
+
+[global]
+# Default policy when no rules match
+# Options: "allow", "block"
+default_policy = "allow"
+
+# Define groups
+[[groups]]
+name = "admins"
+
+  [[groups.rules]]
+  action = "allow"
+  description = "Admins can access everything"
+  destinations = ["*"]
+  ports = ["*"]
+  protocols = ["both"]
+  priority = 100
+
+[[groups]]
+name = "developers"
+
+  [[groups.rules]]
+  action = "allow"
+  description = "Allow access to development networks"
+  destinations = ["10.0.0.0/8", "*.dev.company.com", "*.staging.company.com"]
+  ports = ["*"]
+  protocols = ["both"]
+  priority = 50
+
+  [[groups.rules]]
+  action = "block"
+  description = "Block access to production databases"
+  destinations = ["*.prod.company.com"]
+  ports = ["3306", "5432", "27017"]
+  protocols = ["tcp"]
+  priority = 200
+
+[[groups]]
+name = "qa_team"
+
+  [[groups.rules]]
+  action = "allow"
+  description = "Allow QA to access test environments"
+  destinations = ["*.test.company.com", "*.qa.company.com"]
+  ports = ["80", "443", "8080-8090"]
+  protocols = ["both"]
+  priority = 50
+
+[[groups]]
+name = "restricted"
+
+  [[groups.rules]]
+  action = "allow"
+  description = "Limited access to specific services"
+  destinations = ["api.company.com", "www.company.com"]
+  ports = ["80", "443"]
+  protocols = ["tcp"]
+  priority = 50
+
+  [[groups.rules]]
+  action = "block"
+  description = "Block everything else"
+  destinations = ["*"]
+  ports = ["*"]
+  protocols = ["both"]
+  priority = 10
+
+# Define users and their group memberships
+[[users]]
+username = "alice"
+groups = ["admins"]
+
+  # User-specific rules override group rules
+  [[users.rules]]
+  action = "allow"
+  description = "Alice can access admin panel"
+  destinations = ["admin.company.com"]
+  ports = ["443"]
+  protocols = ["tcp"]
+  priority = 300
+
+[[users]]
+username = "bob"
+groups = ["developers"]
+
+  [[users.rules]]
+  action = "block"
+  description = "Bob blocked from specific internal service"
+  destinations = ["internal-api.company.com"]
+  ports = ["*"]
+  protocols = ["both"]
+  priority = 250
+
+[[users]]
+username = "charlie"
+groups = ["qa_team"]
+
+[[users]]
+username = "dave"
+groups = ["restricted"]
+
+[[users]]
+username = "eve"
+groups = ["developers", "qa_team"]
+
+  [[users.rules]]
+  action = "allow"
+  description = "Eve has access to monitoring tools"
+  destinations = ["grafana.company.com", "prometheus.company.com"]
+  ports = ["3000", "9090"]
+  protocols = ["tcp"]
+  priority = 100
+
+# Anonymous user (when no authentication)
+[[users]]
+username = "anonymous"
+groups = []
+
+  [[users.rules]]
+  action = "allow"
+  description = "Block access to private networks"
+  destinations = ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]
+  ports = ["*"]
+  protocols = ["both"]
+  priority = 500
+
+  [[users.rules]]
+  action = "allow"
+  description = "Allow access to public internet only"
+  destinations = ["*"]
+  ports = ["80", "443"]
+  protocols = ["tcp"]
+  priority = 50
+
+# Rule Evaluation Order:
+# 1. User-specific rules (by priority, highest first)
+# 2. Group rules (by priority, highest first)
+# 3. Within same priority: BLOCK rules evaluated before ALLOW rules
+# 4. If no rules match: global.default_policy applies
+
+# Pattern Matching:
+# - IP exact: "192.168.1.100"
+# - CIDR: "10.0.0.0/8", "2001:db8::/32"
+# - Domain exact: "example.com"
+# - Domain wildcard: "*.example.com", "api.*.com"
+# - Port ranges: "8000-9000"
+# - Multiple ports: "80,443,8080"
+# - Any port: "*"
+# - Protocols: "tcp", "udp", "both"
+
+# Hot Reload:
+# Set watch = true in rustsocks.toml to enable automatic reload
+# Changes to this file will be applied without server restart

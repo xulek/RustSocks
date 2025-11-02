@@ -1,0 +1,42 @@
+#%PAM-1.0
+# PAM configuration for RustSocks username/password authentication
+# Service name: rustsocks
+# Method: pam.username
+#
+# This configuration is for Docker containers running Alpine Linux.
+# For production use, customize based on your authentication backend.
+
+# Authentication
+# auth required pam_unix.so - Standard Unix authentication (shadow file)
+# For Docker: Use more permissive configuration or integrate with external auth
+auth sufficient pam_unix.so nullok
+auth required pam_deny.so
+
+# Account management
+# Verifies user account status (expiration, etc.)
+account sufficient pam_unix.so
+account required pam_deny.so
+
+# Password management (not used by SOCKS5, but required by PAM)
+password sufficient pam_unix.so nullok
+password required pam_deny.so
+
+# Session management
+session optional pam_unix.so
+
+# Production recommendations:
+# 1. Remove 'nullok' to disallow empty passwords
+# 2. Add pam_ldap.so for LDAP authentication
+# 3. Add pam_mysql.so / pam_pgsql.so for database authentication
+# 4. Add pam_radius.so for RADIUS authentication
+# 5. Add rate limiting with pam_faillock.so
+#
+# Example LDAP configuration:
+# auth sufficient pam_ldap.so
+# account sufficient pam_ldap.so
+#
+# Example with fail2ban integration:
+# auth required pam_faillock.so preauth
+# auth sufficient pam_unix.so
+# auth [default=die] pam_faillock.so authfail
+# auth required pam_deny.so

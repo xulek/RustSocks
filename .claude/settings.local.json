@@ -96,7 +96,9 @@
       "Bash(./test_arc_sort:*)",
       "Bash(sqlite3:*)",
       "Bash(jobs)",
-      "Bash(/tmp/test_pooling_system_level.sh)"
+      "Bash(/tmp/test_pooling_system_level.sh)",
+      "Bash(docker:*)",
+      "Bash(docker-compose config:*)"
     ],
     "deny": [],
     "ask": []

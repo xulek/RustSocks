@@ -1,0 +1,100 @@
+version: '3.8'
+
+services:
+  rustsocks:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: rustsocks:latest
+    container_name: rustsocks-proxy
+    restart: unless-stopped
+
+    ports:
+      # SOCKS5 proxy port
+      - "1080:1080"
+      # REST API + Web Dashboard
+      - "9090:9090"
+
+    volumes:
+      # Configuration directory
+      - ./docker/configs:/etc/rustsocks:ro
+
+      # PAM configuration (read-only)
+      - ./docker/configs/pam.d:/etc/pam.d:ro
+
+      # Persistent data directory (SQLite database)
+      - rustsocks-data:/data
+
+      # Logs (optional, for troubleshooting)
+      - rustsocks-logs:/var/log/rustsocks
+
+    environment:
+      # Log level: trace, debug, info, warn, error
+      - RUST_LOG=info
+
+      # Server configuration
+      - RUSTSOCKS_BIND_ADDRESS=0.0.0.0
+      - RUSTSOCKS_BIND_PORT=1080
+      - RUSTSOCKS_MAX_CONNECTIONS=1000
+
+      # API configuration
+      - RUSTSOCKS_API_ENABLED=true
+      - RUSTSOCKS_API_BIND=0.0.0.0
+      - RUSTSOCKS_API_PORT=9090
+
+      # Dashboard configuration
+      - RUSTSOCKS_DASHBOARD_ENABLED=true
+      - RUSTSOCKS_SWAGGER_ENABLED=true
+
+      # Database configuration
+      - RUSTSOCKS_DB_PATH=/data/sessions.db
+
+      # Set timezone (optional)
+      - TZ=UTC
+
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9090/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+    # Security options
+    security_opt:
+      - no-new-privileges:true
+
+    # Resource limits (optional, adjust as needed)
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: '2'
+    #       memory: 512M
+    #     reservations:
+    #       cpus: '0.5'
+    #       memory: 128M
+
+    networks:
+      - rustsocks-net
+
+volumes:
+  # Persistent data volume for SQLite database
+  rustsocks-data:
+    driver: local
+
+  # Logs volume (optional)
+  rustsocks-logs:
+    driver: local
+
+networks:
+  rustsocks-net:
+    driver: bridge
+
+# Example: Override configuration for development
+# Create docker-compose.override.yml with:
+#
+# services:
+#   rustsocks:
+#     environment:
+#       - RUST_LOG=debug
+#     ports:
+#       - "11080:1080"

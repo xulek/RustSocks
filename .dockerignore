@@ -1,0 +1,84 @@
+# Docker ignore file for RustSocks
+# Exclude unnecessary files from Docker build context
+
+# Rust build artifacts
+target/
+**/*.rs.bk
+*.pdb
+
+# Node.js
+dashboard/node_modules/
+dashboard/dist/
+dashboard/.vite/
+dashboard/coverage/
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# IDE and editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logs
+*.log
+logs/
+*.log.*
+
+# Test data
+test_data/
+*.db
+*.db-shm
+*.db-wal
+sessions.db*
+
+# Documentation (not needed in container)
+docs/
+*.md
+!README-DOCKER.md
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+.travis.yml
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+
+# Environment files (may contain secrets)
+.env
+.env.*
+*.key
+*.pem
+*.crt
+*.csr
+
+# Docker files themselves (except Dockerfile)
+docker-compose*.yml
+.dockerignore
+
+# Development configs (use docker/configs/ instead)
+config/*.toml
+config/*.json
+!config/pam.d/
+
+# Backups
+*.bak
+*.backup
+*.old
+
+# OS-specific
+Thumbs.db
+.Spotlight-V100
+.Trashes
+
+# Cargo.lock is kept for reproducible builds
+# Cargo.toml is needed for building
