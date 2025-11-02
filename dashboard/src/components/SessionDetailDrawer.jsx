@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useEffect } from 'react'
 import { X } from 'lucide-react'
 import { formatBytes, formatDateTime, formatDuration } from '../lib/format'
 
@@ -26,10 +26,29 @@ const resolveAclBadge = (decision) => {
 }
 
 function SessionDetailDrawer({ open, session, loading, error, onClose }) {
+  useEffect(() => {
+    if (!open) return
+
+    const handleEscape = (e) => {
+      if (e.key === 'Escape') {
+        onClose()
+      }
+    }
+
+    window.addEventListener('keydown', handleEscape)
+    return () => window.removeEventListener('keydown', handleEscape)
+  }, [open, onClose])
+
   if (!open) return null
 
+  const handleOverlayClick = (e) => {
+    if (e.target === e.currentTarget) {
+      onClose()
+    }
+  }
+
   return (
-    <div className="drawer-overlay">
+    <div className="drawer-overlay" onClick={handleOverlayClick}>
       <div className="drawer">
         <div className="drawer-header">
           <h3>Szczegóły sesji</h3>

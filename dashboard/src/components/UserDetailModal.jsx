@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo, useCallback } from 'react'
 import { X } from 'lucide-react'
 import {
   ResponsiveContainer,
@@ -30,6 +30,19 @@ function UserDetailModal({ open, user, onClose }) {
       fetchUserSessions()
     }
   }, [open, user])
+
+  useEffect(() => {
+    if (!open) return
+
+    const handleEscape = (e) => {
+      if (e.key === 'Escape') {
+        onClose()
+      }
+    }
+
+    window.addEventListener('keydown', handleEscape)
+    return () => window.removeEventListener('keydown', handleEscape)
+  }, [open, onClose])
 
   const fetchUserSessions = async () => {
     setLoading(true)
@@ -100,10 +113,16 @@ function UserDetailModal({ open, user, onClose }) {
       .slice(0, 5)
   }, [sessions])
 
+  const handleOverlayClick = useCallback((e) => {
+    if (e.target === e.currentTarget) {
+      onClose()
+    }
+  }, [onClose])
+
   if (!open) return null
 
   return (
-    <div className="drawer-overlay">
+    <div className="drawer-overlay" onClick={handleOverlayClick}>
       <div className="drawer">
         <div className="drawer-header">
           <h3>Szczegóły użytkownika: {user?.username}</h3>

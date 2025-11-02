@@ -25,6 +25,9 @@ function Dashboard() {
   const [statsHistory, setStatsHistory] = useState([])
   const [poolStats, setPoolStats] = useState(null)
   const [poolError, setPoolError] = useState(null)
+  const [sortTopUsers, setSortTopUsers] = useState({ by: 'session_count', dir: 'desc' })
+  const [sortTopDest, setSortTopDest] = useState({ by: 'session_count', dir: 'desc' })
+  const [sortPoolDest, setSortPoolDest] = useState({ by: 'idle_connections', dir: 'desc' })
 
   // Load timeRange from localStorage
   const [timeRange, setTimeRange] = useState(() => {
@@ -220,6 +223,52 @@ function Dashboard() {
     })
   }
 
+  const sortArray = (arr, sortState) => {
+    return [...arr].sort((a, b) => {
+      let aVal = a[sortState.by]
+      let bVal = b[sortState.by]
+
+      if (aVal === null || aVal === undefined) aVal = ''
+      if (bVal === null || bVal === undefined) bVal = ''
+
+      if (typeof aVal === 'number' && typeof bVal === 'number') {
+        return sortState.dir === 'asc' ? aVal - bVal : bVal - aVal
+      }
+
+      const aStr = String(aVal).toLowerCase()
+      const bStr = String(bVal).toLowerCase()
+      return sortState.dir === 'asc' ? aStr.localeCompare(bStr) : bStr.localeCompare(aStr)
+    })
+  }
+
+  const handleSortClick = (field, sortState, setSortState) => {
+    if (sortState.by === field) {
+      setSortState({ ...sortState, dir: sortState.dir === 'asc' ? 'desc' : 'asc' })
+    } else {
+      setSortState({ by: field, dir: 'asc' })
+    }
+  }
+
+  const getSortIndicator = (field, sortState) => {
+    if (sortState.by !== field) return ' ↕'
+    return sortState.dir === 'asc' ? ' ↑' : ' ↓'
+  }
+
+  const sortedTopUsers = useMemo(() => {
+    if (!stats) return []
+    return sortArray(stats.top_users, sortTopUsers)
+  }, [stats, sortTopUsers])
+
+  const sortedTopDest = useMemo(() => {
+    if (!stats) return []
+    return sortArray(stats.top_destinations, sortTopDest)
+  }, [stats, sortTopDest])
+
+  const sortedPoolDest = useMemo(() => {
+    if (!poolStats) return []
+    return sortArray(topDestinations, sortPoolDest)
+  }, [topDestinations, sortPoolDest])
+
   if (loading) return <div className="loading">Loading...</div>
   if (error) return <div className="error">Error: {error}</div>
 
@@ -355,18 +404,34 @@ function Dashboard() {
               <table>
                 <thead>
                   <tr>
-                    <th>Destination</th>
-                    <th>Idle</th>
-                    <th>In Use</th>
-                    <th>Hits</th>
-                    <th>Misses</th>
-                    <th>Drops</th>
-                    <th>Evicted</th>
-                    <th>Last Activity</th>
+                    <th style={{ cursor: 'pointer' }} onClick={() => handleSortClick('destination', sortPoolDest, setSortPoolDest)}>
+                      Destination{getSortIndicator('destination', sortPoolDest)}
+                    </th>
+                    <th style={{ cursor: 'pointer' }} onClick={() => handleSortClick('idle_connections', sortPoolDest, setSortPoolDest)}>
+                      Idle{getSortIndicator('idle_connections', sortPoolDest)}
+                    </th>
+                    <th style={{ cursor: 'pointer' }} onClick={() => handleSortClick('in_use', sortPoolDest, setSortPoolDest)}>
+                      In Use{getSortIndicator('in_use', sortPoolDest)}
+                    </th>
+                    <th style={{ cursor: 'pointer' }} onClick={() => handleSortClick('pool_hits', sortPoolDest, setSortPoolDest)}>
+                      Hits{getSortIndicator('pool_hits', sortPoolDest)}
+                    </th>
+                    <th style={{ cursor: 'pointer' }} onClick={() => handleSortClick('pool_misses', sortPoolDest, setSortPoolDest)}>
+                      Misses{getSortIndicator('pool_misses', sortPoolDest)}
+                    </th>
+                    <th style={{ cursor: 'pointer' }} onClick={() => handleSortClick('drops', sortPoolDest, setSortPoolDest)}>
+                      Drops{getSortIndicator('drops', sortPoolDest)}
+                    </th>
+                    <th style={{ cursor: 'pointer' }} onClick={() => handleSortClick('evicted', sortPoolDest, setSortPoolDest)}>
+                      Evicted{getSortIndicator('evicted', sortPoolDest)}
+                    </th>
+                    <th style={{ cursor: 'pointer' }} onClick={() => handleSortClick('last_activity', sortPoolDest, setSortPoolDest)}>
+                      Last Activity{getSortIndicator('last_activity', sortPoolDest)}
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
-                  {topDestinations.map((dest, idx) => {
+                  {sortedPoolDest.map((dest, idx) => {
                     const lastEvent = dest.last_activity || dest.last_miss
                     return (
                       <tr key={`${dest.destination}-${idx}`}>
@@ -515,15 +580,23 @@ function Dashboard() {
           <table>
             <thead>
               <tr>
-                <th>User</th>
-                <th>Sessions</th>
-                <th>Sent</th>
-                <th>Received</th>
+                <th style={{ cursor: 'pointer' }} onClick={() => handleSortClick('user', sortTopUsers, setSortTopUsers)}>
+                  User{getSortIndicator('user', sortTopUsers)}
+                </th>
+                <th style={{ cursor: 'pointer' }} onClick={() => handleSortClick('session_count', sortTopUsers, setSortTopUsers)}>
+                  Sessions{getSortIndicator('session_count', sortTopUsers)}
+                </th>
+                <th style={{ cursor: 'pointer' }} onClick={() => handleSortClick('bytes_sent', sortTopUsers, setSortTopUsers)}>
+                  Sent{getSortIndicator('bytes_sent', sortTopUsers)}
+                </th>
+                <th style={{ cursor: 'pointer' }} onClick={() => handleSortClick('bytes_received', sortTopUsers, setSortTopUsers)}>
+                  Received{getSortIndicator('bytes_received', sortTopUsers)}
+                </th>
                 <th>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {stats.top_users.slice(0, 5).map((user, idx) => (
+              {sortedTopUsers.slice(0, 5).map((user, idx) => (
                 <tr key={idx}>
                   <td>{user.user}</td>
                   <td>{user.session_count}</td>
@@ -561,15 +634,23 @@ function Dashboard() {
           <table>
             <thead>
               <tr>
-                <th>Destination</th>
-                <th>Connections</th>
-                <th>Sent</th>
-                <th>Received</th>
+                <th style={{ cursor: 'pointer' }} onClick={() => handleSortClick('destination', sortTopDest, setSortTopDest)}>
+                  Destination{getSortIndicator('destination', sortTopDest)}
+                </th>
+                <th style={{ cursor: 'pointer' }} onClick={() => handleSortClick('session_count', sortTopDest, setSortTopDest)}>
+                  Connections{getSortIndicator('session_count', sortTopDest)}
+                </th>
+                <th style={{ cursor: 'pointer' }} onClick={() => handleSortClick('bytes_sent', sortTopDest, setSortTopDest)}>
+                  Sent{getSortIndicator('bytes_sent', sortTopDest)}
+                </th>
+                <th style={{ cursor: 'pointer' }} onClick={() => handleSortClick('bytes_received', sortTopDest, setSortTopDest)}>
+                  Received{getSortIndicator('bytes_received', sortTopDest)}
+                </th>
                 <th>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {stats.top_destinations.slice(0, 5).map((dest, idx) => (
+              {sortedTopDest.slice(0, 5).map((dest, idx) => (
                 <tr key={idx}>
                   <td><code>{dest.destination}</code></td>
                   <td>{dest.session_count}</td>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { Play, RefreshCcw, Plus, X, Edit2, Trash2 } from 'lucide-react'
 import { getApiUrl } from '../lib/basePath'
 
@@ -46,6 +46,23 @@ function AclRules() {
     fetchAclData()
   }, [])
 
+  useEffect(() => {
+    const handleEscape = (e) => {
+      if (e.key === 'Escape') {
+        if (showCreateGroup) {
+          setShowCreateGroup(false)
+        }
+        if (showAddRuleToGroup) {
+          setShowAddRuleToGroup(false)
+          setEditingRuleIndex(null)
+        }
+      }
+    }
+
+    window.addEventListener('keydown', handleEscape)
+    return () => window.removeEventListener('keydown', handleEscape)
+  }, [showCreateGroup, showAddRuleToGroup])
+
   const fetchAclData = async () => {
     try {
       const [groupsRes, usersRes] = await Promise.all([
@@ -80,6 +97,12 @@ function AclRules() {
       setError(err.message)
     }
   }
+
+  const handleOverlayClick = useCallback((e, onClose) => {
+    if (e.target === e.currentTarget) {
+      onClose()
+    }
+  }, [])
 
   const handleTestChange = (field, value) => {
     setTestForm((prev) => ({
@@ -648,7 +671,7 @@ function AclRules() {
 
       {/* Modal: Create Group */}
       {showCreateGroup && (
-        <div className="modal-overlay">
+        <div className="modal-overlay" onClick={(e) => handleOverlayClick(e, () => setShowCreateGroup(false))}>
           <div className="modal" style={{ width: '100%', maxWidth: '400px' }}>
             <div className="modal-header">
               <h3>Nowa grupa</h3>
@@ -697,7 +720,10 @@ function AclRules() {
 
       {/* Modal: Add Rule to Group */}
       {showAddRuleToGroup && selectedGroup && (
-        <div className="modal-overlay">
+        <div className="modal-overlay" onClick={(e) => handleOverlayClick(e, () => {
+          setShowAddRuleToGroup(false)
+          setEditingRuleIndex(null)
+        })}>
           <div className="modal" style={{ width: '100%', maxWidth: '540px' }}>
             <div className="modal-header">
               <h3>{editingRuleIndex !== null ? 'Edytuj regułę' : 'Dodaj regułę'} - grupa "{selectedGroup.name}"</h3>

@@ -50,6 +50,8 @@ function Sessions() {
   const [detailLoading, setDetailLoading] = useState(false)
   const [detailError, setDetailError] = useState(null)
   const [activeCount, setActiveCount] = useState(0)
+  const [sortBy, setSortBy] = useState('start_time')
+  const [sortDir, setSortDir] = useState('desc')
 
   const syncSearchParams = useCallback(
     (nextShowActive, nextFilters) => {
@@ -252,6 +254,42 @@ function Sessions() {
     return decision.toLowerCase() === 'allow' ? 'badge badge-success' : 'badge badge-danger'
   }
 
+  const handleSort = (field) => {
+    if (sortBy === field) {
+      setSortDir(sortDir === 'asc' ? 'desc' : 'asc')
+    } else {
+      setSortBy(field)
+      setSortDir('asc')
+    }
+  }
+
+  const getSortedSessions = () => {
+    const sorted = [...sessions].sort((a, b) => {
+      let aVal = a[sortBy]
+      let bVal = b[sortBy]
+
+      // Handle null/undefined
+      if (aVal === null || aVal === undefined) aVal = ''
+      if (bVal === null || bVal === undefined) bVal = ''
+
+      // Handle numeric values
+      if (typeof aVal === 'number' && typeof bVal === 'number') {
+        return sortDir === 'asc' ? aVal - bVal : bVal - aVal
+      }
+
+      // Handle string values
+      const aStr = String(aVal).toLowerCase()
+      const bStr = String(bVal).toLowerCase()
+      return sortDir === 'asc' ? aStr.localeCompare(bStr) : bStr.localeCompare(aStr)
+    })
+    return sorted
+  }
+
+  const getSortIndicator = (field) => {
+    if (sortBy !== field) return ' ↕'
+    return sortDir === 'asc' ? ' ↑' : ' ↓'
+  }
+
   if (loading) {
     return <div className="loading">Loading sessions...</div>
   }
@@ -410,21 +448,41 @@ function Sessions() {
           <table>
             <thead>
               <tr>
-                <th>Użytkownik</th>
-                <th>Źródło</th>
-                <th>Cel</th>
-                <th>Protokół</th>
-                <th>Status</th>
-                <th>ACL</th>
-                <th>Wysłano</th>
-                <th>Odebrano</th>
-                <th>Czas trwania</th>
-                <th>Start</th>
+                <th style={{ cursor: 'pointer' }} onClick={() => handleSort('user')}>
+                  Użytkownik{getSortIndicator('user')}
+                </th>
+                <th style={{ cursor: 'pointer' }} onClick={() => handleSort('source_ip')}>
+                  Źródło{getSortIndicator('source_ip')}
+                </th>
+                <th style={{ cursor: 'pointer' }} onClick={() => handleSort('dest_ip')}>
+                  Cel{getSortIndicator('dest_ip')}
+                </th>
+                <th style={{ cursor: 'pointer' }} onClick={() => handleSort('protocol')}>
+                  Protokół{getSortIndicator('protocol')}
+                </th>
+                <th style={{ cursor: 'pointer' }} onClick={() => handleSort('status')}>
+                  Status{getSortIndicator('status')}
+                </th>
+                <th style={{ cursor: 'pointer' }} onClick={() => handleSort('acl_decision')}>
+                  ACL{getSortIndicator('acl_decision')}
+                </th>
+                <th style={{ cursor: 'pointer' }} onClick={() => handleSort('bytes_sent')}>
+                  Wysłano{getSortIndicator('bytes_sent')}
+                </th>
+                <th style={{ cursor: 'pointer' }} onClick={() => handleSort('bytes_received')}>
+                  Odebrano{getSortIndicator('bytes_received')}
+                </th>
+                <th style={{ cursor: 'pointer' }} onClick={() => handleSort('duration_seconds')}>
+                  Czas trwania{getSortIndicator('duration_seconds')}
+                </th>
+                <th style={{ cursor: 'pointer' }} onClick={() => handleSort('start_time')}>
+                  Start{getSortIndicator('start_time')}
+                </th>
                 <th>Akcje</th>
               </tr>
             </thead>
             <tbody>
-              {sessions.map((session) => (
+              {getSortedSessions().map((session) => (
                 <tr key={session.id}>
                   <td><strong>{session.user}</strong></td>
                   <td><code>{session.source_ip}:{session.source_port}</code></td>
