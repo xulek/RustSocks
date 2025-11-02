@@ -88,7 +88,9 @@
       "Bash(/root/.cargo/bin/cargo test --all-features --test connection_pool)",
       "Bash(/root/.cargo/bin/cargo test --all-features --test pool_concurrency -- --ignored --nocapture)",
       "Bash(/root/.cargo/bin/cargo test --all-features --test pool_edge_cases)",
-      "Bash(/root/.cargo/bin/cargo test --all-features --test pool_socks_integration)"
+      "Bash(/root/.cargo/bin/cargo test --all-features --test pool_socks_integration)",
+      "Bash(/root/.cargo/bin/cargo test --all-features --test e2e_tests)",
+      "Bash(/root/.cargo/bin/cargo test --all-features --test e2e_tests -- --nocapture)"
     ],
     "deny": [],
     "ask": []
