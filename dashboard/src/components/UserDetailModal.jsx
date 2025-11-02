@@ -232,11 +232,14 @@ function UserDetailModal({ open, user, onClose }) {
                       <Tooltip
                         labelFormatter={(value) => new Date(value).toLocaleTimeString()}
                         formatter={(value, name) => {
-                          if (name === 'bandwidth') return [formatBytes(value), 'Przepustowość']
-                          return [value, 'Sesje']
+                          if (name === 'Przepustowość') return [formatBytes(value), 'Przepustowość']
+                          if (name === 'Sesje') return [value, 'Sesje']
+                          return [value, name]
                         }}
                       />
-                      <Legend />
+                      <Legend
+                        formatter={(value) => value}
+                      />
                       <Bar yAxisId="left" dataKey="sessions" fill="#38bdf8" name="Sesje" />
                       <Bar yAxisId="right" dataKey="bandwidth" fill="#22d3ee" name="Przepustowość" />
                     </BarChart>

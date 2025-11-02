@@ -409,12 +409,64 @@ pub async fn get_user_sessions(
     State(state): State<ApiState>,
     Path(user): Path<String>,
 ) -> (StatusCode, Json<Vec<SessionResponse>>) {
-    let all_sessions = state.session_manager.get_all_sessions().await;
-    let user_sessions: Vec<SessionResponse> = all_sessions
-        .iter()
+    let mut all_sessions = Vec::new();
+
+    // Try to fetch from database first (includes historical sessions)
+    #[cfg(feature = "database")]
+    if let Some(store) = state.session_store.as_ref() {
+        let filter = SessionFilter {
+            user: Some(user.clone()),
+            status: None,
+            start_after: None,
+            start_before: None,
+            dest_ip: None,
+            min_duration_secs: None,
+            min_bytes: None,
+            limit: Some(1000), // Limit to 1000 most recent sessions
+            offset: None,
+        };
+
+        match store.query_sessions(&filter).await {
+            Ok(db_sessions) => {
+                all_sessions.extend(db_sessions);
+            }
+            Err(e) => {
+                warn!(
+                    error = %e,
+                    user = %user,
+                    "Failed to fetch user sessions from database"
+                );
+            }
+        }
+    }
+
+    // Add active sessions from memory (might overlap with DB, we'll deduplicate)
+    let memory_sessions = state.session_manager.get_all_sessions().await;
+    let user_memory_sessions: Vec<Session> = memory_sessions
+        .into_iter()
         .filter(|s| s.user == user)
-        .map(|s| session_to_response(s.clone()))
         .collect();
+
+    // Deduplicate by session_id (prefer in-memory sessions as they're more up-to-date)
+    let mut session_map = std::collections::HashMap::new();
+
+    // Add DB sessions first
+    for session in all_sessions {
+        session_map.insert(session.session_id, session);
+    }
+
+    // Overwrite with memory sessions (more current)
+    for session in user_memory_sessions {
+        session_map.insert(session.session_id, session);
+    }
+
+    // Convert to response and sort by start time (newest first)
+    let mut user_sessions: Vec<SessionResponse> = session_map
+        .into_values()
+        .map(session_to_response)
+        .collect();
+
+    user_sessions.sort_by(|a, b| b.start_time.cmp(&a.start_time));
 
     (StatusCode::OK, Json(user_sessions))
 }
