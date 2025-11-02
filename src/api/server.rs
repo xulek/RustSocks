@@ -22,7 +22,7 @@ use crate::api::handlers::{
         delete_user_rule, get_global_settings, get_group_detail, get_user_detail, list_groups,
         list_users, search_rules, update_global_settings, update_group_rule, update_user_rule,
     },
-    get_pool_stats,
+    get_pool_stats, get_system_resources,
     management::{get_acl_rules, get_metrics, health_check, reload_acl, test_acl_decision},
     sessions::{
         get_active_sessions, get_metrics_history, get_session_detail, get_session_history,
@@ -1182,6 +1182,7 @@ pub async fn start_api_server(
         .route("/health", get(health_check))
         .route("/metrics", get(get_metrics))
         .route("/api/pool/stats", get(get_pool_stats))
+        .route("/api/system/resources", get(get_system_resources))
         // Session endpoints
         .route("/api/sessions/active", get(get_active_sessions))
         .route("/api/sessions/history", get(get_session_history))

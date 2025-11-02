@@ -48,6 +48,7 @@ dashmap = "5.5"         # Concurrent hashmap for active sessions
 uuid = { version = "1.6", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 regex = "1.10"          # For wildcard domain matching
+sysinfo = "0.32"        # System and process resource monitoring
 
 # Database (SQLite for session history)
 sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "sqlite", "chrono", "uuid", "macros", "migrate"], optional = true }

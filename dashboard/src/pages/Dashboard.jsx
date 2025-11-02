@@ -3,6 +3,7 @@ import { ArrowUpRight } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { getApiUrl } from '../lib/basePath'
 import { formatBytes, formatDuration } from '../lib/format'
+import SystemResources from '../components/SystemResources'
 import {
   ResponsiveContainer,
   LineChart,
@@ -350,6 +351,8 @@ function Dashboard() {
       {healthError && (
         <div className="error">Health check unavailable: {healthError}</div>
       )}
+
+      <SystemResources />
 
       {poolError && !poolStats && (
         <div className="error">Pool telemetry unavailable: {poolError}</div>

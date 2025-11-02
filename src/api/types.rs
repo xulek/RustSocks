@@ -472,3 +472,27 @@ impl From<PoolStats> for PoolStatsResponse {
 fn format_system_time(time: Option<SystemTime>) -> Option<String> {
     time.map(|ts| DateTime::<Utc>::from(ts).to_rfc3339())
 }
+
+// ============================================================================
+// System Resources API Types
+// ============================================================================
+
+/// System and process resource usage response
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SystemResourcesResponse {
+    /// System-wide CPU usage percentage (0.0 - 100.0)
+    pub system_cpu_percent: f32,
+    /// System-wide RAM usage percentage (0.0 - 100.0)
+    pub system_ram_percent: f32,
+    /// System total RAM in bytes
+    pub system_ram_total_bytes: u64,
+    /// System used RAM in bytes
+    pub system_ram_used_bytes: u64,
+    /// RustSocks process CPU usage percentage (0.0 - 100.0)
+    pub process_cpu_percent: f32,
+    /// RustSocks process RAM usage in bytes
+    pub process_ram_bytes: u64,
+    /// System load average (1 minute)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub load_average_1m: Option<f64>,
+}
