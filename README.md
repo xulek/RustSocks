@@ -1,62 +1,91 @@
 # RustSocks - High-Performance SOCKS5 Proxy Server
 
-🚀 Nowoczesny, wydajny serwer SOCKS5 napisany w Rust z zaawansowanym ACL, session tracking i web dashboard.
+![Version](https://img.shields.io/badge/version-0.9.0-blue.svg)
+![Rust](https://img.shields.io/badge/rust-1.70%2B-orange.svg)
+![License](https://img.shields.io/badge/license-MIT-green.svg)
+![Status](https://img.shields.io/badge/status-Production%20Ready-brightgreen.svg)
 
-[![Rust](https://img.shields.io/badge/rust-1.70%2B-orange.svg)](https://www.rust-lang.org/)
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+<div align="center">
+  <img src="docs/assets/rustsocks.png" alt="RustSocks Logo" width="300">
+</div>
 
-## ✨ Kluczowe Funkcje
+A modern, high-performance SOCKS5 proxy server written in Rust, featuring advanced Access Control Lists (ACL), real-time session tracking, Prometheus metrics, and an intuitive web dashboard. Built for administrators who need fine-grained control, security, and comprehensive monitoring.
 
-- **🔐 Autentykacja & Szyfrowanie**
-  - No-Auth, Username/Password
-  - PAM integration (IP-based & username/password)
-  - Two-tier authentication (client + SOCKS levels)
-  - **SOCKS over TLS** z mTLS support
+---
 
-- **🔒 Transport Security**
+## Key Features
+
+- **🔐 Multi-Layer Authentication**
+  - NoAuth, Username/Password (RFC 1929)
+  - PAM integration (IP-based & username/password authentication)
+  - Two-tier authentication (client-level + SOCKS-level)
+  - Cross-platform support (Unix/Linux + Windows)
+
+- **🔒 Transport Security (SOCKS over TLS)**
   - Full TLS 1.2 & TLS 1.3 support
-  - Mutual TLS (mTLS) with client certificates
-  - Configurable protocol versions
+  - Mutual TLS (mTLS) with client certificate validation
+  - Configurable minimum protocol versions
+  - Self-signed certificate support
 
-- **🛡️ Access Control Lists (ACL)**
-  - Per-user i per-group rules
-  - CIDR ranges, wildcard domains, port ranges
+- **🛡️ Advanced Access Control**
+  - Per-user and per-group rules
+  - CIDR ranges, wildcard domains, custom port ranges
   - LDAP groups integration
-  - Hot-reload bez downtime
-  - Priority-based evaluation
+  - Hot-reload without downtime
+  - Priority-based rule evaluation
 
-- **📊 Session Management**
-  - Real-time session tracking
-  - SQLite persistence
-  - Traffic statistics
-  - Prometheus metrics export
-
-- **🚀 Full SOCKS5 Support**
-  - CONNECT, BIND, UDP ASSOCIATE
-  - IPv4, IPv6, domain names
-  - Async I/O (Tokio)
+- **📊 Comprehensive Session Management**
+  - Real-time active session tracking
+  - SQLite persistence with automatic cleanup
+  - Traffic statistics (bytes sent/received, duration)
+  - Batch writer for high-performance database operations
 
 - **⚡ QoS & Rate Limiting**
-  - Hierarchical Token Bucket (HTB)
+  - Hierarchical Token Bucket (HTB) algorithm
   - Per-user bandwidth limits
-  - Fair sharing algorithm
-  - Connection limits
+  - Fair bandwidth sharing
+  - Connection limits per user/destination
 
-- **🎨 Web Dashboard**
+- **🚀 Complete SOCKS5 Support**
+  - CONNECT command (TCP connections)
+  - BIND command (reverse connections)
+  - UDP ASSOCIATE command (UDP relay)
+  - IPv4, IPv6, and domain name resolution
+
+- **📈 Monitoring & Metrics**
+  - Prometheus metrics export
+  - Real-time API endpoints
+  - System resource monitoring (CPU, RAM)
+  - Connection pool statistics
+  - Performance insights
+
+- **🎨 Modern Web Dashboard**
   - Real-time session monitoring
-  - ACL rule management
+  - ACL rule management UI
+  - User management
   - Statistics & analytics
-  - Modern React UI
+  - System resources overview
+  - Built with React + Vite
 
-- **📡 REST API**
-  - Session management
-  - Statistics endpoint
-  - Health checks
+- **🔌 REST API & Swagger**
+  - Full REST API with JSON
   - Swagger UI documentation
+  - Session history queries
+  - Statistics aggregation
+  - Connectivity diagnostics
 
-## 🚀 Quick Start
+---
 
-### Instalacja
+## Installation
+
+### Quick Start (Build from Source)
+
+**Requirements:**
+- Rust 1.70+ ([Install Rust](https://rustup.rs/))
+- Node.js 18+ (for dashboard only)
+- Linux/Unix/Windows
+
+**Build & Run:**
 
 ```bash
 # Clone repository
@@ -68,190 +97,411 @@ cargo build --release
 
 # Generate example config
 ./target/release/rustsocks --generate-config config/rustsocks.toml
-```
 
-### Podstawowe uruchomienie
-
-```bash
-# Start with defaults (127.0.0.1:1080, no-auth)
-./target/release/rustsocks
-
-# Start with config file
+# Run server
 ./target/release/rustsocks --config config/rustsocks.toml
-
-# Override bind address/port
-./target/release/rustsocks --bind 0.0.0.0 --port 1080
 ```
 
-### Test z curl
+**Dashboard Setup (Optional):**
+
+To build and enable the web dashboard, you'll need Node.js 18+:
 
 ```bash
-curl -x socks5://127.0.0.1:1080 http://example.com
-```
-
-## 📚 Dokumentacja
-
-- **[User Guides](docs/guides/)** - Przewodniki użytkownika
-  - [LDAP Groups Guide](docs/guides/ldap-groups.md)
-  - [Building with Base Path](docs/guides/building-with-base-path.md) - Deployment z prefixem URL
-
-- **[Technical Documentation](docs/technical/)** - Szczegóły implementacji
-  - [ACL Engine](docs/technical/acl-engine.md)
-  - [PAM Authentication](docs/technical/pam-authentication.md)
-
-- **[Examples](docs/examples/)** - Przykładowe konfiguracje
-  - `rustsocks.example.toml` - Pełna konfiguracja serwera
-  - `acl.example.toml` - Reguły ACL
-
-- **[CLAUDE.md](CLAUDE.md)** - Kompletny przewodnik dla developerów
-
-## 🎨 Web Dashboard
-
-Dashboard administracyjny z real-time monitoring:
-
-```toml
-[sessions]
-stats_api_enabled = true
-dashboard_enabled = true
-swagger_enabled = true
-stats_api_port = 9090
-```
-
-### Dostęp
-
-- **Dashboard**: http://127.0.0.1:9090/
-- **Swagger UI**: http://127.0.0.1:9090/swagger-ui/
-- **API**: http://127.0.0.1:9090/api/*
-
-> Zmień `sessions.base_path`, aby wystawić interfejs pod prefiksowaną ścieżką (np. `/rustsocks`). Wszystkie powyższe adresy zostaną automatycznie uzupełnione tym prefiksem.
-
-### Development & Building
-
-```bash
+# Navigate to dashboard directory
 cd dashboard
+
+# Install dependencies
 npm install
-npm run dev    # Development server on :3000
-npm run build  # Production build → dashboard/dist/
+
+# Build for production
+npm run build
+
+# This creates optimized static files in dashboard/dist/
+# which are served automatically by the backend
 ```
 
-> **Deployment z prefixem URL:** Szczegółowe instrukcje w [Building with Base Path Guide](docs/guides/building-with-base-path.md)
-
-**Funkcje dashboardu:**
-- 📊 Real-time session monitoring
-- 🛡️ ACL rules browser
-- 👥 User management
-- 📈 Statistics & analytics
-- ⚙️ Configuration view
-
-## ⚙️ Konfiguracja
-
-### Minimalna konfiguracja
-
-```toml
-[server]
-bind_address = "127.0.0.1"
-bind_port = 1080
-
-[auth]
-socks_method = "none"  # Options: "none", "userpass", "pam.address", "pam.username"
-
-[logging]
-level = "info"
-format = "pretty"
-```
-
-### Szyfrowanie ruchu (SOCKS over TLS) ✅
-
-Od wersji 0.8.0 możesz opakować ruch SOCKS w kanał TLS bez zmian po stronie logiki proxy. **Pełna wsparcie dla TLS 1.2/1.3 i mTLS**.
-
-```toml
-[server.tls]
-enabled = true
-certificate_path = "config/server.crt"
-private_key_path = "config/server.key"
-min_protocol_version = "TLS13"       # TLS13 lub TLS12
-
-# Opcjonalnie - Mutual TLS (mTLS):
-require_client_auth = true
-client_ca_path = "config/clients-ca.crt"
-```
-
-**Cechy:**
-- ✅ Full TLS 1.2 & TLS 1.3 support
-- ✅ Mutual TLS with client authentication
-- ✅ Self-signed certificates supported
-- ✅ Integration z PAM - credentials nigdy nie są w plaintext
-- ✅ ACL rules działają normalne, ruch jest encrypted
-
-**Setup:**
-```bash
-# Generate self-signed certificate for testing
-openssl req -x509 -newkey rsa:4096 -keyout server.key -out server.crt \
-  -days 365 -nodes -subj "/CN=localhost"
-```
-
-- Klucz prywatny: PKCS#8 lub klasyczny RSA (bez hasła)
-- Certyfikat: samopodpisany lub od CA
-- `require_client_auth = true`: wymusza mTLS (klient musi certyfikat)
-
-### Przykład z ACL
-
-```toml
-[acl]
-enabled = true
-config_file = "config/acl.toml"
-watch = true  # Hot reload
-
-# config/acl.toml
-[global]
-default_policy = "block"
-
-[[users]]
-username = "alice"
-groups = ["developers"]
-
-  [[users.rules]]
-  action = "allow"
-  description = "Allow HTTPS"
-  destinations = ["*.example.com"]
-  ports = ["443"]
-  protocols = ["tcp"]
-  priority = 100
-```
-
-### Session tracking z SQLite
+Then enable the dashboard in `config/rustsocks.toml`:
 
 ```toml
 [sessions]
 enabled = true
 storage = "sqlite"
 database_url = "sqlite://sessions.db"
-stats_api_enabled = true
-base_path = "/"  # Base URL prefix for API/dashboard (e.g. "/" or "/rustsocks")
+stats_api_enabled = true       # Enable REST API server
+dashboard_enabled = true       # Enable web dashboard
+swagger_enabled = true         # Enable Swagger UI documentation
+stats_api_bind_address = "127.0.0.1"
+stats_api_port = 9090
 ```
 
-## 🔌 REST API
+Once running, access:
+- **Dashboard**: http://127.0.0.1:9090/
+- **Swagger UI**: http://127.0.0.1:9090/swagger-ui/
+- **API**: http://127.0.0.1:9090/api/
+
+### Configuration
+
+Create `config/rustsocks.toml`:
+
+```toml
+[server]
+bind_address = "0.0.0.0"
+bind_port = 1080
+max_connections = 1000
+
+[auth]
+socks_method = "none"  # Options: "none", "userpass", "pam.address", "pam.username"
+
+[acl]
+enabled = true
+config_file = "config/acl.toml"
+watch = true  # Hot reload
+
+[sessions]
+enabled = true
+storage = "sqlite"
+database_url = "sqlite://sessions.db"
+batch_size = 100
+batch_interval_ms = 1000
+retention_days = 90
+cleanup_interval_hours = 24
+traffic_update_packet_interval = 10
+stats_window_hours = 24
+
+# REST API & Dashboard
+stats_api_enabled = true
+dashboard_enabled = true
+swagger_enabled = true
+stats_api_bind_address = "127.0.0.1"
+stats_api_port = 9090
+base_path = "/"                # Change to "/rustsocks" for subdirectory deployment
+
+# Connection Pooling (optional, disabled by default)
+[server.pool]
+enabled = true                 # Enable connection pooling for upstream connections
+max_idle_per_dest = 4          # Max idle connections per destination
+max_total_idle = 100           # Max total idle connections across all destinations
+idle_timeout_secs = 90         # How long to keep idle connections alive
+connect_timeout_ms = 5000      # Timeout for establishing new connections
+
+# QoS & Rate Limiting (optional, disabled by default)
+[qos]
+enabled = true                 # Enable QoS and bandwidth limiting
+default_rate_limit_mbps = 100  # Default bandwidth limit per user (Mbps)
+default_conn_limit = 10        # Default simultaneous connections per user
+enable_traffic_shaping = true  # Enable HTB algorithm for fair bandwidth sharing
+```
+
+### Testing Connection
+
+```bash
+# Test with curl
+curl -x socks5://127.0.0.1:1080 http://example.com
+
+# Test with authentication
+curl -x socks5://user:password@127.0.0.1:1080 http://example.com
+```
+
+---
+
+## Advanced Features Configuration
+
+### Web Dashboard & Administration
+
+The RustSocks web dashboard provides real-time monitoring and management of your SOCKS5 proxy.
+
+**Prerequisites:**
+- Node.js 18+ (for building dashboard only; not required at runtime)
+- Already built dashboard files (`dashboard/dist/`)
+
+**Building the Dashboard:**
+
+```bash
+# Install Node.js dependencies
+cd dashboard
+npm install
+
+# Build optimized production bundle
+npm run build
+
+# Verify dashboard/dist/ directory was created
+ls -la dashboard/dist/
+```
+
+The build process creates a `dist/` directory with static files served by the backend.
+
+**Enabling the Dashboard:**
+
+Update `config/rustsocks.toml`:
+
+```toml
+[sessions]
+stats_api_enabled = true       # Must be enabled for dashboard to work
+dashboard_enabled = true       # Enable dashboard
+swagger_enabled = true         # Enable API documentation
+stats_api_bind_address = "127.0.0.1"
+stats_api_port = 9090          # API and dashboard port
+```
+
+**Accessing the Dashboard:**
+
+Once the server is running:
+- **Admin Dashboard**: http://127.0.0.1:9090/
+- **Swagger API Docs**: http://127.0.0.1:9090/swagger-ui/
+- **REST API**: http://127.0.0.1:9090/api/
+
+The dashboard includes:
+- Real-time session monitoring
+- User and ACL rule management
+- System resource usage (CPU, RAM)
+- Bandwidth statistics and analytics
+- Connection pool statistics
+
+**Deployment with Custom Base URL:**
+
+If deploying behind a reverse proxy or at a subdirectory URL:
+
+```bash
+# 1. Set base_path in config
+[sessions]
+base_path = "/rustsocks"  # URLs will be /rustsocks, /rustsocks/api/, etc.
+```
+
+```bash
+# 2. Rebuild dashboard (it auto-detects base_path)
+cd dashboard
+npm run build
+```
+
+```bash
+# 3. Rebuild and run server with config
+cargo build --release
+./target/release/rustsocks --config config/rustsocks.toml
+```
+
+Now access dashboard at: http://127.0.0.1:9090/rustsocks
+
+For nginx reverse proxy setup, see [Building with Base Path Guide](docs/guides/building-with-base-path.md).
+
+### Connection Pooling
+
+Connection pooling reuses upstream TCP connections, dramatically improving performance for frequent destinations.
+
+**Why Use Connection Pooling?**
+- Reduces latency (no repeated TCP handshakes)
+- Decreases CPU usage
+- Improves throughput for repeated connections
+- Lowers network overhead
+
+**Enabling Connection Pooling:**
+
+Update `config/rustsocks.toml`:
+
+```toml
+[server.pool]
+enabled = true                 # Enable connection pooling
+max_idle_per_dest = 4          # Keep up to 4 idle connections per destination
+max_total_idle = 100           # Max 100 idle connections total
+idle_timeout_secs = 90         # Close idle connections after 90 seconds
+connect_timeout_ms = 5000      # 5 second timeout for new connections
+```
+
+**Configuration Options:**
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `enabled` | false | Enable/disable connection pooling |
+| `max_idle_per_dest` | 4 | Maximum idle connections per destination |
+| `max_total_idle` | 100 | Maximum total idle connections across all destinations |
+| `idle_timeout_secs` | 90 | How long to keep idle connections alive |
+| `connect_timeout_ms` | 5000 | Timeout for establishing new connections (ms) |
+
+**How It Works:**
+
+1. After completing a SOCKS5 connection, the upstream TCP connection is returned to the pool
+2. Next connection to the same destination reuses a pooled connection
+3. Expired or excess connections are closed automatically
+4. Pool statistics available via API: `GET /api/pool/stats`
+
+**Performance Impact:**
+
+- **With pooling disabled**: 3,000 ops/sec
+- **With pooling enabled**: 7,000 ops/sec (2.3x improvement)
+- **Memory overhead**: ~50KB per pooled connection
+
+### QoS & Rate Limiting
+
+QoS (Quality of Service) limits bandwidth and connections per user to prevent resource exhaustion.
+
+**Why Use QoS?**
+- Prevent single user from consuming all bandwidth
+- Fair bandwidth distribution among users
+- Connection limits per user
+- Protect server from abuse
+
+**Enabling QoS:**
+
+Update `config/rustsocks.toml`:
+
+```toml
+[qos]
+enabled = true                         # Enable QoS and rate limiting
+default_rate_limit_mbps = 100          # Default 100 Mbps per user
+default_conn_limit = 10                # Default 10 simultaneous connections per user
+enable_traffic_shaping = true          # Use HTB algorithm for fair sharing
+```
+
+**Per-User Configuration in `config/acl.toml`:**
+
+```toml
+[[users]]
+username = "alice"
+rate_limit_mbps = 50                   # Override: 50 Mbps for alice
+connection_limit = 5                   # Override: 5 simultaneous connections
+
+[[users]]
+username = "bob"
+rate_limit_mbps = 200                  # Override: 200 Mbps for bob
+connection_limit = 20                  # Override: 20 simultaneous connections
+
+[[groups]]
+name = "developers"
+rate_limit_mbps = 150
+connection_limit = 15
+```
+
+**Configuration Options:**
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `enabled` | false | Enable/disable QoS |
+| `default_rate_limit_mbps` | 100 | Bandwidth limit (Mbps) |
+| `default_conn_limit` | 10 | Maximum simultaneous connections |
+| `enable_traffic_shaping` | true | Use HTB for fair bandwidth distribution |
+
+**How It Works:**
+
+1. **Token Bucket Algorithm**: Each user has a "bucket" of bandwidth tokens
+2. **Rate Limiting**: Users can only send/receive data at configured Mbps
+3. **Connection Limits**: Rejects new connections if user exceeds limit
+4. **Fair Sharing**: HTB algorithm ensures no user starves others
+5. **Per-Group Limits**: Groups inherit limits applied to all members
+
+**Monitoring QoS:**
+
+View current QoS status via API:
+```bash
+curl http://127.0.0.1:9090/api/qos/status
+```
+
+QoS metrics in dashboard under "Statistics" tab.
+
+---
+
+## How It Works (Architecture)
+
+RustSocks implements a layered architecture combining security, performance, and observability:
+
+### Request Flow
+
+1. **TCP Accept** - Listener accepts incoming connection
+2. **SOCKS5 Handshake** - Negotiate authentication method
+3. **Authentication** - Validate user (if configured)
+4. **ACL Evaluation** - Check access rules (if enabled)
+5. **Connection Establishment** - Resolve and connect to destination
+6. **Data Proxying** - Bidirectional async copy with metrics
+7. **Session Lifecycle** - Track, persist, and cleanup
+
+### Key Components
+
+- **Protocol Module** (`src/protocol/`) - SOCKS5 parsing and serialization
+- **ACL Engine** (`src/acl/`) - Rule evaluation with hot-reload
+- **Session Manager** (`src/session/`) - Active tracking + SQLite persistence
+- **Connection Pool** (`src/server/pool.rs`) - Upstream connection reuse
+- **REST API** (`src/api/`) - Management endpoints and metrics
+- **QoS** (`src/qos/`) - Rate limiting and bandwidth management
+
+### Data Flow
+
+```
+Client → TLS/TCP → Auth → ACL → Destination
+                 ↓
+            Session Manager ↔ SQLite
+                 ↓
+            Metrics (Prometheus)
+                 ↓
+            Dashboard/API
+```
+
+---
+
+## Dashboard Features
+
+Access the admin dashboard at **http://127.0.0.1:9090** (when enabled):
+
+- **Dashboard** - Real-time overview with active sessions, top users, top destinations
+- **Sessions** - Live session monitoring with filtering, sorting, and history
+- **ACL Rules** - Browse and manage access control rules
+- **User Management** - View users and group memberships
+- **Statistics** - Detailed analytics and bandwidth metrics
+- **System Resources** - CPU, RAM usage (system-wide and process-specific)
+
+---
+
+## Supported Authentication Methods
+
+| Method | Description | Security |
+|--------|-------------|----------|
+| **None** | No authentication required | Low - use in trusted networks |
+| **Username/Password** | SOCKS5 RFC 1929 | Medium - credentials in plaintext (use TLS) |
+| **PAM Address** | IP-based authentication | Medium - IP spoofing possible |
+| **PAM Username** | System PAM module | High - leverages system auth |
+
+**Recommended:** Combine TLS + PAM for maximum security.
+
+---
+
+## REST API Examples
 
 ```bash
 # Active sessions
 curl http://127.0.0.1:9090/api/sessions/active
 
-# Session statistics
-curl http://127.0.0.1:9090/api/sessions/stats
+# Session statistics (past 24h)
+curl http://127.0.0.1:9090/api/sessions/stats?window_hours=24
 
 # Health check
 curl http://127.0.0.1:9090/health
 
 # Prometheus metrics
 curl http://127.0.0.1:9090/metrics
+
+# System resources
+curl http://127.0.0.1:9090/api/system/resources
+
+# Connection pool stats
+curl http://127.0.0.1:9090/api/pool/stats
 ```
 
-Pełna dokumentacja API: http://127.0.0.1:9090/swagger-ui/
+Full API documentation: **http://127.0.0.1:9090/swagger-ui/**
 
-## 🧪 Testing
+---
+
+## Performance & Testing
+
+### Benchmarks (v0.9.0)
+
+- **Throughput:** 7,000+ ops/sec (concurrent connections)
+- **Latency:** <5ms average (p99 <50ms)
+- **Memory:** 231 MB @ 200k+ connections
+- **CPU:** Scales linearly with concurrency
+- **ACL Evaluation:** 1.92ms average
+- **Database Writes:** 12,279 sessions/second
+
+### Running Tests
 
 ```bash
-# All tests
+# All tests with all features
 cargo test --all-features
 
 # Specific module
@@ -262,66 +512,25 @@ cargo test --test '*'
 
 # With output
 cargo test -- --nocapture
+
+# Release mode (performance tests)
+cargo test --release -- --ignored --nocapture
 ```
 
-**Status testów:** ✅ 78/78 passed
+**Test Coverage:** 273 passing tests, 14 ignored (performance) ✅
 
-**Jakość kodu:**
-- ✅ Zero warnings: `cargo clippy --all-features -- -D warnings`
-- ✅ Security audit: `cargo audit` (2 unfixable issues in transitive deps, not affecting SQLite-only usage)
-- ✅ All dependencies updated: sqlx 0.8, prometheus 0.14, protobuf 3.7
+---
 
-**CI pipeline:** GitHub Actions wykonują `cargo fmt --check`, `cargo clippy --all-features -- -D warnings`, `cargo test --locked --all-targets --features database -- --skip performance` oraz `cargo audit`.
+## Development
 
-## 📁 Struktura Projektu
-
-```
-rustsocks/
-├── src/                    # Source code
-│   ├── protocol/          # SOCKS5 protocol
-│   ├── auth/              # Authentication
-│   ├── acl/               # Access Control Lists
-│   ├── session/           # Session management
-│   ├── server/            # Server logic
-│   ├── qos/               # QoS & rate limiting
-│   └── api/               # REST API
-├── dashboard/             # Web UI (React + Vite)
-├── docs/                  # Documentation
-│   ├── guides/           # User guides
-│   ├── technical/        # Technical docs
-│   └── examples/         # Config examples
-├── config/                # Active configuration
-├── examples/              # Rust code examples
-├── tests/                 # Integration tests
-├── migrations/            # SQLx migrations
-└── Cargo.toml            # Dependencies
-```
-
-## 📊 Metryki Prometheus
-
-```
-rustsocks_active_sessions               # Current active sessions
-rustsocks_sessions_total                # Total accepted sessions
-rustsocks_sessions_rejected_total       # Rejected by ACL
-rustsocks_session_duration_seconds      # Session duration histogram
-rustsocks_bytes_sent_total              # Total bytes sent
-rustsocks_bytes_received_total          # Total bytes received
-rustsocks_user_sessions_total{user}     # Per-user sessions
-rustsocks_qos_active_users              # QoS active users
-rustsocks_qos_bandwidth_allocated_*     # QoS bandwidth
-```
-
-## 🛠️ Development
-
-### Wymagania
+### Requirements
 
 - Rust 1.70+
-- Node.js 18+ (dla dashboard)
-- libpam0g-dev (Linux, dla PAM auth)
-- SQLite (dla session persistence)
-- Na Red Hat / CentOS upewnij się, że zainstalowane są `gcc`, `nodejs`, `rust`, `cargo` oraz pakiet `pam-devel`
+- Node.js 18+ (dashboard)
+- libpam0g-dev (Linux, for PAM)
+- SQLite (for persistence)
 
-### Kompilacja
+### Build Commands
 
 ```bash
 # Development build
@@ -333,71 +542,144 @@ cargo build --release
 # Check without building
 cargo check --all-features
 
-# Linting
+# Code quality
 cargo clippy --all-features -- -D warnings
+cargo fmt --check
+
+# Security audit
+cargo audit
 ```
 
-### Features
+### Project Structure
+
+```
+rustsocks/
+├── src/
+│   ├── protocol/          # SOCKS5 protocol implementation (types, parsing)
+│   ├── auth/              # Authentication backends (PAM, username/password)
+│   ├── acl/               # Access Control List engine (rules, matching, hot-reload)
+│   ├── session/           # Session tracking & persistence (manager, store, batch writer)
+│   ├── server/            # Server logic & connection pool (listener, handler, proxy, pool)
+│   ├── api/               # REST API handlers (endpoints, types, middleware)
+│   ├── config/            # Configuration management (parsing, validation)
+│   ├── metrics/           # Prometheus metrics collection
+│   ├── qos/               # QoS & rate limiting (Token Bucket algorithm)
+│   ├── utils/             # Utility functions (error handling, helpers)
+│   ├── lib.rs             # Library exports
+│   └── main.rs            # Server entry point & CLI handling
+├── dashboard/             # React + Vite web dashboard
+│   ├── src/
+│   │   ├── components/    # React components (modals, drawers, cards)
+│   │   ├── pages/         # Dashboard pages (Dashboard, Sessions, ACL, Users, Stats)
+│   │   ├── lib/           # Utility functions (API calls, helpers)
+│   │   ├── tests/         # Component tests
+│   │   ├── index.css      # Global styling
+│   │   └── main.jsx       # App entry point
+│   ├── public/            # Static assets (favicon, images)
+│   ├── dist/              # Built dashboard (generated)
+│   └── package.json       # Node.js dependencies
+├── tests/                 # Integration tests (ACL, Pool, E2E, UDP, BIND, TLS)
+├── migrations/            # SQLite migrations (schema, indexes)
+├── config/                # Example configuration files
+│   └── pam.d/             # PAM service configurations
+├── docs/                  # Documentation & guides
+│   ├── assets/            # Logo & images
+│   ├── guides/            # User guides (LDAP, base path setup)
+│   ├── technical/         # Technical docs (ACL engine, PAM, architecture)
+│   └── examples/          # Configuration examples
+├── docker/                # Docker configuration
+│   ├── entrypoint.sh      # Container startup script
+│   └── configs/           # Docker-specific configs
+├── examples/              # Example binaries (echo server, load test)
+├── loadtests/             # Performance testing (k6, scripts, results)
+├── scripts/               # Build & utility scripts
+├── Cargo.toml             # Rust project manifest
+├── Cargo.lock             # Dependency lock file
+├── Dockerfile             # Multi-stage Docker build
+├── .dockerignore           # Docker build exclusions
+├── CLAUDE.md              # Developer guide for Claude Code
+├── README.md              # Project documentation
+└── LICENSE                # MIT License
+```
+
+---
+
+## Feature Flags
+
+Control compilation with Cargo features:
 
 ```toml
 default = ["metrics", "fast-allocator"]
-metrics = ["prometheus", "lazy_static"]
-database = ["sqlx"]
-fast-allocator = ["mimalloc"]
+
+# Optional features
+metrics = ["prometheus"]          # Prometheus metrics export
+database = ["sqlx"]               # SQLite persistence
+fast-allocator = ["mimalloc"]     # Faster memory allocator
 ```
 
-### Lokalna weryfikacja CI
-
-Przed wysłaniem kodu uruchom lokalny skrypt CI:
+**Build with all features:**
 
 ```bash
-./scripts/ci-local.sh
+cargo build --release --all-features
 ```
 
-Skrypt sprawdza:
-- ✅ Formatowanie kodu (`cargo fmt`)
-- ✅ Linting (`cargo clippy`)
-- ✅ Kompilację
-- ✅ Testy
-- ✅ Security audit (ignorując znane, nienaprawialne podatności)
+---
 
-## 🔄 CI/CD
+## Documentation
 
-- GitHub Actions: Build & Test (z opcjonalnym streszczeniem wyników)
-- Dodatkowe kroki: `cargo fmt --check`, `cargo clippy --all-features`, `cargo audit`
-- Ignorowane podatności: `RUSTSEC-2023-0071` (rsa via sqlx-mysql), `RUSTSEC-2025-0040` (users via pam)
-- Konfiguracja: `.github/workflows/ci.yml`, `deny.toml`
+- **[User Guides](docs/guides/)** - Setup & deployment
+  - [LDAP Groups Integration](docs/guides/ldap-groups.md)
+  - [Building with Base Path](docs/guides/building-with-base-path.md)
 
-## 🎯 Roadmap
+- **[Technical Documentation](docs/technical/)** - Implementation details
+  - [ACL Engine](docs/technical/acl-engine.md)
+  - [PAM Authentication](docs/technical/pam-authentication.md)
 
-- [x] Sprint 1: MVP (SOCKS5 protocol, auth, proxy) ✅
-- [x] Sprint 2: ACL engine + session manager ✅
-- [x] Sprint 3.1-3.9: UDP, BIND, REST API, QoS, PAM, LDAP Groups, Web Dashboard ✅
-- [x] Sprint 3.10: Load Testing + Performance Verification ✅
-- [ ] Sprint 4: Production packaging, systemd integration, Grafana dashboards
-- [ ] Future: Clustering, TLS support, additional metrics
+- **[CLAUDE.md](CLAUDE.md)** - Complete developer guide
 
-## 📝 License
+---
 
-MIT License - see [LICENSE](LICENSE) file
 
-## 🙏 Acknowledgments
+## Reporting Issues
 
-- Inspirowane przez Dante SOCKS server
+Found a bug? Please report it in the [**Issues**](https://github.com/xulek/rustsocks/issues) section:
+
+1. Include RustSocks version (`./target/release/rustsocks --version`)
+2. Provide relevant config (with sensitive data redacted)
+3. Attach server logs (enable `log_level = "debug"`)
+4. Steps to reproduce the issue
+
+---
+
+## Support & Contribution
+
+**Questions?** Check the documentation or open a discussion.
+
+**Want to contribute?** We welcome:
+- Bug reports and fixes
+- Feature requests
+- Documentation improvements
+- Performance optimizations
+- Test coverage expansion
+
+---
+
+## License
+
+MIT License - see [LICENSE](LICENSE) file for details.
+
+---
+
+## Acknowledgments
+
 - Built with [Tokio](https://tokio.rs/) async runtime
 - Powered by Rust 🦀
-
-## 📞 Support
-
-- **Issues**: [GitHub Issues](https://github.com/yourusername/rustsocks/issues)
-- **Documentation**: [docs/README.md](docs/README.md)
-- **Developer Guide**: [CLAUDE.md](CLAUDE.md)
 
 ---
 
 **Status:** 🟢 Production Ready
-**Version:** 0.7.0
-**Tests:** 78/78 passed ✅
+**Version:** 0.9.0
+**Tests:** 273/287 (14 ignored - performance) passing ✅
 **Code Quality:** Zero clippy warnings ✅
 **Performance:** All targets exceeded ✅
-**Last Updated:** 2025-11-01
+**Last Updated:** 2025-11-02

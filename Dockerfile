@@ -101,6 +101,6 @@ CMD ["rustsocks", "--config", "/etc/rustsocks/rustsocks.toml"]
 
 LABEL org.opencontainers.image.title="RustSocks" \
       org.opencontainers.image.description="High-performance SOCKS5 proxy with ACL, PAM auth, and web dashboard" \
-      org.opencontainers.image.version="0.2.0" \
+      org.opencontainers.image.version="0.9.0" \
       org.opencontainers.image.vendor="RustSocks Contributors" \
       org.opencontainers.image.licenses="MIT"
