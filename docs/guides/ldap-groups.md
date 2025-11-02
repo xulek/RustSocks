@@ -2,7 +2,7 @@
 
 ## Overview
 
-RustSocks now supports **dynamic LDAP group resolution** inspired by Dante SOCKS server. This allows ACL rules to be applied based on user's LDAP groups without manual synchronization.
+RustSocks now supports **dynamic LDAP group resolution**. This allows ACL rules to be applied based on user's LDAP groups without manual synchronization.
 
 **Key Feature:** ACL only checks groups **defined in ACL config** - even if user has thousands of LDAP groups, only the relevant ones are evaluated (case-insensitive).
 

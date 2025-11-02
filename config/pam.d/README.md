@@ -133,7 +133,7 @@ PAM typically requires root privileges to:
 - Read `/etc/shadow` for password verification
 - Call PAM modules that need elevated permissions
 
-**Recommended approach** (like Dante SOCKS):
+**Recommended approach**:
 1. Start server as root
 2. Bind to privileged port (if needed)
 3. Drop privileges after binding
@@ -218,7 +218,6 @@ pamtester -v rustsocks alice authenticate
 - [Linux PAM Documentation](http://www.linux-pam.org/Linux-PAM-html/)
 - [pam_unix.so manual](https://linux.die.net/man/8/pam_unix)
 - [pam_access.so manual](https://linux.die.net/man/8/pam_access)
-- [Dante SOCKS PAM configuration](https://www.inet.no/dante/doc/latest/config/server.html#pam)
 - [RustSocks Documentation](../CLAUDE.md)
 
 ## License

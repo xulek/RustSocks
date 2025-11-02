@@ -451,6 +451,56 @@ pub async fn get_metrics_history(
     }
 }
 
+/// POST /api/sessions/:id/terminate - Terminate an active session
+pub async fn terminate_session(
+    State(state): State<ApiState>,
+    Path(session_id): Path<String>,
+) -> (StatusCode, Json<serde_json::Value>) {
+    // Parse session ID
+    let session_uuid = match Uuid::from_str(&session_id) {
+        Ok(uuid) => uuid,
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({
+                    "error": "Invalid session ID format"
+                })),
+            );
+        }
+    };
+
+    // Check if session exists and is active
+    let session_exists = state
+        .session_manager
+        .get_active_sessions()
+        .await
+        .iter()
+        .any(|s| s.session_id == session_uuid);
+
+    if !session_exists {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({
+                "error": "Session not found or not active"
+            })),
+        );
+    }
+
+    // Terminate the session
+    state
+        .session_manager
+        .terminate_session(&session_uuid, "Terminated by admin", SessionStatus::Closed)
+        .await;
+
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "success": true,
+            "message": "Session terminated successfully"
+        })),
+    )
+}
+
 /// Helper function to convert internal Session to API SessionResponse
 fn session_to_response(session: crate::session::Session) -> SessionResponse {
     SessionResponse {

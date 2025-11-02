@@ -6,7 +6,8 @@ import {
   Download,
   Eye,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  XCircle
 } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
 import { getApiUrl } from '../lib/basePath'
@@ -236,6 +237,28 @@ function Sessions() {
       setDetailError(err.message)
     } finally {
       setDetailLoading(false)
+    }
+  }
+
+  const handleTerminate = async (session) => {
+    if (!window.confirm(`Czy na pewno chcesz zakończyć sesję użytkownika ${session.user}?`)) {
+      return
+    }
+
+    try {
+      const response = await fetch(getApiUrl(`/api/sessions/${session.id}/terminate`), {
+        method: 'POST'
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.error || 'Failed to terminate session')
+      }
+
+      // Refresh sessions list
+      await fetchSessions()
+    } catch (err) {
+      alert(`Błąd podczas kończenia sesji: ${err.message}`)
     }
   }
 
@@ -516,6 +539,17 @@ function Sessions() {
                     >
                       <Eye size={16} />
                     </button>
+                    {session.status?.toLowerCase() === 'active' && (
+                      <button
+                        type="button"
+                        className="icon-button"
+                        title="Zakończ sesję"
+                        onClick={() => handleTerminate(session)}
+                        style={{ marginLeft: '8px', color: 'var(--danger)' }}
+                      >
+                        <XCircle size={16} />
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}

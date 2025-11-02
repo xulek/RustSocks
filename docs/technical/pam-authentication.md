@@ -1,6 +1,6 @@
 # PAM Authentication - Implementation Guide
 
-This document explains the PAM (Pluggable Authentication Modules) integration in RustSocks, inspired by the Dante SOCKS server.
+This document explains the PAM (Pluggable Authentication Modules) integration in RustSocks.
 
 ## Overview
 
@@ -68,7 +68,7 @@ socks_method = "pam.username" # or "pam.address", "userpass", "none"
 socks_pam_service = "rustsocks"
 
 [auth.pam]
-# Default user for pam.address (like Dante's rhostusr)
+# Default user for pam.address
 default_user = "rhostusr"
 default_ruser = "rhostusr"
 
@@ -417,11 +417,8 @@ RustSocks PAM authentication provides:
 ✅ **pam.username** - Username/password auth via SOCKS5
 ✅ **Two-tier authentication** - Defense in depth
 ✅ **Privilege dropping** - Secure privilege management
-✅ **Full Dante compatibility** - Same functionality as Dante
 ✅ **Production-ready** - Comprehensive error handling and logging
 ✅ **Testable** - Unit and integration tests
-
-Implementation is compatible with Dante and production-ready for deployment.
 
 ---
 

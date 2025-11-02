@@ -9,7 +9,6 @@
 /// 3. ACL engine filters only groups defined in ACL config
 /// 4. Irrelevant groups are ignored (no need to define thousands of LDAP groups)
 ///
-/// This approach is inspired by Dante SOCKS server's group handling.
 use std::ffi::CString;
 use tracing::{debug, warn};
 

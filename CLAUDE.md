@@ -608,7 +608,7 @@ cargo test --all-features bind
 
 **Implementation Status**: ✅ Complete
 
-PAM (Pluggable Authentication Modules) provides flexible system-level authentication for RustSocks, inspired by Dante SOCKS server.
+PAM (Pluggable Authentication Modules) provides flexible system-level authentication for RustSocks.
 
 ### Authentication Methods
 

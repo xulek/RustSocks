@@ -26,7 +26,7 @@ use crate::api::handlers::{
     management::{get_acl_rules, get_metrics, health_check, reload_acl, test_acl_decision},
     sessions::{
         get_active_sessions, get_metrics_history, get_session_detail, get_session_history,
-        get_session_stats, get_user_sessions,
+        get_session_stats, get_user_sessions, terminate_session,
     },
     test_tcp_connectivity,
 };
@@ -1188,6 +1188,7 @@ pub async fn start_api_server(
         .route("/api/sessions/history", get(get_session_history))
         .route("/api/sessions/stats", get(get_session_stats))
         .route("/api/sessions/:id", get(get_session_detail))
+        .route("/api/sessions/:id/terminate", post(terminate_session))
         .route("/api/users/:user/sessions", get(get_user_sessions))
         .route("/api/metrics/history", get(get_metrics_history))
         // Diagnostics endpoints
