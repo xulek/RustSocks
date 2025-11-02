@@ -8,7 +8,8 @@ use rustsocks::auth::AuthManager;
 use rustsocks::config::{AuthConfig, TlsSettings};
 use rustsocks::qos::{ConnectionLimits, QosEngine};
 use rustsocks::server::{
-    create_tls_acceptor, handle_client, ClientHandlerContext, TrafficUpdateConfig,
+    create_tls_acceptor, handle_client, ClientHandlerContext, ConnectionPool, PoolConfig,
+    TrafficUpdateConfig,
 };
 use rustsocks::session::SessionManager;
 use std::net::TcpListener as StdTcpListener;
@@ -65,6 +66,7 @@ async fn socks5_connect_over_tls() {
         traffic_config: TrafficUpdateConfig::default(),
         qos_engine: QosEngine::None,
         connection_limits: ConnectionLimits::default(),
+        connection_pool: Arc::new(ConnectionPool::new(PoolConfig::default())),
     });
 
     let socks_listener = bind_nonblocking("127.0.0.1:0");
@@ -212,6 +214,7 @@ async fn socks5_connect_with_mutual_tls() {
         traffic_config: TrafficUpdateConfig::default(),
         qos_engine: QosEngine::None,
         connection_limits: ConnectionLimits::default(),
+        connection_pool: Arc::new(ConnectionPool::new(PoolConfig::default())),
     });
 
     let socks_listener = bind_nonblocking("127.0.0.1:0");

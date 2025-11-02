@@ -3,6 +3,7 @@ use crate::auth::AuthManager;
 use crate::protocol::*;
 use crate::qos::{ConnectionLimits, QosEngine};
 use crate::server::bind::handle_bind as handle_bind_relay;
+use crate::server::pool::ConnectionPool;
 use crate::server::proxy::{proxy_data, TrafficUpdateConfig};
 use crate::server::resolver::resolve_address;
 use crate::server::udp::handle_udp_associate as handle_udp_relay;
@@ -35,6 +36,7 @@ pub struct ClientHandlerContext {
     pub traffic_config: TrafficUpdateConfig,
     pub qos_engine: QosEngine,
     pub connection_limits: ConnectionLimits,
+    pub connection_pool: Arc<ConnectionPool>,
 }
 
 pub trait IoStream: AsyncRead + AsyncWrite + Unpin + Send + 'static {}
@@ -286,14 +288,18 @@ where
                 protocol: session_protocol,
                 qos_engine: ctx.qos_engine.clone(),
             };
+            let connect_ctx = ConnectHandlerContext {
+                session_manager: ctx.session_manager.clone(),
+                traffic_config: ctx.traffic_config,
+                protocol: SocksProtocol::V5,
+                connection_pool: ctx.connection_pool.clone(),
+            };
             handle_connect(
                 client_stream,
                 &request.address,
                 request.port,
-                ctx.session_manager.clone(),
+                connect_ctx,
                 session_ctx,
-                ctx.traffic_config,
-                SocksProtocol::V5,
             )
             .await?;
         }
@@ -491,14 +497,18 @@ where
                 qos_engine: ctx.qos_engine.clone(),
             };
 
+            let connect_ctx = ConnectHandlerContext {
+                session_manager: ctx.session_manager.clone(),
+                traffic_config: ctx.traffic_config,
+                protocol: SocksProtocol::V4,
+                connection_pool: ctx.connection_pool.clone(),
+            };
             handle_connect(
                 client_stream,
                 &request.address,
                 request.port,
-                ctx.session_manager.clone(),
+                connect_ctx,
                 session_ctx,
-                ctx.traffic_config,
-                SocksProtocol::V4,
             )
             .await?;
         }
@@ -544,14 +554,19 @@ struct SessionContext {
     qos_engine: QosEngine,
 }
 
+struct ConnectHandlerContext {
+    session_manager: Arc<SessionManager>,
+    traffic_config: TrafficUpdateConfig,
+    protocol: SocksProtocol,
+    connection_pool: Arc<ConnectionPool>,
+}
+
 async fn handle_connect<S>(
     mut client_stream: S,
     dest_addr: &Address,
     dest_port: u16,
-    session_manager: Arc<SessionManager>,
+    connect_ctx: ConnectHandlerContext,
     session_ctx: SessionContext,
-    traffic_config: TrafficUpdateConfig,
-    protocol: SocksProtocol,
 ) -> Result<()>
 where
     S: IoStream,
@@ -571,7 +586,7 @@ where
             );
             send_socks_response(
                 &mut client_stream,
-                protocol,
+                connect_ctx.protocol,
                 ReplyCode::HostUnreachable,
                 Address::IPv4([0, 0, 0, 0]),
                 0,
@@ -581,7 +596,7 @@ where
         }
     };
 
-    if matches!(protocol, SocksProtocol::V4) {
+    if matches!(connect_ctx.protocol, SocksProtocol::V4) {
         candidates.retain(|addr| matches!(addr.ip(), IpAddr::V4(_)));
         if candidates.is_empty() {
             warn!(
@@ -590,7 +605,7 @@ where
             );
             send_socks_response(
                 &mut client_stream,
-                protocol,
+                connect_ctx.protocol,
                 ReplyCode::HostUnreachable,
                 Address::IPv4([0, 0, 0, 0]),
                 0,
@@ -607,13 +622,13 @@ where
 
     for target in candidates {
         debug!("Attempting upstream connection to {}", target);
-        match TcpStream::connect(target).await {
+        match connect_ctx.connection_pool.get(target).await {
             Ok(stream) => {
                 // Optimize TCP socket for low latency and high throughput
                 if let Err(e) = optimize_tcp_socket(&stream) {
                     warn!("Failed to optimize upstream TCP socket: {}", e);
                 }
-                upstream_stream_opt = Some(stream);
+                upstream_stream_opt = Some((stream, target));
                 break;
             }
             Err(e) => {
@@ -622,15 +637,15 @@ where
         }
     }
 
-    let upstream_stream = match upstream_stream_opt {
-        Some(stream) => stream,
+    let (upstream_stream, _upstream_addr) = match upstream_stream_opt {
+        Some((stream, addr)) => (stream, addr),
         None => {
             if let Some(ref err) = last_err {
                 warn!("Failed to connect to {}:{}: {}", dest_host, dest_port, err);
             }
             send_socks_response(
                 &mut client_stream,
-                protocol,
+                connect_ctx.protocol,
                 ReplyCode::HostUnreachable,
                 Address::IPv4([0, 0, 0, 0]),
                 0,
@@ -656,7 +671,7 @@ where
         protocol: session_ctx.protocol,
     };
 
-    let (session_id, cancel_token) = session_manager
+    let (session_id, cancel_token) = connect_ctx.session_manager
         .new_session_with_control(
             &session_ctx.user,
             connection_info,
@@ -674,14 +689,16 @@ where
     };
     let bind_port = local_addr.port();
 
-    if matches!(protocol, SocksProtocol::V4) && !matches!(&bind_addr, Address::IPv4(_)) {
+    if matches!(connect_ctx.protocol, SocksProtocol::V4)
+        && !matches!(&bind_addr, Address::IPv4(_))
+    {
         warn!(
             "SOCKS4 client received non-IPv4 bind address {}:{}",
             dest_host, dest_port
         );
         send_socks_response(
             &mut client_stream,
-            protocol,
+            connect_ctx.protocol,
             ReplyCode::AddressTypeNotSupported,
             Address::IPv4([0, 0, 0, 0]),
             0,
@@ -693,7 +710,7 @@ where
     // Send success response
     send_socks_response(
         &mut client_stream,
-        protocol,
+        connect_ctx.protocol,
         ReplyCode::Succeeded,
         bind_addr,
         bind_port,
@@ -706,17 +723,18 @@ where
     match proxy_data(
         client_stream,
         upstream_stream,
-        session_manager.clone(),
+        connect_ctx.session_manager.clone(),
         session_id,
         cancel_token,
-        traffic_config,
+        connect_ctx.traffic_config,
         session_ctx.qos_engine.clone(),
         session_ctx.user.clone(),
     )
     .await
     {
         Ok(_) => {
-            session_manager
+            connect_ctx
+                .session_manager
                 .close_session(
                     &session_id,
                     Some("Connection closed normally".to_string()),
@@ -731,7 +749,8 @@ where
         }
         Err(e) => {
             let reason = format!("Proxy error: {}", e);
-            session_manager
+            connect_ctx
+                .session_manager
                 .close_session(&session_id, Some(reason), SessionStatus::Failed)
                 .await;
             Err(e)

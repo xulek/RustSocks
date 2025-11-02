@@ -5,7 +5,7 @@ use rustsocks::config::{AuthConfig, PamSettings};
 use rustsocks::protocol::ReplyCode;
 use rustsocks::qos::{ConnectionLimits, QosEngine};
 use rustsocks::server::proxy::TrafficUpdateConfig;
-use rustsocks::server::{handle_client, ClientHandlerContext};
+use rustsocks::server::{handle_client, ClientHandlerContext, ConnectionPool, PoolConfig};
 use rustsocks::session::{SessionManager, SessionStatus};
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
@@ -77,6 +77,7 @@ async fn acl_blocks_connection_and_tracks_stats() {
             traffic_config: TrafficUpdateConfig::default(),
             qos_engine: QosEngine::None,
             connection_limits: ConnectionLimits::default(),
+            connection_pool: Arc::new(ConnectionPool::new(PoolConfig::default())),
         });
 
         tokio::spawn(async move {
@@ -205,6 +206,7 @@ async fn spawn_allow_env(expected: usize) -> AllowEnv {
             traffic_config: TrafficUpdateConfig::default(),
             qos_engine: QosEngine::None,
             connection_limits: ConnectionLimits::default(),
+            connection_pool: Arc::new(ConnectionPool::new(PoolConfig::default())),
         });
 
         tokio::spawn(async move {

@@ -2,7 +2,9 @@ use rustsocks::acl::{load_acl_config_sync, AclEngine, AclStats};
 use rustsocks::auth::AuthManager;
 use rustsocks::config::{AuthConfig, PamSettings};
 use rustsocks::qos::{ConnectionLimits, QosEngine};
-use rustsocks::server::{handle_client, ClientHandlerContext, TrafficUpdateConfig};
+use rustsocks::server::{
+    handle_client, ClientHandlerContext, ConnectionPool, PoolConfig, TrafficUpdateConfig,
+};
 use rustsocks::session::SessionManager;
 use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -31,6 +33,7 @@ async fn bind_basic_handshake() {
         traffic_config: TrafficUpdateConfig::default(),
         qos_engine: QosEngine::None,
         connection_limits: ConnectionLimits::default(),
+        connection_pool: Arc::new(ConnectionPool::new(PoolConfig::default())),
     });
 
     // Start SOCKS5 server
@@ -114,6 +117,7 @@ async fn bind_with_incoming_connection() {
         traffic_config: TrafficUpdateConfig::default(),
         qos_engine: QosEngine::None,
         connection_limits: ConnectionLimits::default(),
+        connection_pool: Arc::new(ConnectionPool::new(PoolConfig::default())),
     });
 
     // Start SOCKS5 server
@@ -237,6 +241,7 @@ username = "anonymous"
         traffic_config: TrafficUpdateConfig::default(),
         qos_engine: QosEngine::None,
         connection_limits: ConnectionLimits::default(),
+        connection_pool: Arc::new(ConnectionPool::new(PoolConfig::default())),
     });
 
     // Start SOCKS5 server
@@ -321,6 +326,7 @@ username = "anonymous"
         traffic_config: TrafficUpdateConfig::default(),
         qos_engine: QosEngine::None,
         connection_limits: ConnectionLimits::default(),
+        connection_pool: Arc::new(ConnectionPool::new(PoolConfig::default())),
     });
 
     // Start SOCKS5 server

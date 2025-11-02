@@ -5,6 +5,7 @@ use crate::auth::AuthManager;
 use crate::config::{Config, TlsSettings};
 use crate::qos::QosEngine;
 use crate::server::handler::{handle_client, ClientHandlerContext};
+use crate::server::pool::ConnectionPool;
 use crate::server::proxy::TrafficUpdateConfig;
 use crate::session::{start_metrics_collector, MetricsHistory, SessionManager};
 #[cfg(feature = "database")]
@@ -34,6 +35,7 @@ pub struct SocksServer {
     acl_watcher: Option<Mutex<AclWatcher>>,
     qos_engine: QosEngine,
     tls_acceptor: Option<TlsAcceptor>,
+    connection_pool: Arc<ConnectionPool>,
 }
 
 /// Utwórz `TlsAcceptor` na podstawie ustawień TLS serwera.
@@ -426,6 +428,18 @@ impl SocksServer {
             info!("QoS engine initialized and started");
         }
 
+        // Initialize connection pool
+        let pool_config = crate::server::pool::PoolConfig::from(config.server.pool.clone());
+        let connection_pool = Arc::new(ConnectionPool::new(pool_config));
+        if config.server.pool.enabled {
+            info!(
+                max_idle_per_dest = config.server.pool.max_idle_per_dest,
+                max_total_idle = config.server.pool.max_total_idle,
+                idle_timeout_secs = config.server.pool.idle_timeout_secs,
+                "Connection pool enabled"
+            );
+        }
+
         Ok(Self {
             config,
             auth_manager,
@@ -438,6 +452,7 @@ impl SocksServer {
             acl_watcher,
             qos_engine,
             tls_acceptor,
+            connection_pool,
         })
     }
 
@@ -472,6 +487,7 @@ impl SocksServer {
             traffic_config: self.traffic_config,
             qos_engine: self.qos_engine.clone(),
             connection_limits: self.config.qos.connection_limits.clone(),
+            connection_pool: self.connection_pool.clone(),
         });
 
         let tls_acceptor = self.tls_acceptor.clone();

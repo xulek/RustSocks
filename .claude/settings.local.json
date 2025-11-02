@@ -79,7 +79,16 @@
       "Bash(cargo install:*)",
       "Bash(cargo update:*)",
       "Bash(npm run build:*)",
-      "Bash(npm test)"
+      "Bash(npm test)",
+      "Bash(for file in /mnt/c/Users/Michal/Documents/RustSocks/tests/*.rs)",
+      "Bash(do)",
+      "Bash(if grep -q \"ClientHandlerContext {\" \"$file\")",
+      "Bash(then)",
+      "Bash(fi)",
+      "Bash(/root/.cargo/bin/cargo test --all-features --test connection_pool)",
+      "Bash(/root/.cargo/bin/cargo test --all-features --test pool_concurrency -- --ignored --nocapture)",
+      "Bash(/root/.cargo/bin/cargo test --all-features --test pool_edge_cases)",
+      "Bash(/root/.cargo/bin/cargo test --all-features --test pool_socks_integration)"
     ],
     "deny": [],
     "ask": []

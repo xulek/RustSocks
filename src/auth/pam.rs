@@ -351,7 +351,10 @@ mod unix {
             let client_ip: IpAddr = "127.0.0.1".parse().unwrap();
             match auth.authenticate_address(client_ip).await {
                 Err(PamAuthError::Config(msg)) => {
-                    assert!(msg.contains("non-address"), "expected method mismatch error, got {msg}");
+                    assert!(
+                        msg.contains("non-address"),
+                        "expected method mismatch error, got {msg}"
+                    );
                 }
                 Ok(_) => panic!("expected error for method mismatch"),
                 Err(other) => panic!("expected Config error, got {:?}", other),
@@ -367,7 +370,10 @@ mod unix {
             let client_ip: IpAddr = "127.0.0.1".parse().unwrap();
             match auth.authenticate_username(client_ip, "user", "pass").await {
                 Err(PamAuthError::Config(msg)) => {
-                    assert!(msg.contains("non-username"), "expected method mismatch error, got {msg}");
+                    assert!(
+                        msg.contains("non-username"),
+                        "expected method mismatch error, got {msg}"
+                    );
                 }
                 Ok(_) => panic!("expected error for method mismatch"),
                 Err(other) => panic!("expected Config error, got {:?}", other),

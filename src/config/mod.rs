@@ -28,6 +28,22 @@ pub struct ServerConfig {
     pub max_connections: usize,
     #[serde(default)]
     pub tls: TlsSettings,
+    #[serde(default)]
+    pub pool: PoolSettings,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PoolSettings {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_pool_max_idle_per_dest")]
+    pub max_idle_per_dest: usize,
+    #[serde(default = "default_pool_max_total_idle")]
+    pub max_total_idle: usize,
+    #[serde(default = "default_pool_idle_timeout_secs")]
+    pub idle_timeout_secs: u64,
+    #[serde(default = "default_pool_connect_timeout_ms")]
+    pub connect_timeout_ms: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -293,6 +309,22 @@ fn default_metrics_collection_interval_secs() -> u64 {
     5
 }
 
+fn default_pool_max_idle_per_dest() -> usize {
+    4
+}
+
+fn default_pool_max_total_idle() -> usize {
+    100
+}
+
+fn default_pool_idle_timeout_secs() -> u64 {
+    90
+}
+
+fn default_pool_connect_timeout_ms() -> u64 {
+    5000
+}
+
 fn normalize_base_path(raw: &str) -> String {
     let trimmed = raw.trim();
     if trimmed.is_empty() || trimmed == "/" {
@@ -322,6 +354,31 @@ impl Default for ServerConfig {
             bind_port: default_bind_port(),
             max_connections: default_max_connections(),
             tls: TlsSettings::default(),
+            pool: PoolSettings::default(),
+        }
+    }
+}
+
+impl Default for PoolSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            max_idle_per_dest: default_pool_max_idle_per_dest(),
+            max_total_idle: default_pool_max_total_idle(),
+            idle_timeout_secs: default_pool_idle_timeout_secs(),
+            connect_timeout_ms: default_pool_connect_timeout_ms(),
+        }
+    }
+}
+
+impl From<PoolSettings> for crate::server::pool::PoolConfig {
+    fn from(settings: PoolSettings) -> Self {
+        Self {
+            enabled: settings.enabled,
+            max_idle_per_dest: settings.max_idle_per_dest,
+            max_total_idle: settings.max_total_idle,
+            idle_timeout_secs: settings.idle_timeout_secs,
+            connect_timeout_ms: settings.connect_timeout_ms,
         }
     }
 }

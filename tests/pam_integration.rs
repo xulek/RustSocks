@@ -195,7 +195,8 @@ mod unix_tests {
             let result = auth_manager.authenticate_client(ip).await;
             assert!(
                 result.is_ok() || result.is_err(),
-                "Should return valid Result for IP {}", ip
+                "Should return valid Result for IP {}",
+                ip
             );
         }
     }
@@ -213,7 +214,8 @@ mod unix_tests {
             pam: pam_settings(),
         };
 
-        let auth_manager = Arc::new(AuthManager::new(&config).expect("Failed to create auth manager"));
+        let auth_manager =
+            Arc::new(AuthManager::new(&config).expect("Failed to create auth manager"));
 
         let mut join_set = JoinSet::new();
 

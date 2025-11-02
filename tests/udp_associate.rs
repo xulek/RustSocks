@@ -2,7 +2,9 @@ use rustsocks::acl::{load_acl_config_sync, AclEngine, AclStats};
 use rustsocks::auth::AuthManager;
 use rustsocks::config::AuthConfig;
 use rustsocks::qos::{ConnectionLimits, QosEngine};
-use rustsocks::server::{handle_client, ClientHandlerContext, TrafficUpdateConfig};
+use rustsocks::server::{
+    handle_client, ClientHandlerContext, ConnectionPool, PoolConfig, TrafficUpdateConfig,
+};
 use rustsocks::session::SessionManager;
 use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -22,6 +24,9 @@ async fn udp_associate_basic_flow() {
     let anonymous_user = Arc::new("anonymous".to_string());
     let session_manager = Arc::new(SessionManager::new());
 
+    let pool_config = PoolConfig::default();
+    let connection_pool = Arc::new(ConnectionPool::new(pool_config));
+
     let ctx = Arc::new(ClientHandlerContext {
         auth_manager: auth_manager.clone(),
         acl_engine: None,
@@ -31,6 +36,7 @@ async fn udp_associate_basic_flow() {
         traffic_config: TrafficUpdateConfig::default(),
         qos_engine: QosEngine::None,
         connection_limits: ConnectionLimits::default(),
+        connection_pool: connection_pool.clone(),
     });
 
     // Start SOCKS5 server
@@ -128,6 +134,9 @@ username = "anonymous"
     let anonymous_user = Arc::new("anonymous".to_string());
     let session_manager = Arc::new(SessionManager::new());
 
+    let pool_config = PoolConfig::default();
+    let connection_pool = Arc::new(ConnectionPool::new(pool_config));
+
     let ctx = Arc::new(ClientHandlerContext {
         auth_manager: auth_manager.clone(),
         acl_engine: Some(acl_engine),
@@ -137,6 +146,7 @@ username = "anonymous"
         traffic_config: TrafficUpdateConfig::default(),
         qos_engine: QosEngine::None,
         connection_limits: ConnectionLimits::default(),
+        connection_pool: connection_pool.clone(),
     });
 
     // Start SOCKS5 server
@@ -210,6 +220,9 @@ username = "anonymous"
     let anonymous_user = Arc::new("anonymous".to_string());
     let session_manager = Arc::new(SessionManager::new());
 
+    let pool_config = PoolConfig::default();
+    let connection_pool = Arc::new(ConnectionPool::new(pool_config));
+
     let ctx = Arc::new(ClientHandlerContext {
         auth_manager: auth_manager.clone(),
         acl_engine: Some(acl_engine),
@@ -219,6 +232,7 @@ username = "anonymous"
         traffic_config: TrafficUpdateConfig::default(),
         qos_engine: QosEngine::None,
         connection_limits: ConnectionLimits::default(),
+        connection_pool: connection_pool.clone(),
     });
 
     // Start SOCKS5 server
