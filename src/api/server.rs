@@ -1111,7 +1111,8 @@ pub async fn start_api_server(
     let base_path = if config.base_path.trim().is_empty() {
         "/".to_string()
     } else {
-        config.base_path.clone()
+        // Remove trailing slash from base_path (required for nest())
+        config.base_path.trim_end_matches('/').to_string()
     };
     let base_prefix = if base_path == "/" {
         ""
@@ -1250,16 +1251,20 @@ pub async fn start_api_server(
             let assets_service = ServeDir::new(&assets_path);
 
             // Handler for serving rewritten index.html (for SPA routing)
-            let serve_spa = move || {
+            let serve_spa = {
                 let index_path = index_path.clone();
                 let base_prefix = base_for_assets.clone();
-                async move {
-                    match tokio::fs::read_to_string(&index_path).await {
-                        Ok(raw) => {
-                            let rewritten = rewrite_dashboard_index(&raw, &base_prefix);
-                            Ok::<_, StatusCode>(Html(rewritten))
+                move || {
+                    let index_path = index_path.clone();
+                    let base_prefix = base_prefix.clone();
+                    async move {
+                        match tokio::fs::read_to_string(&index_path).await {
+                            Ok(raw) => {
+                                let rewritten = rewrite_dashboard_index(&raw, &base_prefix);
+                                Ok::<_, StatusCode>(Html(rewritten))
+                            }
+                            Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
                         }
-                        Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
                     }
                 }
             };
@@ -1267,9 +1272,9 @@ pub async fn start_api_server(
             // Mount assets directory at /assets
             app = app.nest_service("/assets", assets_service);
 
-            // Serve index.html for all paths (SPA routing)
-            // Fallback handles both "/" and all unmatched routes
+            // Serve index.html for root explicitly AND as fallback for SPA routing
             // This must come AFTER all API routes are defined
+            app = app.route("/", get(serve_spa.clone()));
             app = app.fallback(serve_spa);
         } else {
             warn!(
