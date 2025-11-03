@@ -1283,15 +1283,12 @@ pub async fn start_api_server(
     let app = if base_path == "/" {
         app.layer(NormalizePathLayer::trim_trailing_slash())
     } else {
-        // For non-root base_path, add explicit redirect from /prefix to /prefix/
-        let redirect_target = format!("{}/", base_path);
-        Router::new()
-            .route(
-                &base_path,
-                get(move || async move { Redirect::permanent(&redirect_target) }),
-            )
-            .nest(&base_path, app)
-            // Don't use NormalizePathLayer with nested routers - causes conflicts
+        // Add a fallback handler inside the nested router that redirects root to /
+        let app_with_root_redirect = {
+            let redirect_to_slash = || async { Redirect::permanent("./") };
+            app.route("/", get(redirect_to_slash))
+        };
+        Router::new().nest(&base_path, app_with_root_redirect)
     };
 
     // Layer with state and body limit
