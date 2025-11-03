@@ -1,7 +1,7 @@
 use axum::{
     extract::DefaultBodyLimit,
     http::StatusCode,
-    response::{Html, IntoResponse},
+    response::{Html, IntoResponse, Redirect},
     routing::{get, post},
     Json, Router,
 };
@@ -1281,14 +1281,21 @@ pub async fn start_api_server(
     }
 
     let app = if base_path == "/" {
-        app
+        app.layer(NormalizePathLayer::trim_trailing_slash())
     } else {
-        Router::new().nest(&base_path, app)
+        // For non-root base_path, add explicit redirect from /prefix to /prefix/
+        let redirect_target = format!("{}/", base_path);
+        Router::new()
+            .route(
+                &base_path,
+                get(move || async move { Redirect::permanent(&redirect_target) }),
+            )
+            .nest(&base_path, app)
+            // Don't use NormalizePathLayer with nested routers - causes conflicts
     };
 
-    // Layer with state, body limit, and path normalization
+    // Layer with state and body limit
     let app = app
-        .layer(NormalizePathLayer::trim_trailing_slash())
         .layer(DefaultBodyLimit::max(1024 * 1024)) // 1MB max body
         .with_state(state);
 
