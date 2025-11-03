@@ -1,7 +1,7 @@
 use axum::{
     extract::DefaultBodyLimit,
     http::StatusCode,
-    response::{Html, IntoResponse},
+    response::{Html, IntoResponse, Redirect},
     routing::{get, post},
     Json, Router,
 };
@@ -1287,10 +1287,18 @@ pub async fn start_api_server(
     let app = if base_path == "/" {
         app
     } else {
-        Router::new().nest(&base_path, app)
+        // Add explicit redirect from /prefix/ to /prefix (Axum nest quirk)
+        let base_with_slash = format!("{}/", &base_path);
+        let redirect_target = base_path.clone();
+        Router::new()
+            .route(
+                &base_with_slash,
+                get(move || async move { Redirect::permanent(&redirect_target) }),
+            )
+            .nest(&base_path, app)
     };
 
-    // Layer with state and body limit (no path normalization - nginx handles it)
+    // Layer with state and body limit
     let app = app
         .layer(DefaultBodyLimit::max(1024 * 1024)) // 1MB max body
         .with_state(state);

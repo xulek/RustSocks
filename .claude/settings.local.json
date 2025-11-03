@@ -98,7 +98,9 @@
       "Bash(jobs)",
       "Bash(/tmp/test_pooling_system_level.sh)",
       "Bash(docker:*)",
-      "Bash(docker-compose config:*)"
+      "Bash(docker-compose config:*)",
+      "Bash(nginx -t:*)",
+      "Bash(nginx -s reload:*)"
     ],
     "deny": [],
     "ask": []
