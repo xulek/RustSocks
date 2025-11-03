@@ -1,7 +1,7 @@
 use axum::{
     extract::DefaultBodyLimit,
     http::StatusCode,
-    response::{Html, IntoResponse, Redirect},
+    response::{Html, IntoResponse},
     routing::{get, post},
     Json, Router,
 };
@@ -1283,15 +1283,7 @@ pub async fn start_api_server(
     let app = if base_path == "/" {
         app
     } else {
-        // Add explicit redirect for root with trailing slash (Axum nest() limitation)
-        let base_path_with_slash = format!("{}/", base_path);
-        let redirect_target = base_path.clone();
-        Router::new()
-            .route(
-                &base_path_with_slash,
-                get(move || async move { Redirect::permanent(&redirect_target) }),
-            )
-            .nest(&base_path, app)
+        Router::new().nest(&base_path, app)
     };
 
     // Layer with state, body limit, and path normalization

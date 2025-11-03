@@ -13,7 +13,6 @@ use axum::{
 use chrono::{Duration as ChronoDuration, Utc};
 use std::str::FromStr;
 use std::sync::Arc;
-#[cfg(feature = "database")]
 use uuid::Uuid;
 
 #[cfg(feature = "database")]
@@ -409,7 +408,7 @@ pub async fn get_user_sessions(
     State(state): State<ApiState>,
     Path(user): Path<String>,
 ) -> (StatusCode, Json<Vec<SessionResponse>>) {
-    let mut all_sessions = Vec::new();
+    let mut all_sessions: Vec<Session> = Vec::new();
 
     // Try to fetch from database first (includes historical sessions)
     #[cfg(feature = "database")]
