@@ -1,7 +1,7 @@
 use axum::{
     extract::DefaultBodyLimit,
     http::StatusCode,
-    response::{Html, IntoResponse, Redirect},
+    response::{Html, IntoResponse},
     routing::{get, post},
     Json, Router,
 };
@@ -11,7 +11,6 @@ use std::path::Path;
 use std::sync::Arc;
 use tokio::net::TcpListener;
 use tokio::task::JoinHandle;
-use tower_http::normalize_path::NormalizePathLayer;
 use tower_http::services::ServeDir;
 use tracing::{error, info, warn};
 
@@ -1268,9 +1267,9 @@ pub async fn start_api_server(
             // Mount assets directory at /assets
             app = app.nest_service("/assets", assets_service);
 
-            // Serve index.html for root and all other paths (SPA routing)
+            // Serve index.html for all paths (SPA routing)
+            // Fallback handles both "/" and all unmatched routes
             // This must come AFTER all API routes are defined
-            app = app.route("/", get(serve_spa.clone()));
             app = app.fallback(serve_spa);
         } else {
             warn!(
@@ -1281,17 +1280,12 @@ pub async fn start_api_server(
     }
 
     let app = if base_path == "/" {
-        app.layer(NormalizePathLayer::trim_trailing_slash())
+        app
     } else {
-        // Add a fallback handler inside the nested router that redirects root to /
-        let app_with_root_redirect = {
-            let redirect_to_slash = || async { Redirect::permanent("./") };
-            app.route("/", get(redirect_to_slash))
-        };
-        Router::new().nest(&base_path, app_with_root_redirect)
+        Router::new().nest(&base_path, app)
     };
 
-    // Layer with state and body limit
+    // Layer with state and body limit (no path normalization - nginx handles it)
     let app = app
         .layer(DefaultBodyLimit::max(1024 * 1024)) // 1MB max body
         .with_state(state);
