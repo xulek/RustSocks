@@ -112,7 +112,7 @@ where
 
     let version = buf[0];
     let command = buf[1];
-    let _reserved = buf[2];
+    let reserved = buf[2];
     let address_type = buf[3];
 
     if version != SOCKS_VERSION {
@@ -120,6 +120,14 @@ where
             "Unsupported SOCKS version: 0x{:02x}",
             version
         )));
+    }
+
+    // RFC 1928: Reserved field MUST be 0x00
+    if reserved != 0x00 {
+        trace!(
+            "Non-zero reserved field in SOCKS5 request: 0x{:02x} (expected 0x00)",
+            reserved
+        );
     }
 
     let command = Command::try_from(command)?;
@@ -193,6 +201,13 @@ where
             buf.extend_from_slice(octets);
         }
         Address::Domain(domain) => {
+            // RFC 1928: Domain name length is u8 (max 255 octets)
+            if domain.len() > 255 {
+                return Err(RustSocksError::Protocol(format!(
+                    "Domain name too long: {} octets (max 255)",
+                    domain.len()
+                )));
+            }
             buf.push(0x03);
             buf.push(domain.len() as u8);
             buf.extend_from_slice(domain.as_bytes());
@@ -326,17 +341,29 @@ pub fn parse_udp_packet(buf: &[u8]) -> Result<UdpPacket> {
 
     let mut pos = 0;
 
-    // Skip RSV (2 bytes)
+    // Read and validate RSV (2 bytes) - RFC 1928: MUST be 0x0000
+    let rsv = u16::from_be_bytes([buf[pos], buf[pos + 1]]);
+    if rsv != 0x0000 {
+        trace!(
+            "Non-zero reserved field in UDP packet: 0x{:04x} (expected 0x0000)",
+            rsv
+        );
+    }
     pos += 2;
 
     // FRAG
     let frag = buf[pos];
     pos += 1;
 
-    // Check if fragmentation is used (we don't support it)
+    // RFC 1928: "If an implementation does not support fragmentation, it MUST drop
+    // any datagram whose FRAG field is other than X'00'."
     if frag != 0 {
+        trace!(
+            "Dropping UDP packet with FRAG={} (fragmentation not supported)",
+            frag
+        );
         return Err(RustSocksError::Protocol(
-            "UDP fragmentation not supported".to_string(),
+            "UDP fragmentation not supported - packet dropped per RFC 1928".to_string(),
         ));
     }
 
@@ -438,9 +465,12 @@ pub fn serialize_udp_packet(packet: &UdpPacket) -> Vec<u8> {
             buf.extend_from_slice(octets);
         }
         Address::Domain(domain) => {
+            // RFC 1928: Domain name length is u8 (max 255 octets)
+            // Note: This should not panic in normal operation as we validate on parse
+            let domain_len = domain.len().min(255);
             buf.push(0x03);
-            buf.push(domain.len() as u8);
-            buf.extend_from_slice(domain.as_bytes());
+            buf.push(domain_len as u8);
+            buf.extend_from_slice(&domain.as_bytes()[..domain_len]);
         }
     }
 
