@@ -140,7 +140,7 @@ impl ConnectionPool {
         // DashMap provides lock-free per-key access
         let mut entry = self.destination_metrics
             .entry(addr)
-            .or_insert_with(DestinationMetrics::default);
+            .or_default();
         update(&mut entry);
     }
 
@@ -467,7 +467,7 @@ impl ConnectionPool {
             // Insert into pool
             self.pools
                 .entry(addr)
-                .or_insert_with(Vec::new)
+                .or_default()
                 .push(PooledConnection::new(stream));
 
             // Increment total_idle atomically
@@ -716,7 +716,7 @@ impl ConnectionPool {
                         // Update destination metrics
                         let mut entry = destination_metrics
                             .entry(*addr)
-                            .or_insert_with(DestinationMetrics::default);
+                            .or_default();
                         entry.expired += removed as u64;
                         entry.last_activity = Some(SystemTime::now());
                     }

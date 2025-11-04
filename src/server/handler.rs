@@ -11,7 +11,7 @@ use crate::session::{ConnectionInfo, SessionManager, SessionProtocol, SessionSta
 use crate::utils::error::{Result, RustSocksError};
 use std::net::IpAddr;
 use std::sync::Arc;
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, BufReader};
 use tokio::net::TcpStream;
 use tokio::sync::broadcast;
 use tracing::{debug, info, warn};
@@ -101,7 +101,7 @@ where
 }
 
 async fn handle_socks5<S>(
-    mut client_stream: S,
+    client_stream: S,
     ctx: Arc<ClientHandlerContext>,
     client_addr: std::net::SocketAddr,
     version: u8,
@@ -109,8 +109,13 @@ async fn handle_socks5<S>(
 where
     S: IoStream,
 {
+    // Optimization: Wrap stream in BufReader to reduce syscalls during protocol parsing
+    // This reduces 3 separate read() calls to 1 buffered read
+    // BufReader will be unwrapped before data proxying phase
+    let mut buffered_stream = BufReader::with_capacity(4096, client_stream);
+
     // Step 1: Method selection
-    let greeting = parse_socks5_client_greeting(&mut client_stream, version).await?;
+    let greeting = parse_socks5_client_greeting(&mut buffered_stream, version).await?;
 
     debug!("Client offered methods: {:?}", greeting.methods);
 
@@ -122,18 +127,19 @@ where
     {
         AuthMethod::NoAuth
     } else {
-        send_server_choice(&mut client_stream, AuthMethod::NoAcceptable).await?;
+        // Use get_mut() to access underlying stream for write operations
+        send_server_choice(buffered_stream.get_mut(), AuthMethod::NoAcceptable).await?;
         return Err(RustSocksError::AuthFailed(
             "No acceptable auth method".to_string(),
         ));
     };
 
-    send_server_choice(&mut client_stream, server_method).await?;
+    send_server_choice(buffered_stream.get_mut(), server_method).await?;
 
-    // Step 2: Authentication
+    // Step 2: Authentication (reads buffered, writes through get_mut())
     let auth_result = ctx
         .auth_manager
-        .authenticate(&mut client_stream, server_method, client_addr.ip())
+        .authenticate(&mut buffered_stream, server_method, client_addr.ip())
         .await?;
 
     // Extract username and groups from authentication result
@@ -167,7 +173,7 @@ where
             "Connection limit exceeded"
         );
         send_socks_response(
-            &mut client_stream,
+            buffered_stream.get_mut(),
             SocksProtocol::V5,
             ReplyCode::ConnectionNotAllowed,
             Address::IPv4([0, 0, 0, 0]),
@@ -183,8 +189,8 @@ where
         user: acl_user.clone(),
     };
 
-    // Step 3: SOCKS5 request
-    let request = parse_socks5_request(&mut client_stream).await?;
+    // Step 3: SOCKS5 request (buffered read for final handshake message)
+    let request = parse_socks5_request(&mut buffered_stream).await?;
 
     let dest_string = request.address.to_string();
     info!(
@@ -243,7 +249,7 @@ where
                     .await;
 
                 send_socks_response(
-                    &mut client_stream,
+                    buffered_stream.get_mut(),
                     SocksProtocol::V5,
                     ReplyCode::ConnectionNotAllowed,
                     Address::IPv4([0, 0, 0, 0]),
@@ -278,6 +284,10 @@ where
     }
 
     // Step 4: Handle command
+    // Unwrap BufReader to get raw stream for data transfer phase
+    // BufReader was only needed for protocol parsing (3 reads) - now we proxy data directly
+    let client_stream = buffered_stream.into_inner();
+
     match request.command {
         Command::Connect => {
             let session_ctx = SessionContext {
