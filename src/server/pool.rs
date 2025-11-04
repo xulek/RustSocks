@@ -1,11 +1,11 @@
-use std::collections::{HashMap, HashSet};
+use dashmap::DashMap;
+use std::collections::HashSet;
 use std::net::SocketAddr;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
-use tokio::sync::Mutex;
 use tokio::time::timeout;
 use tracing::{debug, trace};
 
@@ -69,6 +69,8 @@ struct PoolMetrics {
     evicted: AtomicU64,
     connections_in_use: AtomicU64,
     pending_creates: AtomicU64,
+    // New: Track total idle connections atomically to avoid linear scan
+    total_idle: AtomicUsize,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -115,26 +117,34 @@ pub enum ReuseHint {
 ///
 /// Manages a pool of idle TCP connections to upstream servers, enabling connection reuse
 /// and reducing connection establishment overhead.
+///
+/// Performance optimizations:
+/// - Uses DashMap instead of Mutex<HashMap> for per-destination locking (eliminates global lock)
+/// - Atomic counter for total idle connections (avoids linear scan on every insert)
+/// - Lock-free metrics updates using atomic operations
 pub struct ConnectionPool {
     config: PoolConfig,
     /// Map: destination address -> Vec of idle connections
-    pools: Arc<Mutex<HashMap<SocketAddr, Vec<PooledConnection>>>>,
-    destination_metrics: Arc<Mutex<HashMap<SocketAddr, DestinationMetrics>>>,
+    /// Uses DashMap for lock-free per-shard concurrent access
+    pools: Arc<DashMap<SocketAddr, Vec<PooledConnection>>>,
+    destination_metrics: Arc<DashMap<SocketAddr, DestinationMetrics>>,
     metrics: Arc<PoolMetrics>,
-    active_counts: Arc<Mutex<HashMap<SocketAddr, usize>>>,
+    active_counts: Arc<DashMap<SocketAddr, AtomicUsize>>,
 }
 
 impl ConnectionPool {
-    async fn update_destination_metrics<F>(&self, addr: SocketAddr, update: F)
+    fn update_destination_metrics<F>(&self, addr: SocketAddr, update: F)
     where
         F: FnOnce(&mut DestinationMetrics),
     {
-        let mut metrics = self.destination_metrics.lock().await;
-        let entry = metrics.entry(addr).or_default();
-        update(entry);
+        // DashMap provides lock-free per-key access
+        let mut entry = self.destination_metrics
+            .entry(addr)
+            .or_insert_with(DestinationMetrics::default);
+        update(&mut entry);
     }
 
-    async fn record_expired(&self, addr: SocketAddr, count: usize) {
+    fn record_expired(&self, addr: SocketAddr, count: usize) {
         if count == 0 {
             return;
         }
@@ -143,21 +153,25 @@ impl ConnectionPool {
             .expired
             .fetch_add(count as u64, Ordering::Relaxed);
 
+        // Decrement total_idle atomically
+        self.metrics.total_idle.fetch_sub(count, Ordering::Relaxed);
+
         self.update_destination_metrics(addr, |entry| {
             entry.expired += count as u64;
             entry.last_activity = Some(SystemTime::now());
-        })
-        .await;
+        });
     }
 
-    async fn record_evicted(&self, addr: SocketAddr) {
+    fn record_evicted(&self, addr: SocketAddr) {
         self.metrics.evicted.fetch_add(1, Ordering::Relaxed);
+
+        // Decrement total_idle atomically
+        self.metrics.total_idle.fetch_sub(1, Ordering::Relaxed);
 
         self.update_destination_metrics(addr, |entry| {
             entry.evicted += 1;
             entry.last_activity = Some(SystemTime::now());
-        })
-        .await;
+        });
     }
 
     fn decrement_in_use(&self) {
@@ -177,18 +191,21 @@ impl ConnectionPool {
         }
     }
 
-    async fn increment_active(&self, addr: SocketAddr) {
-        let mut guard = self.active_counts.lock().await;
-        *guard.entry(addr).or_insert(0) += 1;
+    fn increment_active(&self, addr: SocketAddr) {
+        // DashMap provides lock-free per-key access
+        self.active_counts
+            .entry(addr)
+            .or_insert_with(|| AtomicUsize::new(0))
+            .fetch_add(1, Ordering::Relaxed);
     }
 
-    async fn decrement_active(&self, addr: SocketAddr) {
-        let mut guard = self.active_counts.lock().await;
-        if let Some(count) = guard.get_mut(&addr) {
-            if *count > 1 {
-                *count -= 1;
-            } else {
-                guard.remove(&addr);
+    fn decrement_active(&self, addr: SocketAddr) {
+        // DashMap provides lock-free per-key access
+        if let Some(count) = self.active_counts.get(&addr) {
+            let prev = count.fetch_sub(1, Ordering::Relaxed);
+            // Remove entry if count was 1 (now 0)
+            if prev == 1 {
+                self.active_counts.remove(&addr);
             }
         }
     }
@@ -196,15 +213,15 @@ impl ConnectionPool {
     /// Create a new connection pool with the given configuration
     pub fn new(config: PoolConfig) -> Self {
         let enabled = config.enabled;
-        let pools = Arc::new(Mutex::new(HashMap::new()));
-        let destination_metrics = Arc::new(Mutex::new(HashMap::new()));
+        let pools = Arc::new(DashMap::new());
+        let destination_metrics = Arc::new(DashMap::new());
         let metrics = Arc::new(PoolMetrics::default());
         let pool = Self {
             config,
             pools,
             destination_metrics,
             metrics,
-            active_counts: Arc::new(Mutex::new(HashMap::new())),
+            active_counts: Arc::new(DashMap::new()),
         };
 
         // Start background cleanup task if pooling is enabled
@@ -229,7 +246,7 @@ impl ConnectionPool {
         }
 
         // Try to get from pool first
-        if let Some(stream) = self.try_get_from_pool(addr).await {
+        if let Some(stream) = self.try_get_from_pool(addr) {
             debug!("♻️  Reusing pooled connection to {}", addr);
             self.metrics.pool_hits.fetch_add(1, Ordering::Relaxed);
             self.metrics.total_reused.fetch_add(1, Ordering::Relaxed);
@@ -243,10 +260,9 @@ impl ConnectionPool {
                 entry.total_reused += 1;
                 entry.in_use += 1;
                 entry.last_activity = Some(now);
-            })
-            .await;
+            });
 
-            self.increment_active(addr).await;
+            self.increment_active(addr);
 
             return Ok(stream);
         }
@@ -258,8 +274,7 @@ impl ConnectionPool {
         self.update_destination_metrics(addr, |entry| {
             entry.pool_misses += 1;
             entry.last_miss = Some(miss_time);
-        })
-        .await;
+        });
 
         self.metrics.pending_creates.fetch_add(1, Ordering::Relaxed);
         let result = self.connect_new(addr).await;
@@ -276,10 +291,9 @@ impl ConnectionPool {
                 entry.total_created += 1;
                 entry.in_use += 1;
                 entry.last_activity = Some(now);
-            })
-            .await;
+            });
 
-            self.increment_active(addr).await;
+            self.increment_active(addr);
         }
 
         result
@@ -297,33 +311,30 @@ impl ConnectionPool {
         match hint {
             ReuseHint::Reuse => {
                 let (inserted, dropped_for_capacity, evicted_addr) =
-                    self.insert_stream(addr, stream).await;
+                    self.insert_stream(addr, stream);
 
                 if dropped_for_capacity {
                     self.metrics.dropped_full.fetch_add(1, Ordering::Relaxed);
                     self.update_destination_metrics(addr, |entry| {
                         entry.drops += 1;
                         entry.in_use = entry.in_use.saturating_sub(1);
-                    })
-                    .await;
+                    });
                 } else if inserted {
                     self.update_destination_metrics(addr, |entry| {
                         entry.in_use = entry.in_use.saturating_sub(1);
                         entry.last_activity = Some(SystemTime::now());
-                    })
-                    .await;
+                    });
                 } else {
                     self.update_destination_metrics(addr, |entry| {
                         entry.in_use = entry.in_use.saturating_sub(1);
-                    })
-                    .await;
+                    });
                 }
 
                 if let Some(evicted) = evicted_addr {
-                    self.record_evicted(evicted).await;
+                    self.record_evicted(evicted);
                 }
 
-                self.decrement_active(addr).await;
+                self.decrement_active(addr);
             }
             ReuseHint::Refresh => {
                 let mut stream = stream;
@@ -333,10 +344,9 @@ impl ConnectionPool {
 
                 self.update_destination_metrics(addr, |entry| {
                     entry.in_use = entry.in_use.saturating_sub(1);
-                })
-                .await;
+                });
 
-                self.decrement_active(addr).await;
+                self.decrement_active(addr);
 
                 let pool = Arc::clone(self);
                 tokio::spawn(async move {
@@ -363,10 +373,9 @@ impl ConnectionPool {
 
         self.update_destination_metrics(addr, |entry| {
             entry.in_use = entry.in_use.saturating_sub(1);
-        })
-        .await;
+        });
 
-        self.decrement_active(addr).await;
+        self.decrement_active(addr);
 
         if matches!(hint, ReuseHint::Refresh) {
             let pool = Arc::clone(self);
@@ -384,15 +393,15 @@ impl ConnectionPool {
     }
 
     /// Try to get a connection from the pool
-    async fn try_get_from_pool(&self, addr: SocketAddr) -> Option<TcpStream> {
-        let mut pools = self.pools.lock().await;
+    fn try_get_from_pool(&self, addr: SocketAddr) -> Option<TcpStream> {
+        // DashMap provides lock-free per-key access
+        let mut pool_entry = self.pools.get_mut(&addr)?;
 
-        let pool = pools.get_mut(&addr)?;
         let idle_timeout = Duration::from_secs(self.config.idle_timeout_secs);
         let mut expired = 0usize;
         let mut stream: Option<TcpStream> = None;
 
-        while let Some(mut conn) = pool.pop() {
+        while let Some(mut conn) = pool_entry.pop() {
             if conn.is_expired(idle_timeout) {
                 trace!(
                     "Discarding expired connection to {} (idle: {:?})",
@@ -409,32 +418,39 @@ impl ConnectionPool {
             break;
         }
 
-        // No valid connections found
-        if pool.is_empty() {
-            pools.remove(&addr);
+        // No valid connections found - remove empty pool
+        if pool_entry.is_empty() {
+            drop(pool_entry);
+            self.pools.remove(&addr);
+        } else {
+            drop(pool_entry);
         }
 
-        drop(pools);
+        // Update metrics if we found a stream
+        if stream.is_some() {
+            // Decrement total_idle atomically
+            self.metrics.total_idle.fetch_sub(1, Ordering::Relaxed);
+        }
 
         if expired > 0 {
-            self.record_expired(addr, expired).await;
+            self.record_expired(addr, expired);
         }
 
         stream
     }
 
     /// Insert a connection into the idle pool, returning whether it was stored.
-    async fn insert_stream(
+    fn insert_stream(
         &self,
         addr: SocketAddr,
         stream: TcpStream,
     ) -> (bool, bool, Option<SocketAddr>) {
-        let mut pools = self.pools.lock().await;
         let mut dropped_for_capacity = false;
         let mut inserted = false;
         let mut evicted_addr = None;
 
-        if let Some(pool) = pools.get(&addr) {
+        // Check per-destination limit first (fast path)
+        if let Some(pool) = self.pools.get(&addr) {
             if pool.len() >= self.config.max_idle_per_dest {
                 trace!("Pool for {} is full, discarding connection", addr);
                 dropped_for_capacity = true;
@@ -442,24 +458,34 @@ impl ConnectionPool {
         }
 
         if !dropped_for_capacity {
-            let total_idle: usize = pools.values().map(|v| v.len()).sum();
+            // Check total idle limit using atomic counter (no linear scan!)
+            let total_idle = self.metrics.total_idle.load(Ordering::Relaxed);
             if total_idle >= self.config.max_total_idle {
-                evicted_addr = self.evict_oldest(&mut pools);
+                evicted_addr = self.evict_oldest();
             }
 
-            let pool = pools.entry(addr).or_insert_with(Vec::new);
-            pool.push(PooledConnection::new(stream));
-            debug!(
-                "💾 Returned connection to pool for {} (pool size: {})",
-                addr,
-                pool.len()
-            );
+            // Insert into pool
+            self.pools
+                .entry(addr)
+                .or_insert_with(Vec::new)
+                .push(PooledConnection::new(stream));
+
+            // Increment total_idle atomically
+            self.metrics.total_idle.fetch_add(1, Ordering::Relaxed);
+
+            // Log after insert
+            if let Some(pool) = self.pools.get(&addr) {
+                debug!(
+                    "💾 Returned connection to pool for {} (pool size: {})",
+                    addr,
+                    pool.len()
+                );
+            }
             inserted = true;
         } else {
             drop(stream);
         }
 
-        drop(pools);
         (inserted, dropped_for_capacity, evicted_addr)
     }
 
@@ -477,17 +503,15 @@ impl ConnectionPool {
         self.update_destination_metrics(addr, |entry| {
             entry.total_created += 1;
             entry.last_activity = Some(now);
-        })
-        .await;
+        });
 
-        let (inserted, dropped_for_capacity, evicted_addr) = self.insert_stream(addr, stream).await;
+        let (inserted, dropped_for_capacity, evicted_addr) = self.insert_stream(addr, stream);
 
         if dropped_for_capacity {
             self.metrics.dropped_full.fetch_add(1, Ordering::Relaxed);
             self.update_destination_metrics(addr, |entry| {
                 entry.drops += 1;
-            })
-            .await;
+            });
         } else if !inserted {
             trace!(
                 "Refresh connection for {} was not inserted due to concurrent updates",
@@ -496,7 +520,7 @@ impl ConnectionPool {
         }
 
         if let Some(evicted) = evicted_addr {
-            self.record_evicted(evicted).await;
+            self.record_evicted(evicted);
         }
 
         Ok(())
@@ -520,29 +544,29 @@ impl ConnectionPool {
     }
 
     /// Evict the oldest connection from all pools
-    fn evict_oldest(
-        &self,
-        pools: &mut HashMap<SocketAddr, Vec<PooledConnection>>,
-    ) -> Option<SocketAddr> {
+    fn evict_oldest(&self) -> Option<SocketAddr> {
         let mut oldest_addr: Option<SocketAddr> = None;
         let mut oldest_time = Instant::now();
 
         // Find the oldest connection across all pools
-        for (addr, pool) in pools.iter() {
+        // DashMap iter() provides snapshot iteration
+        for entry in self.pools.iter() {
+            let pool = entry.value();
             if let Some(conn) = pool.first() {
                 if conn.created_at < oldest_time {
                     oldest_time = conn.created_at;
-                    oldest_addr = Some(*addr);
+                    oldest_addr = Some(*entry.key());
                 }
             }
         }
 
         // Remove the oldest connection
         if let Some(addr) = oldest_addr {
-            if let Some(pool) = pools.get_mut(&addr) {
+            if let Some(mut pool) = self.pools.get_mut(&addr) {
                 pool.remove(0);
                 if pool.is_empty() {
-                    pools.remove(&addr);
+                    drop(pool);
+                    self.pools.remove(&addr);
                 }
                 trace!("Evicted oldest connection to {}", addr);
             }
@@ -553,13 +577,12 @@ impl ConnectionPool {
 
     /// Clean up expired connections (called periodically)
     #[allow(dead_code)]
-    async fn cleanup_expired(&self) {
-        let mut pools = self.pools.lock().await;
+    fn cleanup_expired(&self) {
         let idle_timeout = Duration::from_secs(self.config.idle_timeout_secs);
         let mut total_removed = 0;
-        let mut removed_by_addr = Vec::new();
 
-        pools.retain(|addr, pool| {
+        // DashMap retain provides atomic per-key cleanup
+        self.pools.retain(|addr, pool| {
             let original_len = pool.len();
             pool.retain(|conn| !conn.is_expired(idle_timeout));
             let removed = original_len - pool.len();
@@ -567,17 +590,11 @@ impl ConnectionPool {
             if removed > 0 {
                 trace!("Cleaned up {} expired connections to {}", removed, addr);
                 total_removed += removed;
-                removed_by_addr.push((*addr, removed));
+                self.record_expired(*addr, removed);
             }
 
             !pool.is_empty()
         });
-
-        drop(pools);
-
-        for (addr, removed) in removed_by_addr {
-            self.record_expired(addr, removed).await;
-        }
 
         if total_removed > 0 {
             debug!("Cleanup removed {} expired connections", total_removed);
@@ -585,26 +602,31 @@ impl ConnectionPool {
     }
 
     /// Get pool statistics
-    pub async fn stats(&self) -> PoolStats {
-        let pools_guard = self.pools.lock().await;
-        let mut idle_counts: HashMap<SocketAddr, usize> = HashMap::new();
-        let mut total_idle: usize = 0;
+    pub fn stats(&self) -> PoolStats {
+        // Use atomic counter for total idle (no iteration needed!)
+        let total_idle = self.metrics.total_idle.load(Ordering::Relaxed);
 
-        for (addr, pool) in pools_guard.iter() {
-            total_idle += pool.len();
-            idle_counts.insert(*addr, pool.len());
+        // Build per-destination stats from DashMap
+        let mut all_addresses: HashSet<SocketAddr> = HashSet::new();
+
+        // Collect addresses from pools
+        for entry in self.pools.iter() {
+            all_addresses.insert(*entry.key());
         }
 
-        drop(pools_guard);
-
-        let metrics_guard = self.destination_metrics.lock().await;
-        let mut all_addresses: HashSet<SocketAddr> = idle_counts.keys().copied().collect();
-        all_addresses.extend(metrics_guard.keys().copied());
+        // Collect addresses from metrics
+        for entry in self.destination_metrics.iter() {
+            all_addresses.insert(*entry.key());
+        }
 
         let mut per_destination = Vec::with_capacity(all_addresses.len());
         for addr in all_addresses {
-            let entry = metrics_guard.get(&addr).cloned().unwrap_or_default();
-            let idle_connections = idle_counts.get(&addr).copied().unwrap_or(0);
+            let idle_connections = self.pools.get(&addr).map(|p| p.len()).unwrap_or(0);
+            let entry = self.destination_metrics
+                .get(&addr)
+                .map(|e| e.clone())
+                .unwrap_or_default();
+
             per_destination.push(DestinationPoolStats {
                 destination: addr,
                 idle_connections,
@@ -620,7 +642,6 @@ impl ConnectionPool {
                 last_miss: entry.last_miss,
             });
         }
-        drop(metrics_guard);
 
         per_destination.sort_by(|a, b| {
             b.in_use
@@ -631,9 +652,11 @@ impl ConnectionPool {
 
         let destinations = per_destination.len();
 
-        let active_counts = self.active_counts.lock().await;
-        let connections_in_use: u64 = active_counts.values().map(|&v| v as u64).sum();
-        drop(active_counts);
+        // Sum active counts using atomic counters
+        let connections_in_use: u64 = self.active_counts
+            .iter()
+            .map(|entry| entry.value().load(Ordering::Relaxed) as u64)
+            .sum();
 
         PoolStats {
             total_idle,
@@ -654,8 +677,9 @@ impl ConnectionPool {
 
     /// Start background task to clean up expired connections
     fn start_cleanup_task(&self) {
-        let pools = Arc::clone(&self.pools);
-        let destination_metrics = Arc::clone(&self.destination_metrics);
+        // Clone DashMaps (cheap - just Arc increment)
+        let pools = self.pools.clone();
+        let destination_metrics = self.destination_metrics.clone();
         let metrics = Arc::clone(&self.metrics);
         let idle_timeout_secs = self.config.idle_timeout_secs;
 
@@ -668,12 +692,11 @@ impl ConnectionPool {
             loop {
                 interval.tick().await;
 
-                let mut pools_guard = pools.lock().await;
                 let idle_timeout = Duration::from_secs(idle_timeout_secs);
                 let mut total_removed = 0;
-                let mut removed_by_addr = Vec::new();
 
-                pools_guard.retain(|addr, pool| {
+                // DashMap retain provides atomic per-key cleanup
+                pools.retain(|addr, pool| {
                     let original_len = pool.len();
                     pool.retain(|conn| !conn.is_expired(idle_timeout));
                     let removed = original_len - pool.len();
@@ -685,23 +708,21 @@ impl ConnectionPool {
                             addr
                         );
                         total_removed += removed;
-                        removed_by_addr.push((*addr, removed));
+
+                        // Update metrics atomically
+                        metrics.expired.fetch_add(removed as u64, Ordering::Relaxed);
+                        metrics.total_idle.fetch_sub(removed, Ordering::Relaxed);
+
+                        // Update destination metrics
+                        let mut entry = destination_metrics
+                            .entry(*addr)
+                            .or_insert_with(DestinationMetrics::default);
+                        entry.expired += removed as u64;
+                        entry.last_activity = Some(SystemTime::now());
                     }
 
                     !pool.is_empty()
                 });
-
-                drop(pools_guard);
-
-                if !removed_by_addr.is_empty() {
-                    let mut dest_guard = destination_metrics.lock().await;
-                    for (addr, removed) in removed_by_addr {
-                        metrics.expired.fetch_add(removed as u64, Ordering::Relaxed);
-                        let entry = dest_guard.entry(addr).or_default();
-                        entry.expired += removed as u64;
-                        entry.last_activity = Some(SystemTime::now());
-                    }
-                }
 
                 if total_removed > 0 {
                     debug!(
@@ -753,7 +774,7 @@ mod tests {
     async fn pool_creation_with_defaults() {
         let config = PoolConfig::default();
         let pool = Arc::new(ConnectionPool::new(config));
-        let stats = pool.stats().await;
+        let stats = pool.stats();
 
         assert_eq!(stats.total_idle, 0);
         assert_eq!(stats.destinations, 0);
@@ -805,7 +826,7 @@ mod tests {
         pool.put(addr, client_stream1, ReuseHint::Reuse).await;
 
         // Stats should show 1 idle connection
-        let stats = pool.stats().await;
+        let stats = pool.stats();
         assert_eq!(stats.total_idle, 1);
         assert_eq!(stats.destinations, 1);
 
@@ -817,7 +838,7 @@ mod tests {
         assert!(reused_stream.peer_addr().is_ok());
 
         // Stats should show 0 idle (connection was taken from pool)
-        let stats = pool.stats().await;
+        let stats = pool.stats();
         assert_eq!(stats.total_idle, 0);
     }
 
@@ -848,7 +869,7 @@ mod tests {
         }
 
         // Should only have 2 idle connections (max_idle_per_dest)
-        let stats = pool.stats().await;
+        let stats = pool.stats();
         assert_eq!(stats.total_idle, 2);
     }
 
@@ -878,7 +899,7 @@ mod tests {
             drop(server_stream);
         }
 
-        let stats = pool.stats().await;
+        let stats = pool.stats();
         assert_eq!(stats.total_idle, 2);
 
         // Add connection to addr2 - should trigger eviction
@@ -888,7 +909,7 @@ mod tests {
         pool.put(addr2, client_stream, ReuseHint::Reuse).await;
         drop(server_stream);
 
-        let stats = pool.stats().await;
+        let stats = pool.stats();
         assert_eq!(stats.total_idle, 2); // Should still be 2 (oldest evicted)
     }
 

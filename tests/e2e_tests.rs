@@ -404,7 +404,7 @@ async fn e2e_acl_block() {
 
     // Verify rejected session was tracked
     tokio::time::sleep(Duration::from_millis(100)).await;
-    let rejected_sessions = session_manager.rejected_snapshot();
+    let rejected_sessions = session_manager.rejected_snapshot().await;
     assert_eq!(rejected_sessions.len(), 1, "Should have 1 rejected session");
     assert_eq!(rejected_sessions[0].user, "anonymous");
     assert_eq!(rejected_sessions[0].status, SessionStatus::RejectedByAcl);

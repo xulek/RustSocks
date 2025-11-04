@@ -14,7 +14,7 @@ use chrono::{Duration as ChronoDuration, Utc};
 use dashmap::DashMap;
 use std::collections::HashMap;
 use std::net::{Ipv4Addr, Ipv6Addr};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{broadcast, RwLock};
 use tokio_util::sync::CancellationToken;
@@ -22,11 +22,15 @@ use tracing::{info, warn};
 use uuid::Uuid;
 
 /// In-memory session tracker built on top of DashMap.
+///
+/// Optimizations:
+/// - Uses RwLock instead of Mutex for closed/rejected sessions (allows concurrent reads in get_stats)
+/// - DashMap for active sessions (lock-free concurrent access)
 #[derive(Debug)]
 pub struct SessionManager {
     active_sessions: DashMap<Uuid, Arc<RwLock<Session>>>,
-    closed_sessions: Mutex<Vec<Session>>,
-    rejected_sessions: Mutex<Vec<Session>>,
+    closed_sessions: RwLock<Vec<Session>>,
+    rejected_sessions: RwLock<Vec<Session>>,
     session_controls: DashMap<Uuid, SessionControl>,
     #[cfg(feature = "database")]
     store: Option<Arc<SessionStore>>,
@@ -45,8 +49,8 @@ impl SessionManager {
     pub fn new() -> Self {
         Self {
             active_sessions: DashMap::new(),
-            closed_sessions: Mutex::new(Vec::new()),
-            rejected_sessions: Mutex::new(Vec::new()),
+            closed_sessions: RwLock::new(Vec::new()),
+            rejected_sessions: RwLock::new(Vec::new()),
             session_controls: DashMap::new(),
             #[cfg(feature = "database")]
             store: None,
@@ -199,8 +203,9 @@ impl SessionManager {
         }
 
         // Process closed sessions - iterate without cloning entire Vec
+        // Using RwLock.read() allows concurrent reads without blocking
         {
-            let closed = self.closed_sessions.lock().unwrap();
+            let closed = self.closed_sessions.read().await;
             for session in closed.iter().filter(|s| s.start_time >= cutoff) {
                 aggregate_session(
                     &session.user,
@@ -213,8 +218,9 @@ impl SessionManager {
         }
 
         // Process rejected sessions - iterate without cloning entire Vec
+        // Using RwLock.read() allows concurrent reads without blocking
         {
-            let rejected = self.rejected_sessions.lock().unwrap();
+            let rejected = self.rejected_sessions.read().await;
             for session in rejected.iter().filter(|s| s.start_time >= cutoff) {
                 aggregate_session(
                     &session.user,
@@ -323,7 +329,9 @@ impl SessionManager {
             let snapshot = session.clone();
             drop(session);
 
-            self.closed_sessions.lock().unwrap().push(snapshot.clone());
+            // Use write lock for appending to closed sessions
+            // RwLock reduces contention compared to Mutex for read-heavy workloads
+            self.closed_sessions.write().await.push(snapshot.clone());
 
             #[cfg(feature = "database")]
             if let Some(writer) = &self.batch_writer {
@@ -374,19 +382,20 @@ impl SessionManager {
             writer.enqueue(session.clone()).await;
         }
 
-        self.rejected_sessions.lock().unwrap().push(session);
+        // Use write lock for appending to rejected sessions
+        self.rejected_sessions.write().await.push(session);
 
         session_id
     }
 
     /// Snapshot of all rejected sessions (testing/diagnostics).
-    pub fn rejected_snapshot(&self) -> Vec<Session> {
-        self.rejected_sessions.lock().unwrap().clone()
+    pub async fn rejected_snapshot(&self) -> Vec<Session> {
+        self.rejected_sessions.read().await.clone()
     }
 
     /// Snapshot of closed sessions (testing/diagnostics).
-    pub fn closed_snapshot(&self) -> Vec<Session> {
-        self.closed_sessions.lock().unwrap().clone()
+    pub async fn closed_snapshot(&self) -> Vec<Session> {
+        self.closed_sessions.read().await.clone()
     }
 
     /// Close all active sessions with a common reason/status (e.g., server shutdown).
@@ -474,10 +483,10 @@ impl SessionManager {
         }
 
         // Add closed sessions
-        all.extend(self.closed_sessions.lock().unwrap().clone());
+        all.extend(self.closed_sessions.read().await.clone());
 
         // Add rejected sessions
-        all.extend(self.rejected_sessions.lock().unwrap().clone());
+        all.extend(self.rejected_sessions.read().await.clone());
 
         all
     }
@@ -493,8 +502,8 @@ impl SessionManager {
     }
 
     /// Get closed sessions only
-    pub fn get_closed_sessions(&self) -> Vec<Session> {
-        self.closed_sessions.lock().unwrap().clone()
+    pub async fn get_closed_sessions(&self) -> Vec<Session> {
+        self.closed_sessions.read().await.clone()
     }
 
     #[cfg(feature = "database")]
@@ -564,7 +573,7 @@ mod tests {
 
         assert_eq!(manager.active_session_count(), 0);
 
-        let closed = manager.closed_snapshot();
+        let closed = manager.closed_snapshot().await;
         assert_eq!(closed.len(), 1);
         assert_eq!(closed[0].user, "alice");
         assert_eq!(closed[0].bytes_sent, 1024);
@@ -589,7 +598,7 @@ mod tests {
 
         assert_ne!(session_id, Uuid::nil());
         assert_eq!(manager.active_session_count(), 0);
-        let rejected = manager.rejected_snapshot();
+        let rejected = manager.rejected_snapshot().await;
         assert_eq!(rejected.len(), 1);
         assert_eq!(rejected[0].status, SessionStatus::RejectedByAcl);
         assert_eq!(rejected[0].acl_decision, "block");
@@ -675,7 +684,7 @@ mod tests {
 
         assert_eq!(manager.active_session_count(), 0);
 
-        let closed = manager.closed_snapshot();
+        let closed = manager.closed_snapshot().await;
         assert_eq!(closed.len(), 1);
         assert_eq!(closed[0].session_id, session_id);
         assert_eq!(closed[0].status, SessionStatus::Failed);
@@ -742,7 +751,7 @@ mod tests {
         manager.enforce_acl(engine.clone()).await;
 
         assert_eq!(manager.active_session_count(), 0);
-        let closed = manager.closed_snapshot();
+        let closed = manager.closed_snapshot().await;
         assert_eq!(closed.len(), 1);
         assert_eq!(closed[0].status, SessionStatus::Failed);
         assert_eq!(

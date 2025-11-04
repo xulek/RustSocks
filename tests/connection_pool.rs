@@ -165,7 +165,7 @@ async fn connection_pool_reuses_upstream_connections() {
     }
 
     // Verify pool has idle connections
-    let stats = connection_pool.stats().await;
+    let stats = connection_pool.stats();
     assert!(
         stats.total_idle <= stats.config.max_total_idle,
         "Pool should respect max_total_idle limit"
@@ -227,6 +227,6 @@ async fn connection_pool_disabled_works_normally() {
     drop(stream);
 
     // Stats should show 0 idle (pooling disabled)
-    let stats = connection_pool.stats().await;
+    let stats = connection_pool.stats();
     assert_eq!(stats.total_idle, 0, "No pooling when disabled");
 }

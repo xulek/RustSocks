@@ -6,7 +6,7 @@ use axum::{extract::State, http::StatusCode, Json};
 pub async fn get_pool_stats(
     State(state): State<ApiState>,
 ) -> (StatusCode, Json<PoolStatsResponse>) {
-    let stats = state.connection_pool.stats().await;
+    let stats = state.connection_pool.stats();
     let response = PoolStatsResponse::from(stats);
     (StatusCode::OK, Json(response))
 }

@@ -172,7 +172,7 @@ async fn pool_reuses_upstream_connections() {
     );
 
     // Get initial pool stats
-    let initial_stats = ctx.connection_pool.stats().await;
+    let initial_stats = ctx.connection_pool.stats();
     println!("\n📊 Initial pool stats:");
     println!("  Total created: {}", initial_stats.total_created);
     println!("  Total reused: {}", initial_stats.total_reused);
@@ -209,7 +209,7 @@ async fn pool_reuses_upstream_connections() {
     // Wait for connection to be returned to pool
     tokio::time::sleep(Duration::from_millis(100)).await;
 
-    let stats_after_conn1 = ctx.connection_pool.stats().await;
+    let stats_after_conn1 = ctx.connection_pool.stats();
     println!("\n📊 Stats after connection 1:");
     println!("  Total created: {}", stats_after_conn1.total_created);
     println!("  Total reused: {}", stats_after_conn1.total_reused);
@@ -254,7 +254,7 @@ async fn pool_reuses_upstream_connections() {
 
     tokio::time::sleep(Duration::from_millis(100)).await;
 
-    let stats_after_conn2 = ctx.connection_pool.stats().await;
+    let stats_after_conn2 = ctx.connection_pool.stats();
     println!("\n📊 Stats after connection 2:");
     println!("  Total created: {}", stats_after_conn2.total_created);
     println!("  Total reused: {}", stats_after_conn2.total_reused);
@@ -308,7 +308,7 @@ async fn pool_reuses_upstream_connections() {
 
     tokio::time::sleep(Duration::from_millis(100)).await;
 
-    let final_stats = ctx.connection_pool.stats().await;
+    let final_stats = ctx.connection_pool.stats();
     println!("\n📊 Final stats after connection 3:");
     println!("  Total created: {}", final_stats.total_created);
     println!("  Total reused: {}", final_stats.total_reused);
@@ -404,7 +404,7 @@ async fn pool_handles_multiple_destinations() {
 
     tokio::time::sleep(Duration::from_millis(100)).await;
 
-    let stats = ctx.connection_pool.stats().await;
+    let stats = ctx.connection_pool.stats();
     println!("\n📊 Multi-destination stats:");
     println!("  Destinations tracked: {}", stats.destinations);
     println!("  Total pool hits: {}", stats.pool_hits);

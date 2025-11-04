@@ -205,7 +205,7 @@ async fn test_rejected_sessions_tracking() {
             .await;
     }
 
-    let rejected = manager.rejected_snapshot();
+    let rejected = manager.rejected_snapshot().await;
     assert_eq!(rejected.len(), 25);
 
     // All should have rejected status
@@ -251,7 +251,7 @@ async fn test_concurrent_rejected_and_accepted_sessions() {
     let stats = manager.get_stats(Duration::from_secs(24 * 3600)).await;
     assert_eq!(stats.active_sessions, 50); // Half accepted
 
-    let rejected = manager.rejected_snapshot();
+    let rejected = manager.rejected_snapshot().await;
     assert_eq!(rejected.len(), 50); // Half rejected
 }
 

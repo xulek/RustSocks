@@ -124,7 +124,7 @@ async fn pool_integrates_with_socks5_multiple_requests() {
     }
 
     // Check pool stats
-    let stats = connection_pool.stats().await;
+    let stats = connection_pool.stats();
     assert!(stats.total_idle <= 5, "Pool should respect global limit");
     assert!(
         stats.destinations <= 3,
@@ -210,7 +210,7 @@ async fn pool_handles_connection_failure_mid_request() {
     }
 
     // Pool should not be affected by failed connections
-    let stats = connection_pool.stats().await;
+    let stats = connection_pool.stats();
     assert_eq!(stats.total_idle, 0, "No connections should be pooled");
 }
 
@@ -301,7 +301,7 @@ async fn pool_with_pooling_disabled_still_works() {
     drop(client);
 
     // Pool should be empty
-    let stats = connection_pool.stats().await;
+    let stats = connection_pool.stats();
     assert_eq!(stats.total_idle, 0);
     assert_eq!(stats.destinations, 0);
 }
@@ -404,7 +404,7 @@ async fn pool_stats_reflect_real_usage() {
     // Give time for connections to be returned to pool
     tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
 
-    let stats = connection_pool.stats().await;
+    let stats = connection_pool.stats();
 
     println!(
         "Pool stats: {} idle connections to {} destinations",

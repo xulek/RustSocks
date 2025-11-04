@@ -36,7 +36,10 @@ impl TrafficUpdateConfig {
 
 impl Default for TrafficUpdateConfig {
     fn default() -> Self {
-        Self::new(10)
+        // Increased from 10 to 50 packets for performance optimization
+        // Reduces session manager lock contention by 5x at high concurrency
+        // Tradeoff: Slightly delayed traffic statistics (50-500KB vs 10-100KB granularity)
+        Self::new(50)
     }
 }
 
