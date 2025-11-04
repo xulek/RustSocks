@@ -16,6 +16,8 @@ struct CompiledAclConfig {
     global: GlobalAclConfig,
     users: std::collections::HashMap<String, CompiledUserAcl>,
     groups: std::collections::HashMap<String, CompiledGroupAcl>,
+    // Lowercase index for O(1) case-insensitive group lookup (critical optimization for LDAP)
+    groups_by_lowercase: std::collections::HashMap<String, CompiledGroupAcl>,
 }
 
 #[derive(Debug, Clone)]
@@ -49,6 +51,7 @@ impl AclEngine {
     fn compile_config(config: &AclConfig) -> Result<CompiledAclConfig, String> {
         let mut users = std::collections::HashMap::new();
         let mut groups = std::collections::HashMap::new();
+        let mut groups_by_lowercase = std::collections::HashMap::new();
 
         // Compile user rules (wrap in Arc for cheap cloning)
         for user_acl in &config.users {
@@ -76,12 +79,16 @@ impl AclEngine {
                 .map(|r| CompiledAclRule::compile(r).map(Arc::new))
                 .collect();
 
-            groups.insert(
-                group_acl.name.clone(),
-                CompiledGroupAcl {
-                    name: group_acl.name.clone(),
-                    rules: compiled_rules?,
-                },
+            let compiled_group = CompiledGroupAcl {
+                name: group_acl.name.clone(),
+                rules: compiled_rules?,
+            };
+
+            // Insert into both maps - regular and lowercase index
+            groups.insert(group_acl.name.clone(), compiled_group.clone());
+            groups_by_lowercase.insert(
+                group_acl.name.to_ascii_lowercase(),
+                compiled_group,
             );
         }
 
@@ -89,6 +96,7 @@ impl AclEngine {
             global: config.global.clone(),
             users,
             groups,
+            groups_by_lowercase,
         })
     }
 
@@ -302,6 +310,9 @@ impl AclEngine {
     /// - LDAP group: "Developers"
     /// - ACL config: [[groups]] name = "developers"
     /// - Result: MATCH (case-insensitive)
+    ///
+    /// Performance: O(n) where n = number of user's LDAP groups
+    /// Uses precomputed lowercase HashMap for O(1) lookups instead of O(m) linear scan
     fn collect_rules_from_groups(
         &self,
         config: &CompiledAclConfig,
@@ -316,21 +327,18 @@ impl AclEngine {
             all_rules.extend(user_acl.rules.clone());
         }
 
-        // Iterate through user's LDAP groups
+        // Iterate through user's LDAP groups with O(1) lookup instead of O(n*m) nested loop
         for ldap_group in user_groups {
-            // Case-insensitive search for matching group in ACL config
-            for (acl_group_name, group_acl) in &config.groups {
-                if ldap_group.eq_ignore_ascii_case(acl_group_name) {
-                    debug!(
-                        ldap_group = ldap_group,
-                        acl_group = acl_group_name,
-                        rule_count = group_acl.rules.len(),
-                        "Matched LDAP group to ACL group (case-insensitive)"
-                    );
-                    // Cheap clone - just Arc increment, no deep copy
-                    all_rules.extend(group_acl.rules.clone());
-                    break; // Found match, move to next LDAP group
-                }
+            let lowercase_group = ldap_group.to_ascii_lowercase();
+            if let Some(group_acl) = config.groups_by_lowercase.get(&lowercase_group) {
+                debug!(
+                    ldap_group = ldap_group,
+                    acl_group = &group_acl.name,
+                    rule_count = group_acl.rules.len(),
+                    "Matched LDAP group to ACL group (O(1) lowercase lookup)"
+                );
+                // Cheap clone - just Arc increment, no deep copy
+                all_rules.extend(group_acl.rules.clone());
             }
         }
 
@@ -355,12 +363,11 @@ impl AclEngine {
     ) -> Vec<String> {
         let mut matched = Vec::new();
 
+        // Use O(1) lowercase lookup instead of nested loop
         for ldap_group in user_groups {
-            for acl_group_name in config.groups.keys() {
-                if ldap_group.eq_ignore_ascii_case(acl_group_name) {
-                    matched.push(ldap_group.clone());
-                    break;
-                }
+            let lowercase_group = ldap_group.to_ascii_lowercase();
+            if config.groups_by_lowercase.contains_key(&lowercase_group) {
+                matched.push(ldap_group.clone());
             }
         }
 
