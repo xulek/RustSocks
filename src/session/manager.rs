@@ -145,6 +145,7 @@ impl SessionManager {
     }
 
     /// Aggregate high-level statistics for sessions that started within the provided lookback window.
+    /// Optimized to aggregate data during iteration instead of collecting all sessions first.
     pub async fn get_stats(&self, lookback: Duration) -> SessionStats {
         let now = Utc::now();
         let lookback_chrono =
@@ -153,6 +154,29 @@ impl SessionManager {
 
         let active_count = self.active_sessions.len();
 
+        // Pre-allocate aggregation maps with reasonable capacity
+        let mut user_counts: HashMap<String, u64> = HashMap::with_capacity(100);
+        let mut destination_counts: HashMap<String, u64> = HashMap::with_capacity(100);
+        let mut acl_allowed = 0u64;
+        let mut acl_blocked = 0u64;
+        let mut total_sessions = 0usize;
+        let mut total_bytes = 0u64;
+
+        // Helper closure to aggregate a single session (avoids code duplication)
+        let mut aggregate_session = |user: &str, dest_ip: &str, bytes_sent: u64,
+                                     bytes_received: u64, acl_decision: &str| {
+            *user_counts.entry(user.to_string()).or_insert(0) += 1;
+            *destination_counts.entry(dest_ip.to_string()).or_insert(0) += 1;
+            total_bytes = total_bytes.saturating_add(bytes_sent.saturating_add(bytes_received));
+            total_sessions += 1;
+
+            if acl_decision.eq_ignore_ascii_case("allow") {
+                acl_allowed += 1;
+            } else if acl_decision.eq_ignore_ascii_case("block") {
+                acl_blocked += 1;
+            }
+        };
+
         // Snapshot active sessions to avoid holding locks across await.
         let active_handles: Vec<_> = self
             .active_sessions
@@ -160,49 +184,45 @@ impl SessionManager {
             .map(|entry| entry.value().clone())
             .collect();
 
-        let mut window_sessions: Vec<Session> = Vec::new();
-
+        // Process active sessions - aggregate data directly without intermediate Vec
         for handle in active_handles {
-            let session = handle.read().await.clone();
+            let session = handle.read().await;
             if session.start_time >= cutoff {
-                window_sessions.push(session);
+                aggregate_session(
+                    &session.user,
+                    &session.dest_ip,
+                    session.bytes_sent,
+                    session.bytes_received,
+                    &session.acl_decision,
+                );
             }
         }
 
-        let closed_sessions = self.closed_sessions.lock().unwrap().clone();
-        window_sessions.extend(
-            closed_sessions
-                .into_iter()
-                .filter(|session| session.start_time >= cutoff),
-        );
+        // Process closed sessions - iterate without cloning entire Vec
+        {
+            let closed = self.closed_sessions.lock().unwrap();
+            for session in closed.iter().filter(|s| s.start_time >= cutoff) {
+                aggregate_session(
+                    &session.user,
+                    &session.dest_ip,
+                    session.bytes_sent,
+                    session.bytes_received,
+                    &session.acl_decision,
+                );
+            }
+        }
 
-        let rejected_sessions = self.rejected_sessions.lock().unwrap().clone();
-        window_sessions.extend(
-            rejected_sessions
-                .into_iter()
-                .filter(|session| session.start_time >= cutoff),
-        );
-
-        let total_sessions = window_sessions.len();
-        let total_bytes = window_sessions.iter().fold(0u64, |acc, session| {
-            acc.saturating_add(session.bytes_sent.saturating_add(session.bytes_received))
-        });
-
-        let mut user_counts: HashMap<String, u64> = HashMap::new();
-        let mut destination_counts: HashMap<String, u64> = HashMap::new();
-        let mut acl_allowed = 0u64;
-        let mut acl_blocked = 0u64;
-
-        for session in &window_sessions {
-            *user_counts.entry(session.user.clone()).or_insert(0) += 1;
-            *destination_counts
-                .entry(session.dest_ip.clone())
-                .or_insert(0) += 1;
-
-            if session.acl_decision.eq_ignore_ascii_case("allow") {
-                acl_allowed += 1;
-            } else if session.acl_decision.eq_ignore_ascii_case("block") {
-                acl_blocked += 1;
+        // Process rejected sessions - iterate without cloning entire Vec
+        {
+            let rejected = self.rejected_sessions.lock().unwrap();
+            for session in rejected.iter().filter(|s| s.start_time >= cutoff) {
+                aggregate_session(
+                    &session.user,
+                    &session.dest_ip,
+                    session.bytes_sent,
+                    session.bytes_received,
+                    &session.acl_decision,
+                );
             }
         }
 
