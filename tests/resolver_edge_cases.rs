@@ -65,9 +65,8 @@ async fn test_resolve_ipv6_all_ones() {
 #[tokio::test]
 async fn test_resolve_nonexistent_domain() {
     // Use a domain that should not exist
-    let addr = Address::Domain(
-        "this-domain-definitely-does-not-exist-12345678990.invalid".to_string(),
-    );
+    let addr =
+        Address::Domain("this-domain-definitely-does-not-exist-12345678990.invalid".to_string());
     let result = resolve_address(&addr, 80).await;
 
     // Should return an error because the domain doesn't exist
@@ -284,12 +283,12 @@ async fn test_resolve_special_ipv4_addresses() {
 
     // Private networks
     let private_addrs = vec![
-        [10, 0, 0, 1],       // 10.0.0.0/8
-        [172, 16, 0, 1],     // 172.16.0.0/12
-        [192, 168, 0, 1],    // 192.168.0.0/16
-        [169, 254, 0, 1],    // Link-local 169.254.0.0/16
-        [224, 0, 0, 1],      // Multicast
-        [127, 0, 0, 1],      // Loopback
+        [10, 0, 0, 1],    // 10.0.0.0/8
+        [172, 16, 0, 1],  // 172.16.0.0/12
+        [192, 168, 0, 1], // 192.168.0.0/16
+        [169, 254, 0, 1], // Link-local 169.254.0.0/16
+        [224, 0, 0, 1],   // Multicast
+        [127, 0, 0, 1],   // Loopback
     ];
 
     for ip in private_addrs {
@@ -310,9 +309,7 @@ async fn test_resolve_special_ipv6_addresses() {
     assert!(result.is_ok());
 
     // Link-local (fe80::/10)
-    let link_local = Address::IPv6([
-        0xfe, 0x80, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
-    ]);
+    let link_local = Address::IPv6([0xfe, 0x80, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]);
     let result = resolve_address(&link_local, 80).await;
     assert!(result.is_ok());
 

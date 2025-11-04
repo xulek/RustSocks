@@ -460,10 +460,8 @@ pub async fn get_user_sessions(
     }
 
     // Convert to response and sort by start time (newest first)
-    let mut user_sessions: Vec<SessionResponse> = session_map
-        .into_values()
-        .map(session_to_response)
-        .collect();
+    let mut user_sessions: Vec<SessionResponse> =
+        session_map.into_values().map(session_to_response).collect();
 
     user_sessions.sort_by(|a, b| b.start_time.cmp(&a.start_time));
 

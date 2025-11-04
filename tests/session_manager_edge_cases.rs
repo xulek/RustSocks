@@ -83,7 +83,9 @@ async fn test_concurrent_traffic_updates() {
     }
 
     // Close session and verify total traffic
-    manager.close_session(&session_id, None, SessionStatus::Closed).await;
+    manager
+        .close_session(&session_id, None, SessionStatus::Closed)
+        .await;
 
     let snapshots = manager.get_closed_sessions();
     assert_eq!(snapshots.len(), 1);
@@ -114,8 +116,12 @@ async fn test_concurrent_session_close() {
     for session_id in session_ids {
         let mgr = manager.clone();
         let handle = tokio::spawn(async move {
-            mgr.close_session(&session_id, Some("concurrent_close".to_string()), SessionStatus::Closed)
-                .await;
+            mgr.close_session(
+                &session_id,
+                Some("concurrent_close".to_string()),
+                SessionStatus::Closed,
+            )
+            .await;
         });
         handles.push(handle);
     }
@@ -150,7 +156,9 @@ async fn test_session_with_maximum_traffic() {
         .update_traffic(&session_id, max_bytes, max_bytes, 1_000_000, 1_000_000)
         .await;
 
-    manager.close_session(&session_id, None, SessionStatus::Closed).await;
+    manager
+        .close_session(&session_id, None, SessionStatus::Closed)
+        .await;
 
     let closed = manager.get_closed_sessions();
     assert_eq!(closed.len(), 1);
@@ -166,7 +174,11 @@ async fn test_session_with_zero_traffic() {
 
     // Close immediately without any traffic
     manager
-        .close_session(&session_id, Some("no_traffic".to_string()), SessionStatus::Closed)
+        .close_session(
+            &session_id,
+            Some("no_traffic".to_string()),
+            SessionStatus::Closed,
+        )
         .await;
 
     let closed = manager.get_closed_sessions();
@@ -268,7 +280,9 @@ async fn test_session_stats_with_multiple_users() {
 
     // Close all sessions
     for session_id in session_ids {
-        manager.close_session(&session_id, None, SessionStatus::Closed).await;
+        manager
+            .close_session(&session_id, None, SessionStatus::Closed)
+            .await;
     }
 
     // Get stats
@@ -289,7 +303,11 @@ async fn test_session_with_very_long_close_reason() {
     // Close with very long reason (1000 chars)
     let long_reason = "x".repeat(1000);
     manager
-        .close_session(&session_id, Some(long_reason.clone()), SessionStatus::Closed)
+        .close_session(
+            &session_id,
+            Some(long_reason.clone()),
+            SessionStatus::Closed,
+        )
         .await;
 
     let closed = manager.get_closed_sessions();
@@ -306,7 +324,9 @@ async fn test_session_duration_calculation() {
     // Wait a bit
     sleep(Duration::from_millis(100)).await;
 
-    manager.close_session(&session_id, None, SessionStatus::Closed).await;
+    manager
+        .close_session(&session_id, None, SessionStatus::Closed)
+        .await;
 
     let closed = manager.get_closed_sessions();
     assert_eq!(closed.len(), 1);
@@ -359,10 +379,10 @@ async fn test_stats_time_window_filtering() {
     for i in 0..10 {
         let conn = create_test_connection(12000 + i, 80);
         let session_id = manager.new_session("alice", conn, "allow", None).await;
+        manager.update_traffic(&session_id, 1000, 500, 10, 5).await;
         manager
-            .update_traffic(&session_id, 1000, 500, 10, 5)
+            .close_session(&session_id, None, SessionStatus::Closed)
             .await;
-        manager.close_session(&session_id, None, SessionStatus::Closed).await;
     }
 
     // Get stats with different windows
@@ -390,7 +410,8 @@ async fn test_concurrent_get_stats() {
     let mut handles = vec![];
     for _ in 0..50 {
         let mgr = manager.clone();
-        let handle = tokio::spawn(async move { mgr.get_stats(Duration::from_secs(24 * 3600)).await });
+        let handle =
+            tokio::spawn(async move { mgr.get_stats(Duration::from_secs(24 * 3600)).await });
         handles.push(handle);
     }
 
@@ -408,7 +429,9 @@ async fn test_session_active_count() {
     // Create many sessions
     for i in 0..100 {
         let conn = create_test_connection(14000 + i, 80);
-        manager.new_session(&format!("user{}", i % 10), conn, "allow", None).await;
+        manager
+            .new_session(&format!("user{}", i % 10), conn, "allow", None)
+            .await;
     }
 
     // Check active count
@@ -471,7 +494,8 @@ async fn test_stress_many_sessions() {
                 mgr.update_traffic(&session_id, 100, 50, 1, 1).await;
             }
 
-            mgr.close_session(&session_id, None, SessionStatus::Closed).await;
+            mgr.close_session(&session_id, None, SessionStatus::Closed)
+                .await;
         });
         handles.push(handle);
     }
@@ -491,9 +515,7 @@ async fn test_ipv6_sessions() {
     let manager = SessionManager::new();
 
     let conn = ConnectionInfo {
-        source_ip: IpAddr::V6(std::net::Ipv6Addr::new(
-            0x2001, 0x0db8, 0, 0, 0, 0, 0, 1,
-        )),
+        source_ip: IpAddr::V6(std::net::Ipv6Addr::new(0x2001, 0x0db8, 0, 0, 0, 0, 0, 1)),
         source_port: 30000,
         dest_ip: "2001:db8::2".to_string(),
         dest_port: 443,
@@ -502,7 +524,9 @@ async fn test_ipv6_sessions() {
 
     let session_id = manager.new_session("alice", conn, "allow", None).await;
     manager.update_traffic(&session_id, 1000, 500, 10, 5).await;
-    manager.close_session(&session_id, None, SessionStatus::Closed).await;
+    manager
+        .close_session(&session_id, None, SessionStatus::Closed)
+        .await;
 
     let closed = manager.get_closed_sessions();
     assert_eq!(closed.len(), 1);

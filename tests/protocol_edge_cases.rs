@@ -263,7 +263,7 @@ async fn test_socks5_request_all_address_types() {
         Command::Connect as u8,
         0x00,
         0x03, // Domain
-        255, // domain length
+        255,  // domain length
     ];
     data.extend(vec![b'a'; 255]); // 255 character domain
     data.extend(&[0x00, 0x50]); // port 80
@@ -288,7 +288,7 @@ async fn test_socks5_request_zero_length_domain() {
         Command::Connect as u8,
         0x00,
         0x03, // Domain
-        0, // domain length = 0
+        0,    // domain length = 0
     ];
     data.extend(&[0x00, 0x50]); // port 80
 
@@ -406,7 +406,7 @@ async fn test_udp_packet_empty_data() {
     ];
     data.extend(&[192, 168, 1, 1]); // IP
     data.extend(&[0x00, 0x50]); // port
-    // No data payload
+                                // No data payload
 
     let result = parse_udp_packet(&data);
 
@@ -433,9 +433,10 @@ async fn test_udp_packet_roundtrip() {
     assert_eq!(deserialized.header.port, original_packet.header.port);
     assert_eq!(deserialized.data, original_packet.data);
 
-    if let (Address::Domain(orig), Address::Domain(deser)) =
-        (&original_packet.header.address, &deserialized.header.address)
-    {
+    if let (Address::Domain(orig), Address::Domain(deser)) = (
+        &original_packet.header.address,
+        &deserialized.header.address,
+    ) {
         assert_eq!(orig, deser);
     } else {
         panic!("Address mismatch in roundtrip");
