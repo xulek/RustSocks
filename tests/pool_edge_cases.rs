@@ -99,7 +99,7 @@ async fn pool_evicts_expired_connections() {
     pool.put(addr, stream, ReuseHint::Reuse).await;
 
     // Verify it's in pool
-    let stats = pool.stats().await;
+    let stats = pool.stats();
     assert_eq!(stats.total_idle, 1);
 
     // Wait for expiration
@@ -110,7 +110,7 @@ async fn pool_evicts_expired_connections() {
     assert!(result.is_ok(), "Should create new connection after expiry");
 
     // Pool should be empty (expired connection removed)
-    let stats = pool.stats().await;
+    let stats = pool.stats();
     assert_eq!(stats.total_idle, 0, "Expired connection should be removed");
 }
 
@@ -150,7 +150,7 @@ async fn pool_enforces_per_destination_limit_strictly() {
         pool.put(addr, stream, ReuseHint::Reuse).await;
     }
 
-    let stats = pool.stats().await;
+    let stats = pool.stats();
     assert_eq!(stats.total_idle, 2, "Should enforce per-dest limit of 2");
 }
 
@@ -198,7 +198,7 @@ async fn pool_enforces_global_limit_with_multiple_destinations() {
         pool.put(addr, stream, ReuseHint::Reuse).await;
     }
 
-    let stats = pool.stats().await;
+    let stats = pool.stats();
     assert_eq!(stats.total_idle, 5, "Should enforce global limit of 5");
     assert!(
         stats.destinations <= 3,
@@ -231,7 +231,7 @@ async fn pool_stats_accurate_after_operations() {
     tokio::time::sleep(Duration::from_millis(50)).await;
 
     // Initial stats
-    let stats = pool.stats().await;
+    let stats = pool.stats();
     assert_eq!(stats.total_idle, 0);
     assert_eq!(stats.destinations, 0);
 
@@ -247,20 +247,20 @@ async fn pool_stats_accurate_after_operations() {
         pool.put(addr, stream, ReuseHint::Reuse).await;
     }
 
-    let stats = pool.stats().await;
+    let stats = pool.stats();
     assert_eq!(stats.total_idle, 3);
     assert_eq!(stats.destinations, 1);
 
     // Get one (should reduce idle count)
     let _stream = pool.get(addr).await.unwrap();
 
-    let stats = pool.stats().await;
+    let stats = pool.stats();
     assert_eq!(stats.total_idle, 2, "Getting should reduce idle count");
 
     // Put it back
     pool.put(addr, _stream, ReuseHint::Reuse).await;
 
-    let stats = pool.stats().await;
+    let stats = pool.stats();
     assert_eq!(stats.total_idle, 3, "Putting should increase idle count");
 }
 
@@ -293,7 +293,7 @@ async fn pool_disabled_never_stores_connections() {
     }
 
     // Pool should remain empty
-    let stats = pool.stats().await;
+    let stats = pool.stats();
     assert_eq!(stats.total_idle, 0, "Disabled pool should never store");
     assert_eq!(stats.destinations, 0);
 }
@@ -337,7 +337,7 @@ async fn pool_handles_simultaneous_put_operations() {
         task.await.unwrap();
     }
 
-    let stats = pool.stats().await;
+    let stats = pool.stats();
     assert!(
         stats.total_idle <= max_idle_per_dest,
         "Should respect per-dest limit even with concurrent puts"
@@ -383,7 +383,7 @@ async fn pool_reuses_most_recent_connection() {
     // Get should return most recently used (LIFO behavior via pop())
     let _stream = pool.get(addr).await.unwrap();
 
-    let stats = pool.stats().await;
+    let stats = pool.stats();
     assert_eq!(stats.total_idle, 2);
 }
 
@@ -413,7 +413,7 @@ async fn pool_creates_new_connection_on_empty_pool() {
     let stream = pool.get(addr).await.unwrap();
     assert!(stream.peer_addr().is_ok());
 
-    let stats = pool.stats().await;
+    let stats = pool.stats();
     assert_eq!(stats.total_idle, 0, "Pool still empty after get");
 }
 
@@ -461,14 +461,14 @@ async fn pool_handles_multiple_destinations_correctly() {
         pool.put(addr, stream, ReuseHint::Reuse).await;
     }
 
-    let stats = pool.stats().await;
+    let stats = pool.stats();
     assert_eq!(stats.total_idle, 8, "Should have 2 per destination");
     assert_eq!(stats.destinations, 4, "Should track 4 destinations");
 
     // Get from first server - should reduce only that pool
     let _stream = pool.get(servers[0]).await.unwrap();
 
-    let stats = pool.stats().await;
+    let stats = pool.stats();
     assert_eq!(stats.total_idle, 7, "Should reduce by 1");
     assert_eq!(stats.destinations, 4, "Still 4 destinations");
 }
@@ -509,7 +509,7 @@ async fn pool_cleanup_task_runs_periodically() {
         pool.put(addr, stream, ReuseHint::Reuse).await;
     }
 
-    let stats = pool.stats().await;
+    let stats = pool.stats();
     assert_eq!(stats.total_idle, 3);
 
     // Wait for cleanup task to run (cleanup interval is idle_timeout/2, min 30s)
@@ -521,7 +521,7 @@ async fn pool_cleanup_task_runs_periodically() {
     let _stream = pool.get(addr).await.unwrap();
 
     // Pool should have cleaned up expired ones
-    let stats = pool.stats().await;
+    let stats = pool.stats();
     assert_eq!(
         stats.total_idle, 0,
         "Cleanup should have removed expired connections"
@@ -566,7 +566,7 @@ async fn pool_handles_rapid_get_put_cycles() {
         pool.put(addr, stream, ReuseHint::Reuse).await;
     }
 
-    let stats = pool.stats().await;
+    let stats = pool.stats();
     assert!(
         stats.total_idle <= max_idle_per_dest,
         "Should maintain limits even with rapid cycling"
@@ -655,14 +655,9 @@ async fn pool_refresh_hint_replenishes_idle_connection() {
     let (tx, mut rx) = mpsc::unbounded_channel();
 
     tokio::spawn(async move {
-        loop {
-            match listener.accept().await {
-                Ok((stream, _)) => {
-                    if tx.send(stream).is_err() {
-                        break;
-                    }
-                }
-                Err(_) => break,
+        while let Ok((stream, _)) = listener.accept().await {
+            if tx.send(stream).is_err() {
+                break;
             }
         }
     });
@@ -678,7 +673,7 @@ async fn pool_refresh_hint_replenishes_idle_connection() {
         .expect("refresh connection was not established in time")
         .expect("refresh channel closed unexpectedly");
 
-    let stats = pool.stats().await;
+    let stats = pool.stats();
     assert_eq!(stats.total_idle, 1, "Refreshed connection should be cached");
     assert_eq!(stats.destinations, 1, "Destination should remain tracked");
 

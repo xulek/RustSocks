@@ -116,7 +116,8 @@ pub async fn get_session_history(
         page_size_usize,
         offset,
         page_size,
-    );
+    )
+    .await;
 
     (StatusCode::OK, Json(response))
 }
@@ -136,7 +137,7 @@ async fn fetch_history_from_store(
     page: u32,
     page_size_u32: u32,
 ) -> Result<PagedResponse<SessionResponse>, sqlx::Error> {
-    let mut in_memory = manager.get_closed_sessions();
+    let mut in_memory = manager.get_closed_sessions().await;
     in_memory.retain(|session| {
         matches_history_filters(session, user_filter, dest_filter, status_filter, cutoff)
     });
@@ -208,7 +209,7 @@ async fn fetch_history_from_store(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn build_memory_history_response(
+async fn build_memory_history_response(
     manager: &SessionManager,
     user_filter: &Option<String>,
     dest_filter: &Option<String>,
@@ -219,7 +220,7 @@ fn build_memory_history_response(
     offset: usize,
     page_size_u32: u32,
 ) -> PagedResponse<SessionResponse> {
-    let mut sessions = manager.get_closed_sessions();
+    let mut sessions = manager.get_closed_sessions().await;
     sessions.retain(|session| {
         matches_history_filters(session, user_filter, dest_filter, status_filter, cutoff)
     });

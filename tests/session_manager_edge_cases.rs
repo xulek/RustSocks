@@ -87,7 +87,7 @@ async fn test_concurrent_traffic_updates() {
         .close_session(&session_id, None, SessionStatus::Closed)
         .await;
 
-    let snapshots = manager.get_closed_sessions();
+    let snapshots = manager.get_closed_sessions().await;
     assert_eq!(snapshots.len(), 1);
 
     // Traffic should be accumulated correctly despite concurrent updates
@@ -135,7 +135,7 @@ async fn test_concurrent_session_close() {
     let stats = manager.get_stats(Duration::from_secs(24 * 3600)).await;
     assert_eq!(stats.active_sessions, 0);
 
-    let closed = manager.get_closed_sessions();
+    let closed = manager.get_closed_sessions().await;
     assert_eq!(closed.len(), 50);
 
     // All should have close reason
@@ -160,7 +160,7 @@ async fn test_session_with_maximum_traffic() {
         .close_session(&session_id, None, SessionStatus::Closed)
         .await;
 
-    let closed = manager.get_closed_sessions();
+    let closed = manager.get_closed_sessions().await;
     assert_eq!(closed.len(), 1);
     assert_eq!(closed[0].bytes_sent, max_bytes);
     assert_eq!(closed[0].bytes_received, max_bytes);
@@ -181,7 +181,7 @@ async fn test_session_with_zero_traffic() {
         )
         .await;
 
-    let closed = manager.get_closed_sessions();
+    let closed = manager.get_closed_sessions().await;
     assert_eq!(closed.len(), 1);
     assert_eq!(closed[0].bytes_sent, 0);
     assert_eq!(closed[0].bytes_received, 0);
@@ -205,7 +205,7 @@ async fn test_rejected_sessions_tracking() {
             .await;
     }
 
-    let rejected = manager.rejected_snapshot();
+    let rejected = manager.rejected_snapshot().await;
     assert_eq!(rejected.len(), 25);
 
     // All should have rejected status
@@ -251,7 +251,7 @@ async fn test_concurrent_rejected_and_accepted_sessions() {
     let stats = manager.get_stats(Duration::from_secs(24 * 3600)).await;
     assert_eq!(stats.active_sessions, 50); // Half accepted
 
-    let rejected = manager.rejected_snapshot();
+    let rejected = manager.rejected_snapshot().await;
     assert_eq!(rejected.len(), 50); // Half rejected
 }
 
@@ -260,7 +260,7 @@ async fn test_session_stats_with_multiple_users() {
     let manager = SessionManager::new();
 
     // Create sessions for multiple users with different traffic
-    let users = vec!["alice", "bob", "charlie", "diana"];
+    let users = ["alice", "bob", "charlie", "diana"];
     let mut session_ids = vec![];
 
     for (i, user) in users.iter().enumerate() {
@@ -310,7 +310,7 @@ async fn test_session_with_very_long_close_reason() {
         )
         .await;
 
-    let closed = manager.get_closed_sessions();
+    let closed = manager.get_closed_sessions().await;
     assert_eq!(closed.len(), 1);
     assert_eq!(closed[0].close_reason, Some(long_reason));
 }
@@ -328,12 +328,12 @@ async fn test_session_duration_calculation() {
         .close_session(&session_id, None, SessionStatus::Closed)
         .await;
 
-    let closed = manager.get_closed_sessions();
+    let closed = manager.get_closed_sessions().await;
     assert_eq!(closed.len(), 1);
 
-    // Duration should be at least 0 seconds (we slept for 100ms)
+    // Duration should be present (we slept for 100ms)
     assert!(
-        closed[0].duration_secs.unwrap_or(0) >= 0,
+        closed[0].duration_secs.is_some(),
         "Duration was {:?}",
         closed[0].duration_secs
     );
@@ -387,7 +387,7 @@ async fn test_stats_time_window_filtering() {
 
     // Get stats with different windows
     let stats_24h = manager.get_stats(Duration::from_secs(24 * 3600)).await;
-    let stats_1h = manager.get_stats(Duration::from_secs(1 * 3600)).await;
+    let stats_1h = manager.get_stats(Duration::from_secs(3600)).await;
 
     // Both should see the same sessions (just created)
     assert_eq!(stats_24h.total_sessions, 10);
@@ -528,7 +528,7 @@ async fn test_ipv6_sessions() {
         .close_session(&session_id, None, SessionStatus::Closed)
         .await;
 
-    let closed = manager.get_closed_sessions();
+    let closed = manager.get_closed_sessions().await;
     assert_eq!(closed.len(), 1);
     assert_eq!(closed[0].user, "alice");
 }

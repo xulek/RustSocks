@@ -233,7 +233,7 @@ async fn test_resolve_concurrent_operations() {
 
     let mut set = JoinSet::new();
 
-    let test_addresses = vec![
+    let test_addresses = [
         Address::IPv4([127, 0, 0, 1]),
         Address::IPv4([8, 8, 8, 8]),
         Address::IPv6([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]),

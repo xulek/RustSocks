@@ -186,3 +186,4 @@ perf.data*
 
 # History
 .history/
+file:sqlx-in-memory-*

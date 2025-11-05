@@ -140,7 +140,7 @@ async fn acl_blocks_connection_and_tracks_stats() {
     assert_eq!(user_stats.blocked, 1);
     assert_eq!(user_stats.allowed, 0);
 
-    let rejected = session_manager.rejected_snapshot();
+    let rejected = session_manager.rejected_snapshot().await;
     assert_eq!(rejected.len(), 1);
     assert_eq!(rejected[0].user, "anonymous");
     assert_eq!(rejected[0].dest_ip, "blocked.example.com");
@@ -299,7 +299,7 @@ async fn acl_allows_connection_and_creates_session() {
     env.wait().await;
 
     assert_eq!(session_manager.active_session_count(), 0);
-    let closed = session_manager.closed_snapshot();
+    let closed = session_manager.closed_snapshot().await;
     assert_eq!(closed.len(), 1);
     assert_eq!(closed[0].dest_ip, dest_ip);
     assert_eq!(closed[0].status, SessionStatus::Closed);
@@ -371,7 +371,7 @@ async fn acl_handles_thousand_concurrent_connections() {
     env.wait().await;
 
     assert_eq!(session_manager.active_session_count(), 0);
-    assert_eq!(session_manager.closed_snapshot().len(), success);
+    assert_eq!(session_manager.closed_snapshot().await.len(), success);
     assert!(
         success >= (CONNECTIONS * 95) / 100, // Expect at least 95% success rate
         "only {} successful handshakes out of {} ({}%)",

@@ -160,7 +160,7 @@ async fn pool_put_get_concurrent_stress() {
     assert!(completed > 480, "Should complete >96% of cycles");
 
     // Check pool stats
-    let stats = pool.stats().await;
+    let stats = pool.stats();
     println!(
         "Pool stats: {} idle in {} destinations",
         stats.total_idle, stats.destinations
