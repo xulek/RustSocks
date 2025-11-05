@@ -466,7 +466,7 @@ async fn e2e_session_tracking() {
         "Session should be closed"
     );
 
-    let closed_sessions = session_manager.get_closed_sessions();
+    let closed_sessions = session_manager.get_closed_sessions().await;
     assert!(
         closed_sessions
             .iter()

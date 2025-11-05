@@ -655,14 +655,9 @@ async fn pool_refresh_hint_replenishes_idle_connection() {
     let (tx, mut rx) = mpsc::unbounded_channel();
 
     tokio::spawn(async move {
-        loop {
-            match listener.accept().await {
-                Ok((stream, _)) => {
-                    if tx.send(stream).is_err() {
-                        break;
-                    }
-                }
-                Err(_) => break,
+        while let Ok((stream, _)) = listener.accept().await {
+            if tx.send(stream).is_err() {
+                break;
             }
         }
     });

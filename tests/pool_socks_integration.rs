@@ -411,7 +411,7 @@ async fn pool_stats_reflect_real_usage() {
         stats.total_idle, stats.destinations
     );
 
-    assert_eq!(stats.config.enabled, true);
+    assert!(stats.config.enabled);
     assert_eq!(
         stats.config.max_idle_per_dest,
         pool_config.max_idle_per_dest
