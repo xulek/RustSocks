@@ -203,6 +203,8 @@ impl ConnectionPool {
         // DashMap provides lock-free per-key access
         if let Some(count) = self.active_counts.get(&addr) {
             let prev = count.fetch_sub(1, Ordering::Relaxed);
+            drop(count); // CRITICAL: Drop Ref before calling remove() to avoid deadlock
+
             // Remove entry if count was 1 (now 0)
             if prev == 1 {
                 self.active_counts.remove(&addr);
@@ -464,23 +466,19 @@ impl ConnectionPool {
                 evicted_addr = self.evict_oldest();
             }
 
-            // Insert into pool
-            self.pools
-                .entry(addr)
-                .or_default()
-                .push(PooledConnection::new(stream));
+            // Insert into pool - DashMap entry API is different from HashMap
+            let mut entry = self.pools.entry(addr).or_default();
+            entry.push(PooledConnection::new(stream));
+            let pool_size = entry.len();
+            drop(entry); // Explicitly drop to release lock
 
             // Increment total_idle atomically
             self.metrics.total_idle.fetch_add(1, Ordering::Relaxed);
 
-            // Log after insert
-            if let Some(pool) = self.pools.get(&addr) {
-                debug!(
-                    "💾 Returned connection to pool for {} (pool size: {})",
-                    addr,
-                    pool.len()
-                );
-            }
+            debug!(
+                "💾 Returned connection to pool for {} (pool size: {})",
+                addr, pool_size
+            );
             inserted = true;
         } else {
             drop(stream);
@@ -545,22 +543,25 @@ impl ConnectionPool {
 
     /// Evict the oldest connection from all pools
     fn evict_oldest(&self) -> Option<SocketAddr> {
-        let mut oldest_addr: Option<SocketAddr> = None;
-        let mut oldest_time = Instant::now();
+        // Collect candidates first to avoid holding locks during iteration
+        let candidates: Vec<(SocketAddr, Instant)> = self
+            .pools
+            .iter()
+            .filter_map(|entry| {
+                entry
+                    .value()
+                    .first()
+                    .map(|conn| (*entry.key(), conn.created_at))
+            })
+            .collect();
 
-        // Find the oldest connection across all pools
-        // DashMap iter() provides snapshot iteration
-        for entry in self.pools.iter() {
-            let pool = entry.value();
-            if let Some(conn) = pool.first() {
-                if conn.created_at < oldest_time {
-                    oldest_time = conn.created_at;
-                    oldest_addr = Some(*entry.key());
-                }
-            }
-        }
+        // Find oldest after releasing iterator locks
+        let oldest_addr = candidates
+            .into_iter()
+            .min_by_key(|(_, time)| *time)
+            .map(|(addr, _)| addr);
 
-        // Remove the oldest connection
+        // Remove the oldest connection (now safe - no conflicting locks)
         if let Some(addr) = oldest_addr {
             if let Some(mut pool) = self.pools.get_mut(&addr) {
                 pool.remove(0);
