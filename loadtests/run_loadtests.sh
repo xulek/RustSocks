@@ -224,7 +224,7 @@ trap cleanup EXIT INT TERM
 run_socks_tests() {
     echo ""
     echo -e "${BLUE}╔═══════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${BLUE}║           SOCKS5 Proxy Load Tests                             ║${NC}"
+    echo -e "${BLUE}║           SOCKS5 Proxy Granular Load Tests                    ║${NC}"
     echo -e "${BLUE}╚═══════════════════════════════════════════════════════════════╝${NC}"
 
     local duration=30
@@ -232,56 +232,92 @@ run_socks_tests() {
         duration=10
     fi
 
-    # Test 1: 1000 Concurrent Connections
+    # Test 1: Minimal Pipeline (pure SOCKS5)
     echo ""
-    echo -e "${BLUE}📊 Test 1: 1000 Concurrent Connections${NC}"
+    echo -e "${BLUE}📊 Test 1: Minimal Pipeline (Pure SOCKS5 Overhead)${NC}"
+    echo -e "${YELLOW}   Measures: TCP + Handshake + Upstream (no ACL, no Sessions, no QoS)${NC}"
+    echo -e "${YELLOW}   Expected: <10ms latency${NC}"
     ./target/release/examples/loadtest \
-        --scenario concurrent-1000 \
-        --proxy ${PROXY_ADDR} \
-        --upstream ${ECHO_ADDR} \
-        2>&1 | tee "${RESULTS_DIR}/concurrent_1000_${TIMESTAMP}.log"
-
-    sleep 5
-
-    # Test 2: ACL Performance
-    echo ""
-    echo -e "${BLUE}📊 Test 2: ACL Performance Test${NC}"
-    ./target/release/examples/loadtest \
-        --scenario acl-perf \
+        --scenario minimal-pipeline \
         --proxy ${PROXY_ADDR} \
         --upstream ${ECHO_ADDR} \
         --duration ${duration} \
-        2>&1 | tee "${RESULTS_DIR}/acl_perf_${TIMESTAMP}.log"
+        2>&1 | tee "${RESULTS_DIR}/minimal_pipeline_${TIMESTAMP}.log"
 
     sleep 5
 
-    # Test 3: Session Tracking Overhead
+    # Test 2: Full Pipeline (all features)
     echo ""
-    echo -e "${BLUE}📊 Test 3: Session Tracking Overhead${NC}"
+    echo -e "${BLUE}📊 Test 2: Full Pipeline (All Features Enabled)${NC}"
+    echo -e "${YELLOW}   Measures: Complete pipeline with ACL + Sessions + QoS + DB${NC}"
+    echo -e "${YELLOW}   Expected: <100ms latency${NC}"
     ./target/release/examples/loadtest \
-        --scenario session-overhead \
+        --scenario full-pipeline \
         --proxy ${PROXY_ADDR} \
         --upstream ${ECHO_ADDR} \
         --duration ${duration} \
-        2>&1 | tee "${RESULTS_DIR}/session_overhead_${TIMESTAMP}.log"
+        2>&1 | tee "${RESULTS_DIR}/full_pipeline_${TIMESTAMP}.log"
 
     sleep 5
 
-    # Test 4: Database Write Throughput
+    # Test 3: Handshake Only (connection throughput)
     echo ""
-    echo -e "${BLUE}📊 Test 4: Database Write Throughput${NC}"
+    echo -e "${BLUE}📊 Test 3: Handshake-Only Test${NC}"
+    echo -e "${YELLOW}   Measures: Pure connection establishment throughput${NC}"
+    echo -e "${YELLOW}   Expected: >1000 conn/s${NC}"
     ./target/release/examples/loadtest \
-        --scenario db-throughput \
+        --scenario handshake-only \
         --proxy ${PROXY_ADDR} \
         --upstream ${ECHO_ADDR} \
         --duration ${duration} \
-        2>&1 | tee "${RESULTS_DIR}/db_throughput_${TIMESTAMP}.log"
+        2>&1 | tee "${RESULTS_DIR}/handshake_only_${TIMESTAMP}.log"
 
-    # Test 5: 5000 Concurrent Connections (only in full mode)
+    sleep 5
+
+    # Test 4: Data Transfer (bandwidth test)
+    echo ""
+    echo -e "${BLUE}📊 Test 4: Data Transfer Throughput${NC}"
+    echo -e "${YELLOW}   Measures: Proxy bandwidth with sustained traffic${NC}"
+    echo -e "${YELLOW}   Expected: >100MB/s bandwidth${NC}"
+    ./target/release/examples/loadtest \
+        --scenario data-transfer \
+        --proxy ${PROXY_ADDR} \
+        --upstream ${ECHO_ADDR} \
+        --duration ${duration} \
+        2>&1 | tee "${RESULTS_DIR}/data_transfer_${TIMESTAMP}.log"
+
+    sleep 5
+
+    # Test 5: Session Churn (DB stress test)
+    echo ""
+    echo -e "${BLUE}📊 Test 5: Session Churn (Database Stress)${NC}"
+    echo -e "${YELLOW}   Measures: Database write throughput with rapid session create/destroy${NC}"
+    echo -e "${YELLOW}   Expected: >1000 sessions/sec${NC}"
+    ./target/release/examples/loadtest \
+        --scenario session-churn \
+        --proxy ${PROXY_ADDR} \
+        --upstream ${ECHO_ADDR} \
+        --duration ${duration} \
+        2>&1 | tee "${RESULTS_DIR}/session_churn_${TIMESTAMP}.log"
+
+    # Test 6 & 7: Concurrency tests (only in full mode)
     if [ "${QUICK}" = false ]; then
         sleep 5
         echo ""
-        echo -e "${BLUE}📊 Test 5: 5000 Concurrent Connections${NC}"
+        echo -e "${BLUE}📊 Test 6: 1000 Concurrent Connections${NC}"
+        echo -e "${YELLOW}   Measures: Medium concurrency handling${NC}"
+        echo -e "${YELLOW}   Expected: 100% success rate${NC}"
+        ./target/release/examples/loadtest \
+            --scenario concurrent-1000 \
+            --proxy ${PROXY_ADDR} \
+            --upstream ${ECHO_ADDR} \
+            2>&1 | tee "${RESULTS_DIR}/concurrent_1000_${TIMESTAMP}.log"
+
+        sleep 5
+        echo ""
+        echo -e "${BLUE}📊 Test 7: 5000 Concurrent Connections${NC}"
+        echo -e "${YELLOW}   Measures: High concurrency handling${NC}"
+        echo -e "${YELLOW}   Expected: 100% success rate${NC}"
         ./target/release/examples/loadtest \
             --scenario concurrent-5000 \
             --proxy ${PROXY_ADDR} \
@@ -345,21 +381,45 @@ echo ""
 echo -e "${BLUE}Key Performance Metrics:${NC}"
 echo ""
 
+if [ -f "${RESULTS_DIR}/minimal_pipeline_${TIMESTAMP}.log" ]; then
+    echo "Minimal Pipeline (Pure SOCKS5):"
+    grep -E "Successful|Throughput|Average:" "${RESULTS_DIR}/minimal_pipeline_${TIMESTAMP}.log" | head -5 || true
+    echo ""
+fi
+
+if [ -f "${RESULTS_DIR}/full_pipeline_${TIMESTAMP}.log" ]; then
+    echo "Full Pipeline (ACL + Sessions + QoS + DB):"
+    grep -E "Successful|Throughput|Average:" "${RESULTS_DIR}/full_pipeline_${TIMESTAMP}.log" | head -5 || true
+    echo ""
+fi
+
+if [ -f "${RESULTS_DIR}/handshake_only_${TIMESTAMP}.log" ]; then
+    echo "Handshake-Only (Connection Throughput):"
+    grep -E "Throughput|Average:" "${RESULTS_DIR}/handshake_only_${TIMESTAMP}.log" | head -3 || true
+    echo ""
+fi
+
+if [ -f "${RESULTS_DIR}/data_transfer_${TIMESTAMP}.log" ]; then
+    echo "Data Transfer (Bandwidth):"
+    grep -E "Throughput|Average:|Total Transfer:" "${RESULTS_DIR}/data_transfer_${TIMESTAMP}.log" | head -5 || true
+    echo ""
+fi
+
+if [ -f "${RESULTS_DIR}/session_churn_${TIMESTAMP}.log" ]; then
+    echo "Session Churn (DB Write Throughput):"
+    grep -E "Throughput|Average:" "${RESULTS_DIR}/session_churn_${TIMESTAMP}.log" | head -3 || true
+    echo ""
+fi
+
 if [ -f "${RESULTS_DIR}/concurrent_1000_${TIMESTAMP}.log" ]; then
     echo "1000 Concurrent Connections:"
-    grep -E "Success|Throughput|Average:" "${RESULTS_DIR}/concurrent_1000_${TIMESTAMP}.log" | head -5 || true
+    grep -E "Successful|Average:" "${RESULTS_DIR}/concurrent_1000_${TIMESTAMP}.log" | head -4 || true
     echo ""
 fi
 
-if [ -f "${RESULTS_DIR}/acl_perf_${TIMESTAMP}.log" ]; then
-    echo "ACL Performance:"
-    grep -E "Throughput|Average:" "${RESULTS_DIR}/acl_perf_${TIMESTAMP}.log" | head -3 || true
-    echo ""
-fi
-
-if [ -f "${RESULTS_DIR}/session_overhead_${TIMESTAMP}.log" ]; then
-    echo "Session Tracking:"
-    grep -E "Throughput|Average:" "${RESULTS_DIR}/session_overhead_${TIMESTAMP}.log" | head -3 || true
+if [ -f "${RESULTS_DIR}/concurrent_5000_${TIMESTAMP}.log" ]; then
+    echo "5000 Concurrent Connections:"
+    grep -E "Successful|Average:" "${RESULTS_DIR}/concurrent_5000_${TIMESTAMP}.log" | head -4 || true
     echo ""
 fi
 

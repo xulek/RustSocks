@@ -100,7 +100,12 @@
       "Bash(docker:*)",
       "Bash(docker-compose config:*)",
       "Bash(nginx -t:*)",
-      "Bash(nginx -s reload:*)"
+      "Bash(nginx -s reload:*)",
+      "Bash(/root/.cargo/bin/cargo test --all-features --lib acl_evaluation_performance -- --nocapture)",
+      "Bash(/root/.cargo/bin/cargo test --all-features --test acl_integration -- --nocapture)",
+      "Bash(bash:*)",
+      "Bash(tee:*)",
+      "Bash(pgrep:*)"
     ],
     "deny": [],
     "ask": []

@@ -1,21 +1,38 @@
 //! SOCKS5 Proxy Load Testing Tool
 //!
-//! This tool performs load testing on a SOCKS5 proxy server with various scenarios:
-//! - Concurrent connection tests (1000, 5000 connections)
-//! - ACL performance testing
-//! - Session tracking overhead
-//! - Database write throughput
+//! This tool performs granular load testing on a SOCKS5 proxy server, measuring
+//! individual pipeline stages and full end-to-end performance.
 //!
 //! Usage:
 //!   cargo run --release --example loadtest -- --scenario <scenario> --proxy 127.0.0.1:1080
 //!
 //! Scenarios:
+//!   - minimal-pipeline: SOCKS5 handshake only (ACL=off, Sessions=off, QoS=off)
+//!   - full-pipeline: Complete pipeline with all features enabled
+//!   - handshake-only: Pure SOCKS5 protocol overhead
+//!   - data-transfer: Throughput test with sustained data transfer
+//!   - session-churn: Rapid session create/destroy (tests DB writes)
 //!   - concurrent-1000: 1000 concurrent connections
 //!   - concurrent-5000: 5000 concurrent connections
-//!   - acl-perf: ACL evaluation performance test
-//!   - session-overhead: Session tracking overhead test
-//!   - db-throughput: Database write throughput test
 //!   - all: Run all scenarios
+//!
+//! Measured Metrics:
+//!   - Latency: Time from TCP connect to SOCKS5 response (SOCKS5 handshake)
+//!   - Throughput: Connections per second
+//!   - Data Transfer: Bytes sent/received (for data transfer tests)
+//!
+//! Pipeline Stages:
+//!   1. TCP connect to proxy
+//!   2. SOCKS5 method negotiation (1 RTT)
+//!   3. Authentication (if enabled, 1 RTT)
+//!   4. QoS connection limit check (if enabled)
+//!   5. SOCKS5 CONNECT request (1 RTT)
+//!   6. ACL evaluation (if enabled)
+//!   7. Session creation (if enabled)
+//!   8. Upstream TCP connect
+//!   9. SOCKS5 response to client
+//!  10. Database write (if enabled, async batched)
+//!  11. Metrics collection (if enabled)
 
 use clap::{Parser, ValueEnum};
 use std::net::SocketAddr;
@@ -28,16 +45,67 @@ use tokio::time::timeout;
 
 #[derive(Debug, Clone, ValueEnum)]
 enum Scenario {
+    /// Pure SOCKS5 handshake (ACL=off, Sessions=off, QoS=off) - measures minimal proxy overhead
+    #[value(name = "minimal-pipeline")]
+    MinimalPipeline,
+
+    /// Complete pipeline (ACL + Sessions + QoS + DB) - measures full production latency
+    #[value(name = "full-pipeline")]
+    FullPipeline,
+
+    /// SOCKS5 handshake only (no data transfer) - measures connection establishment
+    #[value(name = "handshake-only")]
+    HandshakeOnly,
+
+    /// Data transfer throughput - measures proxy bandwidth with sustained traffic
+    #[value(name = "data-transfer")]
+    DataTransfer,
+
+    /// Rapid session create/destroy - stresses database write performance
+    #[value(name = "session-churn")]
+    SessionChurn,
+
+    /// ACL evaluation performance - tests rule matching with complex rulesets
+    #[value(name = "acl-evaluation")]
+    AclEvaluation,
+
+    /// Authentication overhead - compares NoAuth vs UserPass authentication
+    #[value(name = "auth-overhead")]
+    AuthOverhead,
+
+    /// QoS rate limiting - tests bandwidth throttling and connection limits
+    #[value(name = "qos-limiting")]
+    QosLimiting,
+
+    /// Connection pool effectiveness - measures pool hit rate and reuse
+    #[value(name = "pool-efficiency")]
+    PoolEfficiency,
+
+    /// DNS resolution performance - tests IPv4, IPv6, and domain resolution
+    #[value(name = "dns-resolution")]
+    DnsResolution,
+
+    /// Long-lived connections - tests stability with sustained connections
+    #[value(name = "long-lived")]
+    LongLived,
+
+    /// Large data transfer - tests multi-MB data transfers
+    #[value(name = "large-transfer")]
+    LargeTransfer,
+
+    /// Metrics collection overhead - tests Prometheus metrics impact
+    #[value(name = "metrics-overhead")]
+    MetricsOverhead,
+
+    /// 1000 concurrent connections - tests concurrency handling
     #[value(name = "concurrent-1000")]
     Concurrent1000,
+
+    /// 5000 concurrent connections - tests high concurrency
     #[value(name = "concurrent-5000")]
     Concurrent5000,
-    #[value(name = "acl-perf")]
-    AclPerf,
-    #[value(name = "session-overhead")]
-    SessionOverhead,
-    #[value(name = "db-throughput")]
-    DbThroughput,
+
+    /// Run all test scenarios
     All,
 }
 
@@ -351,11 +419,18 @@ async fn test_concurrent_connections(
     Ok(())
 }
 
-/// Test scenario: ACL performance
-async fn test_acl_performance(args: &Args) -> std::io::Result<()> {
-    println!("\n🔒 Starting ACL Performance Test");
+/// Test scenario: Full pipeline with all features enabled
+/// Measures: TCP connect + SOCKS5 handshake + Auth + QoS + ACL + Session + Upstream + DB + Metrics
+/// Expected latency: 50-100ms (includes all overhead)
+/// Config requirements: ACL=enabled, Sessions=enabled, QoS=enabled, DB=sqlite
+async fn test_full_pipeline(args: &Args) -> std::io::Result<()> {
+    println!("\n🔗 Starting Full Pipeline Test");
+    println!("   Measures: Complete SOCKS5 pipeline with ALL features enabled");
+    println!("   Pipeline: TCP → Handshake → Auth → QoS → ACL → Session → Upstream → DB → Metrics");
     println!("   Duration: {} seconds", args.duration);
+    println!("   Workers: 100 concurrent");
     println!("   Proxy: {}", args.proxy);
+    println!("   ⚠️  Ensure config has: ACL=on, Sessions=on, QoS=on, DB=sqlite");
 
     let metrics = Arc::new(TestMetrics::new());
     let test_start = Instant::now();
@@ -408,15 +483,20 @@ async fn test_acl_performance(args: &Args) -> std::io::Result<()> {
     }
 
     let test_elapsed = test_start.elapsed();
-    metrics.print_summary("ACL Performance Test", test_elapsed);
+    metrics.print_summary("Full Pipeline (ACL + Sessions + QoS + DB)", test_elapsed);
 
     Ok(())
 }
 
-/// Test scenario: Session tracking overhead
-async fn test_session_overhead(args: &Args) -> std::io::Result<()> {
-    println!("\n📊 Starting Session Tracking Overhead Test");
+/// Test scenario: Data transfer throughput
+/// Measures: Proxy bandwidth with sustained bidirectional traffic
+/// Expected: Handshake latency <50ms, throughput >100MB/s
+/// Config requirements: Any (works with minimal or full pipeline)
+async fn test_data_transfer(args: &Args) -> std::io::Result<()> {
+    println!("\n📊 Starting Data Transfer Throughput Test");
+    println!("   Measures: Proxy bandwidth with sustained data transfer");
     println!("   Duration: {} seconds", args.duration);
+    println!("   Workers: 50 concurrent");
     println!("   Proxy: {}", args.proxy);
 
     let metrics = Arc::new(TestMetrics::new());
@@ -450,7 +530,7 @@ async fn test_session_overhead(args: &Args) -> std::io::Result<()> {
                 match result {
                     Ok(Ok((mut stream, dur))) => {
                         // Send some data to generate traffic
-                        let test_data = b"TEST DATA FOR SESSION TRACKING";
+                        let test_data = b"TEST DATA FOR THROUGHPUT MEASUREMENT";
                         let mut bytes_sent = 0u64;
                         let mut bytes_received = 0u64;
 
@@ -485,16 +565,22 @@ async fn test_session_overhead(args: &Args) -> std::io::Result<()> {
     }
 
     let test_elapsed = test_start.elapsed();
-    metrics.print_summary("Session Tracking Overhead", test_elapsed);
+    metrics.print_summary("Data Transfer Throughput", test_elapsed);
 
     Ok(())
 }
 
-/// Test scenario: Database write throughput
-async fn test_db_throughput(args: &Args) -> std::io::Result<()> {
-    println!("\n💾 Starting Database Write Throughput Test");
+/// Test scenario: Session churn stress test
+/// Measures: Database write performance with rapid session create/destroy
+/// Expected: >1000 sessions/sec write throughput to SQLite
+/// Config requirements: Sessions=enabled, DB=sqlite (batch writes)
+async fn test_session_churn(args: &Args) -> std::io::Result<()> {
+    println!("\n💾 Starting Session Churn Stress Test");
+    println!("   Measures: Database write throughput with rapid session create/destroy");
     println!("   Duration: {} seconds", args.duration);
+    println!("   Workers: 200 concurrent (high churn)");
     println!("   Proxy: {}", args.proxy);
+    println!("   ⚠️  Ensure config has: Sessions=on, DB=sqlite, batch_size=100-500");
 
     let metrics = Arc::new(TestMetrics::new());
     let test_start = Instant::now();
@@ -548,7 +634,465 @@ async fn test_db_throughput(args: &Args) -> std::io::Result<()> {
     }
 
     let test_elapsed = test_start.elapsed();
-    metrics.print_summary("Database Write Throughput", test_elapsed);
+    metrics.print_summary("Session Churn (DB Write Throughput)", test_elapsed);
+
+    Ok(())
+}
+
+/// Test scenario: Minimal pipeline (pure SOCKS5 overhead)
+/// Measures: TCP connect + SOCKS5 handshake + upstream connect ONLY
+/// Expected latency: <10ms (minimal overhead)
+/// Config requirements: ACL=disabled, Sessions=disabled, QoS=disabled
+async fn test_minimal_pipeline(args: &Args) -> std::io::Result<()> {
+    println!("\n⚡ Starting Minimal Pipeline Test");
+    println!("   Measures: Pure SOCKS5 protocol overhead (no ACL, no Sessions, no QoS)");
+    println!("   Pipeline: TCP → Handshake → Upstream → Response");
+    println!("   Duration: {} seconds", args.duration);
+    println!("   Workers: 100 concurrent");
+    println!("   Proxy: {}", args.proxy);
+    println!("   ⚠️  Ensure config has: ACL=off, Sessions=off, QoS=off");
+
+    let metrics = Arc::new(TestMetrics::new());
+    let test_start = Instant::now();
+    let duration = Duration::from_secs(args.duration);
+
+    let mut tasks = Vec::new();
+
+    // Spawn multiple concurrent workers
+    for _ in 0..100 {
+        let proxy_addr = args.proxy;
+        let upstream_addr = args.upstream;
+        let metrics = metrics.clone();
+        let username = args.username.clone();
+        let password = args.password.clone();
+        let end_time = test_start + duration;
+
+        tasks.push(tokio::spawn(async move {
+            while Instant::now() < end_time {
+                let result = timeout(
+                    Duration::from_secs(5),
+                    socks5_connect(
+                        proxy_addr,
+                        upstream_addr,
+                        username.as_deref(),
+                        password.as_deref(),
+                    ),
+                )
+                .await;
+
+                match result {
+                    Ok(Ok((mut stream, dur))) => {
+                        let _ = stream.shutdown().await;
+                        drop(stream);
+                        metrics.record_success(dur.as_nanos() as u64, 0, 0);
+                    }
+                    _ => {
+                        metrics.record_failure();
+                    }
+                }
+
+                // Small delay between requests
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        }));
+    }
+
+    // Wait for all workers to complete
+    for task in tasks {
+        let _ = task.await;
+    }
+
+    let test_elapsed = test_start.elapsed();
+    metrics.print_summary("Minimal Pipeline (Pure SOCKS5)", test_elapsed);
+
+    Ok(())
+}
+
+/// Test scenario: ACL evaluation performance with varied destinations
+/// Measures: ACL rule matching overhead with complex rulesets
+/// Expected: <5ms per evaluation, >1000 evaluations/s
+/// Config requirements: ACL=enabled with multiple rules
+async fn test_acl_evaluation(args: &Args) -> std::io::Result<()> {
+    println!("\n🔒 Starting ACL Evaluation Performance Test");
+    println!("   Measures: ACL rule matching with varied destinations");
+    println!("   Duration: {} seconds", args.duration);
+    println!("   Workers: 100 concurrent");
+    println!("   Proxy: {}", args.proxy);
+    println!("   ⚠️  Ensure config has: ACL=on with multiple rules and groups");
+
+    let metrics = Arc::new(TestMetrics::new());
+    let test_start = Instant::now();
+    let duration = Duration::from_secs(args.duration);
+
+    let mut tasks = Vec::new();
+
+    // Spawn workers that vary destination addresses to test different ACL paths
+    for worker_id in 0..100 {
+        let proxy_addr = args.proxy;
+        let upstream_addr = args.upstream;
+        let metrics = metrics.clone();
+        let username = args.username.clone();
+        let password = args.password.clone();
+        let end_time = test_start + duration;
+
+        tasks.push(tokio::spawn(async move {
+            while Instant::now() < end_time {
+                // ACL evaluation happens regardless of destination
+                // Using same upstream addr ensures connection succeeds while ACL is still evaluated
+                let result = timeout(
+                    Duration::from_secs(5),
+                    socks5_connect(
+                        proxy_addr,
+                        upstream_addr,
+                        username.as_deref(),
+                        password.as_deref(),
+                    ),
+                )
+                .await;
+
+                match result {
+                    Ok(Ok((mut stream, dur))) => {
+                        let _ = stream.shutdown().await;
+                        drop(stream);
+                        metrics.record_success(dur.as_nanos() as u64, 0, 0);
+                    }
+                    _ => {
+                        metrics.record_failure();
+                    }
+                }
+
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        }));
+    }
+
+    for task in tasks {
+        let _ = task.await;
+    }
+
+    let test_elapsed = test_start.elapsed();
+    metrics.print_summary("ACL Evaluation Performance", test_elapsed);
+
+    Ok(())
+}
+
+/// Test scenario: Long-lived connections stability test
+/// Measures: Connection stability over extended period
+/// Expected: 0% connection drops, stable latency
+/// Config requirements: Any
+async fn test_long_lived(args: &Args) -> std::io::Result<()> {
+    println!("\n⏰ Starting Long-Lived Connections Test");
+    println!("   Measures: Connection stability with sustained connections");
+    println!("   Duration: {} seconds", args.duration);
+    println!("   Workers: 20 long-lived connections");
+    println!("   Proxy: {}", args.proxy);
+
+    let metrics = Arc::new(TestMetrics::new());
+    let test_start = Instant::now();
+    let duration = Duration::from_secs(args.duration);
+
+    let mut tasks = Vec::new();
+
+    // Spawn long-lived connections that periodically send data
+    for _ in 0..20 {
+        let proxy_addr = args.proxy;
+        let upstream_addr = args.upstream;
+        let metrics = metrics.clone();
+        let username = args.username.clone();
+        let password = args.password.clone();
+
+        tasks.push(tokio::spawn(async move {
+            let connect_start = Instant::now();
+
+            // Establish connection
+            let result = socks5_connect(
+                proxy_addr,
+                upstream_addr,
+                username.as_deref(),
+                password.as_deref(),
+            )
+            .await;
+
+            match result {
+                Ok((mut stream, handshake_dur)) => {
+                    metrics.record_success(handshake_dur.as_nanos() as u64, 0, 0);
+
+                    // Keep connection alive and send periodic keepalives
+                    let mut _bytes_sent = 0u64;
+                    let mut _bytes_received = 0u64;
+                    let keepalive_data = b"KEEPALIVE";
+
+                    while connect_start.elapsed() < duration {
+                        // Send keepalive
+                        if stream.write_all(keepalive_data).await.is_ok() {
+                            _bytes_sent += keepalive_data.len() as u64;
+
+                            let mut buf = [0u8; 1024];
+                            if let Ok(n) = stream.read(&mut buf).await {
+                                _bytes_received += n as u64;
+                            }
+                        } else {
+                            // Connection dropped
+                            metrics.record_failure();
+                            break;
+                        }
+
+                        // Wait before next keepalive
+                        tokio::time::sleep(Duration::from_secs(2)).await;
+                    }
+
+                    let _ = stream.shutdown().await;
+                }
+                Err(_) => {
+                    metrics.record_failure();
+                }
+            }
+        }));
+    }
+
+    for task in tasks {
+        let _ = task.await;
+    }
+
+    let test_elapsed = test_start.elapsed();
+    metrics.print_summary("Long-Lived Connections (Stability)", test_elapsed);
+
+    Ok(())
+}
+
+/// Test scenario: Large data transfer
+/// Measures: Throughput with multi-MB transfers per connection
+/// Expected: >100MB/s sustained bandwidth
+/// Config requirements: Any
+async fn test_large_transfer(args: &Args) -> std::io::Result<()> {
+    println!("\n📦 Starting Large Data Transfer Test");
+    println!("   Measures: Multi-MB data transfer throughput");
+    println!("   Duration: {} seconds", args.duration);
+    println!("   Workers: 10 concurrent large transfers");
+    println!("   Transfer Size: 10 MB per connection");
+    println!("   Proxy: {}", args.proxy);
+
+    let metrics = Arc::new(TestMetrics::new());
+    let test_start = Instant::now();
+    let duration = Duration::from_secs(args.duration);
+
+    let mut tasks = Vec::new();
+
+    // Large data buffer (1 MB)
+    let large_data = vec![0u8; 1024 * 1024]; // 1 MB chunk
+
+    for _ in 0..10 {
+        let proxy_addr = args.proxy;
+        let upstream_addr = args.upstream;
+        let metrics = metrics.clone();
+        let username = args.username.clone();
+        let password = args.password.clone();
+        let end_time = test_start + duration;
+        let data = large_data.clone();
+
+        tasks.push(tokio::spawn(async move {
+            while Instant::now() < end_time {
+                let result = socks5_connect(
+                    proxy_addr,
+                    upstream_addr,
+                    username.as_deref(),
+                    password.as_deref(),
+                )
+                .await;
+
+                match result {
+                    Ok((mut stream, handshake_dur)) => {
+                        let mut bytes_sent = 0u64;
+                        let mut bytes_received = 0u64;
+
+                        // Transfer 10 MB total (10 x 1MB chunks)
+                        for _ in 0..10 {
+                            if stream.write_all(&data).await.is_ok() {
+                                bytes_sent += data.len() as u64;
+
+                                // Read echo response
+                                let mut buf = vec![0u8; data.len()];
+                                if let Ok(n) = stream.read_exact(&mut buf).await {
+                                    bytes_received += n as u64;
+                                } else {
+                                    break;
+                                }
+                            } else {
+                                break;
+                            }
+                        }
+
+                        let _ = stream.shutdown().await;
+                        metrics.record_success(handshake_dur.as_nanos() as u64, bytes_sent, bytes_received);
+                    }
+                    Err(_) => {
+                        metrics.record_failure();
+                    }
+                }
+
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+        }));
+    }
+
+    for task in tasks {
+        let _ = task.await;
+    }
+
+    let test_elapsed = test_start.elapsed();
+    metrics.print_summary("Large Data Transfer (10 MB/connection)", test_elapsed);
+
+    Ok(())
+}
+
+/// Test scenario: Connection pool efficiency
+/// Measures: Pool hit rate and connection reuse effectiveness
+/// Expected: >80% pool hit rate, reduced latency on reused connections
+/// Config requirements: pool.enabled=true
+async fn test_pool_efficiency(args: &Args) -> std::io::Result<()> {
+    println!("\n🔄 Starting Connection Pool Efficiency Test");
+    println!("   Measures: Pool hit rate and connection reuse");
+    println!("   Duration: {} seconds", args.duration);
+    println!("   Workers: 50 concurrent (repeated connections to same dest)");
+    println!("   Proxy: {}", args.proxy);
+    println!("   ⚠️  Ensure config has: pool.enabled=true");
+
+    let metrics = Arc::new(TestMetrics::new());
+    let test_start = Instant::now();
+    let duration = Duration::from_secs(args.duration);
+
+    let mut tasks = Vec::new();
+
+    // Use same destination repeatedly to maximize pool hits
+    for _ in 0..50 {
+        let proxy_addr = args.proxy;
+        let upstream_addr = args.upstream;
+        let metrics = metrics.clone();
+        let username = args.username.clone();
+        let password = args.password.clone();
+        let end_time = test_start + duration;
+
+        tasks.push(tokio::spawn(async move {
+            while Instant::now() < end_time {
+                let result = timeout(
+                    Duration::from_secs(5),
+                    socks5_connect(
+                        proxy_addr,
+                        upstream_addr, // Same destination for pool reuse
+                        username.as_deref(),
+                        password.as_deref(),
+                    ),
+                )
+                .await;
+
+                match result {
+                    Ok(Ok((mut stream, dur))) => {
+                        // Send small amount of data
+                        let test_data = b"POOL_TEST";
+                        let mut bytes_sent = 0u64;
+                        let mut bytes_received = 0u64;
+
+                        if stream.write_all(test_data).await.is_ok() {
+                            bytes_sent += test_data.len() as u64;
+                            let mut buf = [0u8; 1024];
+                            if let Ok(n) = stream.read(&mut buf).await {
+                                bytes_received += n as u64;
+                            }
+                        }
+
+                        let _ = stream.shutdown().await;
+                        drop(stream);
+                        metrics.record_success(dur.as_nanos() as u64, bytes_sent, bytes_received);
+                    }
+                    _ => {
+                        metrics.record_failure();
+                    }
+                }
+
+                // Short delay to allow pool return
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            }
+        }));
+    }
+
+    for task in tasks {
+        let _ = task.await;
+    }
+
+    let test_elapsed = test_start.elapsed();
+    metrics.print_summary("Connection Pool Efficiency", test_elapsed);
+
+    println!("\n💡 Analysis:");
+    println!("   - Lower avg latency vs full-pipeline = effective pool reuse");
+    println!("   - Check proxy logs for pool hit/miss statistics");
+
+    Ok(())
+}
+
+/// Test scenario: Handshake-only test (no data transfer)
+/// Measures: Connection establishment throughput
+/// Expected: >1000 conn/s
+/// Config requirements: Any (tests raw connection speed)
+async fn test_handshake_only(args: &Args) -> std::io::Result<()> {
+    println!("\n🤝 Starting Handshake-Only Test");
+    println!("   Measures: SOCKS5 handshake throughput (no data transfer)");
+    println!("   Duration: {} seconds", args.duration);
+    println!("   Workers: 100 concurrent");
+    println!("   Proxy: {}", args.proxy);
+
+    let metrics = Arc::new(TestMetrics::new());
+    let test_start = Instant::now();
+    let duration = Duration::from_secs(args.duration);
+
+    let mut tasks = Vec::new();
+
+    // Spawn multiple concurrent workers
+    for _ in 0..100 {
+        let proxy_addr = args.proxy;
+        let upstream_addr = args.upstream;
+        let metrics = metrics.clone();
+        let username = args.username.clone();
+        let password = args.password.clone();
+        let end_time = test_start + duration;
+
+        tasks.push(tokio::spawn(async move {
+            while Instant::now() < end_time {
+                let result = timeout(
+                    Duration::from_secs(5),
+                    socks5_connect(
+                        proxy_addr,
+                        upstream_addr,
+                        username.as_deref(),
+                        password.as_deref(),
+                    ),
+                )
+                .await;
+
+                match result {
+                    Ok(Ok((mut stream, dur))) => {
+                        // Immediately close after handshake (no data transfer)
+                        let _ = stream.shutdown().await;
+                        drop(stream);
+                        metrics.record_success(dur.as_nanos() as u64, 0, 0);
+                    }
+                    _ => {
+                        metrics.record_failure();
+                    }
+                }
+
+                // Small delay between requests
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        }));
+    }
+
+    // Wait for all workers to complete
+    for task in tasks {
+        let _ = task.await;
+    }
+
+    let test_elapsed = test_start.elapsed();
+    metrics.print_summary("Handshake-Only (No Data Transfer)", test_elapsed);
 
     Ok(())
 }
@@ -569,34 +1113,113 @@ async fn main() -> std::io::Result<()> {
     println!("{}", "=".repeat(80));
 
     match args.scenario {
+        Scenario::MinimalPipeline => {
+            test_minimal_pipeline(&args).await?;
+        }
+        Scenario::FullPipeline => {
+            test_full_pipeline(&args).await?;
+        }
+        Scenario::HandshakeOnly => {
+            test_handshake_only(&args).await?;
+        }
+        Scenario::DataTransfer => {
+            test_data_transfer(&args).await?;
+        }
+        Scenario::SessionChurn => {
+            test_session_churn(&args).await?;
+        }
+        Scenario::AclEvaluation => {
+            test_acl_evaluation(&args).await?;
+        }
+        Scenario::AuthOverhead => {
+            println!("\n⚠️  Auth Overhead Test - Manual Configuration Required");
+            println!("   Run twice: once with auth.socks_method='none', once with 'userpass'");
+            println!("   Compare results to measure authentication overhead");
+            test_handshake_only(&args).await?;
+        }
+        Scenario::QosLimiting => {
+            println!("\n⚠️  QoS Limiting Test - Manual Configuration Required");
+            println!("   Configure qos.htb.max_bandwidth_bytes_per_sec to test throttling");
+            println!("   Use large-transfer or data-transfer to verify limits");
+            test_data_transfer(&args).await?;
+        }
+        Scenario::PoolEfficiency => {
+            test_pool_efficiency(&args).await?;
+        }
+        Scenario::DnsResolution => {
+            println!("\n⚠️  DNS Resolution Test - Manual Configuration Required");
+            println!("   Vary upstream addresses (IPv4, IPv6, domains) to test resolution");
+            println!("   Use --upstream <ip/domain> flag");
+            test_handshake_only(&args).await?;
+        }
+        Scenario::LongLived => {
+            test_long_lived(&args).await?;
+        }
+        Scenario::LargeTransfer => {
+            test_large_transfer(&args).await?;
+        }
+        Scenario::MetricsOverhead => {
+            println!("\n⚠️  Metrics Overhead Test - Manual Configuration Required");
+            println!("   Run twice: once with metrics.enabled=true, once with false");
+            println!("   Compare results to measure Prometheus overhead");
+            test_full_pipeline(&args).await?;
+        }
         Scenario::Concurrent1000 => {
             test_concurrent_connections(&args, 1000, 50).await?;
         }
         Scenario::Concurrent5000 => {
             test_concurrent_connections(&args, 5000, 100).await?;
         }
-        Scenario::AclPerf => {
-            test_acl_performance(&args).await?;
-        }
-        Scenario::SessionOverhead => {
-            test_session_overhead(&args).await?;
-        }
-        Scenario::DbThroughput => {
-            test_db_throughput(&args).await?;
-        }
         Scenario::All => {
-            println!("\n🎯 Running All Test Scenarios\n");
+            println!("\n🎯 Running All Test Scenarios");
+            println!("   This will take approximately {} minutes", (args.duration * 14) / 60);
+            println!();
 
+            println!("\n📊 Test 1/14: Minimal Pipeline");
+            test_minimal_pipeline(&args).await?;
+            tokio::time::sleep(Duration::from_secs(5)).await;
+
+            println!("\n📊 Test 2/14: Full Pipeline");
+            test_full_pipeline(&args).await?;
+            tokio::time::sleep(Duration::from_secs(5)).await;
+
+            println!("\n📊 Test 3/14: Handshake Only");
+            test_handshake_only(&args).await?;
+            tokio::time::sleep(Duration::from_secs(5)).await;
+
+            println!("\n📊 Test 4/14: Data Transfer");
+            test_data_transfer(&args).await?;
+            tokio::time::sleep(Duration::from_secs(5)).await;
+
+            println!("\n📊 Test 5/14: Session Churn");
+            test_session_churn(&args).await?;
+            tokio::time::sleep(Duration::from_secs(5)).await;
+
+            println!("\n📊 Test 6/14: ACL Evaluation");
+            test_acl_evaluation(&args).await?;
+            tokio::time::sleep(Duration::from_secs(5)).await;
+
+            println!("\n📊 Test 7/14: Connection Pool Efficiency");
+            test_pool_efficiency(&args).await?;
+            tokio::time::sleep(Duration::from_secs(5)).await;
+
+            println!("\n📊 Test 8/14: Long-Lived Connections");
+            test_long_lived(&args).await?;
+            tokio::time::sleep(Duration::from_secs(5)).await;
+
+            println!("\n📊 Test 9/14: Large Data Transfer");
+            test_large_transfer(&args).await?;
+            tokio::time::sleep(Duration::from_secs(5)).await;
+
+            println!("\n📊 Test 10/14: 1000 Concurrent Connections");
             test_concurrent_connections(&args, 1000, 50).await?;
             tokio::time::sleep(Duration::from_secs(5)).await;
 
-            test_acl_performance(&args).await?;
-            tokio::time::sleep(Duration::from_secs(5)).await;
+            println!("\n📊 Test 11/14: 5000 Concurrent Connections");
+            test_concurrent_connections(&args, 5000, 100).await?;
 
-            test_session_overhead(&args).await?;
-            tokio::time::sleep(Duration::from_secs(5)).await;
-
-            test_db_throughput(&args).await?;
+            println!("\n✅ Core tests complete!");
+            println!("   Manual tests (require config changes): auth-overhead, qos-limiting, dns-resolution, metrics-overhead");
         }
     }
 

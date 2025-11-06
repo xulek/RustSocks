@@ -3,7 +3,7 @@ use super::types::{AclConfig, AclDecision, Action, GlobalAclConfig, Protocol};
 use crate::protocol::Address;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::{debug, info, warn};
+use tracing::{info, warn};
 
 /// ACL Engine - evaluates ACL rules for connections
 pub struct AclEngine {
@@ -129,25 +129,18 @@ impl AclEngine {
         port: u16,
         protocol: &Protocol,
     ) -> (AclDecision, Option<String>) {
-        let config = self.config.read().await;
-
-        // Collect all rules for this user (user rules + group rules)
-        let all_rules = self.collect_rules(&config, user);
-        debug!(
-            user = user,
-            rule_count = all_rules.len(),
-            "Collected ACL rules for evaluation"
-        );
+        // OPTIMIZATION: Minimize RwLock hold time - clone only what we need and release lock immediately
+        let (all_rules, default_policy) = {
+            let config = self.config.read().await;
+            let rules = self.collect_rules(&config, user);
+            let policy = config.global.default_policy.clone();
+            (rules, policy)
+            // Lock released here
+        };
 
         if all_rules.is_empty() {
-            debug!(
-                user = user,
-                dest = ?dest,
-                port = port,
-                "No ACL rules for user, applying default policy"
-            );
             return (
-                AclDecision::from(&config.global.default_policy),
+                AclDecision::from(&default_policy),
                 Some("Default policy".to_string()),
             );
         }
@@ -155,34 +148,18 @@ impl AclEngine {
         // Evaluate rules in priority order (BLOCK rules first)
         for rule in &all_rules {
             if rule.matches(dest, port, protocol) {
-                let decision = AclDecision::from(&rule.action);
-
-                debug!(
-                    user = user,
-                    dest = ?dest,
-                    port = port,
-                    decision = ?decision,
-                    rule = rule.description,
-                    priority = rule.priority,
-                    "ACL rule matched"
+                return (
+                    AclDecision::from(&rule.action),
+                    Some(rule.description.clone()),
                 );
-
-                return (decision, Some(rule.description.clone()));
             }
         }
 
         // No rule matched - apply default policy
-        let decision = AclDecision::from(&config.global.default_policy);
-
-        debug!(
-            user = user,
-            dest = ?dest,
-            port = port,
-            decision = ?decision,
-            "No ACL rule matched, applying default policy"
-        );
-
-        (decision, Some("Default policy".to_string()))
+        (
+            AclDecision::from(&default_policy),
+            Some("Default policy".to_string()),
+        )
     }
 
     /// Evaluate ACL with dynamic groups from LDAP (via NSS/SSSD)
@@ -208,29 +185,18 @@ impl AclEngine {
         port: u16,
         protocol: &Protocol,
     ) -> (AclDecision, Option<String>) {
-        let config = self.config.read().await;
-
-        // Collect rules from user's LDAP groups (only those defined in ACL config)
-        let all_rules = self.collect_rules_from_groups(&config, user, user_groups);
-
-        debug!(
-            user = user,
-            ldap_groups = ?user_groups,
-            matched_groups = ?self.get_matched_groups(&config, user_groups),
-            rule_count = all_rules.len(),
-            "Collected ACL rules from LDAP groups for evaluation"
-        );
+        // OPTIMIZATION: Minimize RwLock hold time - clone only what we need and release lock immediately
+        let (all_rules, default_policy) = {
+            let config = self.config.read().await;
+            let rules = self.collect_rules_from_groups(&config, user, user_groups);
+            let policy = config.global.default_policy.clone();
+            (rules, policy)
+            // Lock released here
+        };
 
         if all_rules.is_empty() {
-            debug!(
-                user = user,
-                dest = ?dest,
-                port = port,
-                ldap_groups = ?user_groups,
-                "No ACL rules matched for user groups, applying default policy"
-            );
             return (
-                AclDecision::from(&config.global.default_policy),
+                AclDecision::from(&default_policy),
                 Some("Default policy (no matching groups)".to_string()),
             );
         }
@@ -238,34 +204,18 @@ impl AclEngine {
         // Evaluate rules in priority order (BLOCK rules first)
         for rule in &all_rules {
             if rule.matches(dest, port, protocol) {
-                let decision = AclDecision::from(&rule.action);
-
-                debug!(
-                    user = user,
-                    dest = ?dest,
-                    port = port,
-                    decision = ?decision,
-                    rule = rule.description,
-                    priority = rule.priority,
-                    "ACL rule matched from LDAP groups"
+                return (
+                    AclDecision::from(&rule.action),
+                    Some(rule.description.clone()),
                 );
-
-                return (decision, Some(rule.description.clone()));
             }
         }
 
         // No rule matched - apply default policy
-        let decision = AclDecision::from(&config.global.default_policy);
-
-        debug!(
-            user = user,
-            dest = ?dest,
-            port = port,
-            decision = ?decision,
-            "No ACL rule matched, applying default policy"
-        );
-
-        (decision, Some("Default policy".to_string()))
+        (
+            AclDecision::from(&default_policy),
+            Some("Default policy".to_string()),
+        )
     }
 
     /// Collect all rules for a user (user rules + group rules)
@@ -288,41 +238,16 @@ impl AclEngine {
             }
         }
 
-        // Note: Rules from different sources (user + groups) are already individually sorted,
-        // but when mixed together they may not maintain global sort order.
-        // However, this is acceptable because:
-        // 1. User rules should take precedence over group rules (added first)
-        // 2. Within each source, sorting is maintained (BLOCK first, then priority)
-        // 3. Re-sorting would negate the pre-sorting optimization
-        // If strict global ordering is required, uncomment the sort below:
-
-        // Re-sort combined rules to maintain global priority order
+        // OPTIMIZATION: Re-sort combined rules to maintain global priority order
         // This is needed because we're mixing user rules + group rules
-        all_rules.sort_by(|a, b| {
+        // Pre-sorted data sorts faster (O(n) for already sorted data with adaptive sort)
+        all_rules.sort_unstable_by(|a, b| {
             match (&a.action, &b.action) {
                 (Action::Block, Action::Allow) => std::cmp::Ordering::Less,
                 (Action::Allow, Action::Block) => std::cmp::Ordering::Greater,
                 _ => b.priority.cmp(&a.priority),
             }
         });
-
-        debug!(
-            user = user,
-            rules = ?all_rules
-                .iter()
-                .map(|r| {
-                    (
-                        &r.action,
-                        &r.description,
-                        r.priority,
-                        &r.destinations,
-                        &r.ports,
-                        &r.protocols,
-                    )
-                })
-                .collect::<Vec<_>>(),
-            "ACL rule order for user"
-        );
 
         all_rules
     }
@@ -356,26 +281,21 @@ impl AclEngine {
             all_rules.extend(user_acl.rules.clone());
         }
 
-        // Iterate through user's LDAP groups with O(1) lookup instead of O(n*m) nested loop
+        // OPTIMIZATION: Iterate through user's LDAP groups with O(1) lookup instead of O(n*m) nested loop
         for ldap_group in user_groups {
             let lowercase_group = ldap_group.to_ascii_lowercase();
             if let Some(group_acl) = config.groups_by_lowercase.get(&lowercase_group) {
-                debug!(
-                    ldap_group = ldap_group,
-                    acl_group = &group_acl.name,
-                    rule_count = group_acl.rules.len(),
-                    "Matched LDAP group to ACL group (O(1) lowercase lookup)"
-                );
                 // Cheap clone - just Arc increment, no deep copy
                 // Rules are already sorted during compilation
                 all_rules.extend(group_acl.rules.clone());
             }
         }
 
-        // Re-sort combined rules to maintain global priority order
+        // OPTIMIZATION: Re-sort combined rules to maintain global priority order
         // This is needed because we're mixing user rules + multiple group rules
         // Pre-sorting during compilation helps here (partially sorted data sorts faster)
-        all_rules.sort_by(|a, b| {
+        // Use sort_unstable_by for better performance (no stable sort needed for ACL rules)
+        all_rules.sort_unstable_by(|a, b| {
             match (&a.action, &b.action) {
                 (Action::Block, Action::Allow) => std::cmp::Ordering::Less,
                 (Action::Allow, Action::Block) => std::cmp::Ordering::Greater,
@@ -388,6 +308,7 @@ impl AclEngine {
     }
 
     /// Get list of LDAP groups that matched ACL groups (for debugging)
+    #[allow(dead_code)]
     fn get_matched_groups(
         &self,
         config: &CompiledAclConfig,
