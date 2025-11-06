@@ -65,6 +65,7 @@ default = ["metrics", "fast-allocator"]
 metrics = ["prometheus", "lazy_static"]
 database = ["sqlx"]
 fast-allocator = ["mimalloc"]
+gssapi = ["libgssapi"]
 
 [dev-dependencies]
 tokio-test = "0.4"
@@ -77,3 +78,4 @@ rcgen = "0.12"
 pam = "0.7"
 nix = { version = "0.27", features = ["user"] }  # For getgrouplist() - LDAP groups
 libc = "0.2"  # For getgrouplist() syscall
+libgssapi = { version = "0.7", optional = true }  # For GSS-API/Kerberos authentication
