@@ -923,7 +923,11 @@ async fn test_large_transfer(args: &Args) -> std::io::Result<()> {
                         }
 
                         let _ = stream.shutdown().await;
-                        metrics.record_success(handshake_dur.as_nanos() as u64, bytes_sent, bytes_received);
+                        metrics.record_success(
+                            handshake_dur.as_nanos() as u64,
+                            bytes_sent,
+                            bytes_received,
+                        );
                     }
                     Err(_) => {
                         metrics.record_failure();
@@ -1172,7 +1176,10 @@ async fn main() -> std::io::Result<()> {
         }
         Scenario::All => {
             println!("\n🎯 Running All Test Scenarios");
-            println!("   This will take approximately {} minutes", (args.duration * 14) / 60);
+            println!(
+                "   This will take approximately {} minutes",
+                (args.duration * 14) / 60
+            );
             println!();
 
             println!("\n📊 Test 1/14: Minimal Pipeline");

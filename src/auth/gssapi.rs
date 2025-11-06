@@ -4,8 +4,8 @@
 
 use crate::config::GssApiSettings;
 use crate::protocol::{
-    parse_gssapi_message, send_gssapi_abort, send_gssapi_message, GssApiMessage,
-    GssApiMessageType, GssApiProtectionLevel,
+    parse_gssapi_message, send_gssapi_abort, send_gssapi_message, GssApiMessage, GssApiMessageType,
+    GssApiProtectionLevel,
 };
 use crate::utils::error::{Result, RustSocksError};
 use std::fmt;
@@ -148,13 +148,17 @@ impl GssApiAuthenticator {
             })
             .await
             .map_err(|e| GssApiAuthError::System(format!("Task join error: {}", e)))?
-            .map_err(|e| GssApiAuthError::Config(format!("Failed to load server credentials: {}", e)))?
+            .map_err(|e| {
+                GssApiAuthError::Config(format!("Failed to load server credentials: {}", e))
+            })?
         } else {
             // Use default credentials
             task::spawn_blocking(|| Cred::acquire(None, None, CredUsage::Accept, None))
                 .await
                 .map_err(|e| GssApiAuthError::System(format!("Task join error: {}", e)))?
-                .map_err(|e| GssApiAuthError::Config(format!("Failed to acquire server credentials: {}", e)))?
+                .map_err(|e| {
+                    GssApiAuthError::Config(format!("Failed to acquire server credentials: {}", e))
+                })?
         };
 
         // Context establishment loop
@@ -163,9 +167,9 @@ impl GssApiAuthenticator {
 
         loop {
             // Receive authentication token from client
-            let client_msg = parse_gssapi_message(stream)
-                .await
-                .map_err(|e| GssApiAuthError::System(format!("Failed to parse GSS-API message: {}", e)))?;
+            let client_msg = parse_gssapi_message(stream).await.map_err(|e| {
+                GssApiAuthError::System(format!("Failed to parse GSS-API message: {}", e))
+            })?;
 
             // Check for abort
             if client_msg.message_type == GssApiMessageType::Abort {
@@ -190,7 +194,10 @@ impl GssApiAuthenticator {
                 )));
             }
 
-            trace!("Received authentication token ({} bytes)", client_msg.token.len());
+            trace!(
+                "Received authentication token ({} bytes)",
+                client_msg.token.len()
+            );
 
             // Process token in blocking task
             let server_cred_clone = server_cred.clone();
@@ -201,8 +208,7 @@ impl GssApiAuthenticator {
                     ctx.step(&token)
                 } else {
                     // Initialize new context
-                    ServerCtx::new(server_cred_clone)
-                        .and_then(|ctx| ctx.step(&token))
+                    ServerCtx::new(server_cred_clone).and_then(|ctx| ctx.step(&token))
                 }
             })
             .await
@@ -223,34 +229,42 @@ impl GssApiAuthenticator {
                             response_token,
                         )
                         .await
-                        .map_err(|e| GssApiAuthError::System(format!("Failed to send response: {}", e)))?;
+                        .map_err(|e| {
+                            GssApiAuthError::System(format!("Failed to send response: {}", e))
+                        })?;
 
                         // Get authenticated username
-                        let src_name = ctx.source_name()
-                            .map_err(|e| GssApiAuthError::System(format!("Failed to get source name: {}", e)))?;
+                        let src_name = ctx.source_name().map_err(|e| {
+                            GssApiAuthError::System(format!("Failed to get source name: {}", e))
+                        })?;
                         username = Some(src_name.to_string());
 
                         server_ctx = Some(ctx);
                         break; // Context established, proceed to protection negotiation
                     } else {
                         // Continue authentication
-                        trace!("Sending continuation token ({} bytes)", response_token.len());
+                        trace!(
+                            "Sending continuation token ({} bytes)",
+                            response_token.len()
+                        );
                         send_gssapi_message(
                             stream,
                             GssApiMessageType::Authentication,
                             response_token,
                         )
                         .await
-                        .map_err(|e| GssApiAuthError::System(format!("Failed to send response: {}", e)))?;
+                        .map_err(|e| {
+                            GssApiAuthError::System(format!("Failed to send response: {}", e))
+                        })?;
 
                         server_ctx = Some(ctx);
                     }
                 }
                 Err(e) => {
                     error!("GSS-API context step failed: {}", e);
-                    send_gssapi_abort(stream)
-                        .await
-                        .map_err(|e2| GssApiAuthError::System(format!("Failed to send abort: {}", e2)))?;
+                    send_gssapi_abort(stream).await.map_err(|e2| {
+                        GssApiAuthError::System(format!("Failed to send abort: {}", e2))
+                    })?;
                     return Err(GssApiAuthError::AuthFailed(format!(
                         "Context establishment failed: {}",
                         e
@@ -263,9 +277,8 @@ impl GssApiAuthenticator {
             GssApiAuthError::AuthFailed("No username obtained from GSS-API context".to_string())
         })?;
 
-        let ctx = server_ctx.ok_or_else(|| {
-            GssApiAuthError::AuthFailed("No context established".to_string())
-        })?;
+        let ctx = server_ctx
+            .ok_or_else(|| GssApiAuthError::AuthFailed("No context established".to_string()))?;
 
         info!(user = %username, "GSS-API authentication successful");
 
@@ -306,9 +319,9 @@ impl GssApiAuthenticator {
         debug!("Starting protection level negotiation");
 
         // Receive client's protection level proposal
-        let client_msg = parse_gssapi_message(stream)
-            .await
-            .map_err(|e| GssApiAuthError::System(format!("Failed to parse protection message: {}", e)))?;
+        let client_msg = parse_gssapi_message(stream).await.map_err(|e| {
+            GssApiAuthError::System(format!("Failed to parse protection message: {}", e))
+        })?;
 
         if client_msg.message_type != GssApiMessageType::ProtectionLevelNegotiation {
             error!(
@@ -334,7 +347,9 @@ impl GssApiAuthenticator {
         })
         .await
         .map_err(|e| GssApiAuthError::System(format!("Task join error: {}", e)))?
-        .map_err(|e| GssApiAuthError::AuthFailed(format!("Failed to unwrap protection level: {}", e)))?;
+        .map_err(|e| {
+            GssApiAuthError::AuthFailed(format!("Failed to unwrap protection level: {}", e))
+        })?;
 
         let client_level = GssApiProtectionLevel::from(protection_byte);
 
@@ -358,12 +373,12 @@ impl GssApiAuthenticator {
         // Wrap the chosen level with gss_wrap/gss_get_mic
         let ctx_clone = ctx.clone();
         let level_byte = chosen_level as u8;
-        let wrapped_token = task::spawn_blocking(move || {
-            ctx_clone.wrap(false, &[level_byte])
-        })
-        .await
-        .map_err(|e| GssApiAuthError::System(format!("Task join error: {}", e)))?
-        .map_err(|e| GssApiAuthError::AuthFailed(format!("Failed to wrap protection level: {}", e)))?;
+        let wrapped_token = task::spawn_blocking(move || ctx_clone.wrap(false, &[level_byte]))
+            .await
+            .map_err(|e| GssApiAuthError::System(format!("Task join error: {}", e)))?
+            .map_err(|e| {
+                GssApiAuthError::AuthFailed(format!("Failed to wrap protection level: {}", e))
+            })?;
 
         // Send response
         send_gssapi_message(

@@ -1,11 +1,11 @@
 mod groups;
-mod pam;
 #[cfg(feature = "gssapi")]
 mod gssapi;
+mod pam;
 
-use self::pam::{PamAuthError, PamAuthenticator, PamMethod};
 #[cfg(feature = "gssapi")]
 use self::gssapi::{GssApiAuthError, GssApiAuthenticator};
+use self::pam::{PamAuthError, PamAuthenticator, PamMethod};
 use crate::config::AuthConfig;
 use crate::protocol::{parse_userpass_auth, send_auth_response, AuthMethod};
 use crate::utils::error::{Result, RustSocksError};
@@ -66,8 +66,8 @@ impl AuthManager {
             }
             #[cfg(feature = "gssapi")]
             "gssapi" => {
-                let authenticator = GssApiAuthenticator::new(&config.gssapi)
-                    .map_err(map_gssapi_config_error)?;
+                let authenticator =
+                    GssApiAuthenticator::new(&config.gssapi).map_err(map_gssapi_config_error)?;
                 Ok(AuthBackend::Gssapi(authenticator))
             }
             other => Err(RustSocksError::Config(format!(
@@ -286,9 +286,7 @@ fn map_pam_runtime_error(err: PamAuthError) -> RustSocksError {
 #[cfg(feature = "gssapi")]
 fn map_gssapi_config_error(err: GssApiAuthError) -> RustSocksError {
     match err {
-        GssApiAuthError::Config(msg) | GssApiAuthError::System(msg) => {
-            RustSocksError::Config(msg)
-        }
+        GssApiAuthError::Config(msg) | GssApiAuthError::System(msg) => RustSocksError::Config(msg),
         GssApiAuthError::NotSupported(msg) => RustSocksError::Config(msg),
         GssApiAuthError::AuthFailed(msg) => RustSocksError::AuthFailed(msg),
     }
