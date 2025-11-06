@@ -53,6 +53,7 @@ async fn acl_blocks_connection_and_tracks_stats() {
             socks_method: "none".into(),
             users: Vec::new(),
             pam: PamSettings::default(),
+            gssapi: Default::default(),
         })
         .expect("auth manager"),
     );
@@ -168,6 +169,7 @@ async fn spawn_allow_env(expected: usize) -> AllowEnv {
             socks_method: "none".into(),
             users: Vec::new(),
             pam: PamSettings::default(),
+            gssapi: Default::default(),
         })
         .expect("auth manager"),
     );

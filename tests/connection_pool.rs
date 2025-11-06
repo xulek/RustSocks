@@ -21,6 +21,7 @@ async fn connection_pool_reuses_upstream_connections() {
         socks_method: "none".to_string(),
         users: vec![],
         pam: Default::default(),
+        gssapi: Default::default(),
     };
     let auth_manager = Arc::new(AuthManager::new(&auth_config).unwrap());
     let acl_stats = Arc::new(AclStats::new());

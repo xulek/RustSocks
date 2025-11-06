@@ -39,6 +39,7 @@ mod unix_tests {
             socks_method: "pam.username".to_string(),
             users: vec![],
             pam: pam_settings(),
+            gssapi: Default::default(),
         };
 
         let result = AuthManager::new(&config);
@@ -56,6 +57,7 @@ mod unix_tests {
             socks_method: "none".to_string(),
             users: vec![],
             pam: pam_settings(),
+            gssapi: Default::default(),
         };
 
         let result = AuthManager::new(&config);
@@ -73,6 +75,7 @@ mod unix_tests {
             socks_method: "none".to_string(),
             users: vec![],
             pam: pam_settings(),
+            gssapi: Default::default(),
         };
 
         let auth_manager = AuthManager::new(&config).expect("Failed to create auth manager");
@@ -101,6 +104,7 @@ mod unix_tests {
                 username_service: "".to_string(), // Empty!
                 ..pam_settings()
             },
+            gssapi: Default::default(),
         };
 
         let result = AuthManager::new(&config);
@@ -122,6 +126,7 @@ mod unix_tests {
             socks_method: "pam.username".to_string(),
             users: vec![],
             pam: pam_settings(),
+            gssapi: Default::default(),
         };
 
         let result = AuthManager::new(&config);
@@ -160,6 +165,7 @@ mod unix_tests {
             socks_method: "none".to_string(),
             users: vec![],
             pam: pam_settings(),
+            gssapi: Default::default(),
         };
 
         let auth_manager = AuthManager::new(&config).expect("Failed to create auth manager");
@@ -180,6 +186,7 @@ mod unix_tests {
             socks_method: "none".to_string(),
             users: vec![],
             pam: pam_settings(),
+            gssapi: Default::default(),
         };
 
         let auth_manager = AuthManager::new(&config).expect("Failed to create auth manager");
@@ -212,6 +219,7 @@ mod unix_tests {
             socks_method: "none".to_string(),
             users: vec![],
             pam: pam_settings(),
+            gssapi: Default::default(),
         };
 
         let auth_manager =
@@ -257,6 +265,7 @@ mod unix_tests {
                 verbose: false,
                 verify_service: false,
             },
+            gssapi: Default::default(),
         };
 
         // Empty username_service should fail
@@ -287,6 +296,7 @@ mod unix_tests {
                 verbose: false,
                 verify_service: false,
             },
+            gssapi: Default::default(),
         };
 
         // Empty address_service should fail
@@ -310,6 +320,7 @@ mod unix_tests {
                 verbose: true, // Enable verbose
                 verify_service: false,
             },
+            gssapi: Default::default(),
         };
 
         // Should succeed with verbose enabled
@@ -332,6 +343,7 @@ mod unix_tests {
                 verbose: false,
                 verify_service: false,
             },
+            gssapi: Default::default(),
         };
 
         let result = AuthManager::new(&config);
@@ -350,6 +362,7 @@ mod non_unix_tests {
             socks_method: "pam.username".to_string(),
             users: vec![],
             pam: pam_settings(),
+            gssapi: Default::default(),
         };
 
         let result = AuthManager::new(&config);
@@ -372,6 +385,7 @@ mod non_unix_tests {
             socks_method: "none".to_string(),
             users: vec![],
             pam: pam_settings(),
+            gssapi: Default::default(),
         };
 
         let result = AuthManager::new(&config);
@@ -422,6 +436,7 @@ async fn test_none_auth_works() {
         socks_method: "none".to_string(),
         users: vec![],
         pam: PamSettings::default(),
+        gssapi: Default::default(),
     };
 
     let auth_manager = AuthManager::new(&config).expect("None auth should always work");
