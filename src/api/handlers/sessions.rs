@@ -409,7 +409,7 @@ pub async fn get_user_sessions(
     State(state): State<ApiState>,
     Path(user): Path<String>,
 ) -> (StatusCode, Json<Vec<SessionResponse>>) {
-    let all_sessions: Vec<Session> = Vec::new();
+    let mut all_sessions: Vec<Session> = Vec::new();
 
     // Try to fetch from database first (includes historical sessions)
     #[cfg(feature = "database")]
