@@ -18,6 +18,7 @@ A modern, high-performance SOCKS5 proxy server written in Rust, featuring advanc
 - **🔐 Multi-Layer Authentication**
   - NoAuth, Username/Password (RFC 1929)
   - PAM integration (IP-based & username/password authentication)
+  - **Active Directory / LDAP integration** (via SSSD/NSS)
   - Two-tier authentication (client-level + SOCKS-level)
   - Cross-platform support (Unix/Linux + Windows)
 
@@ -458,6 +459,97 @@ Access the admin dashboard at **http://127.0.0.1:9090** (when enabled):
 | **PAM Username** | System PAM module | High - leverages system auth |
 
 **Recommended:** Combine TLS + PAM for maximum security.
+
+---
+
+## Active Directory Integration
+
+RustSocks provides **native Active Directory integration** for enterprise environments, enabling authentication and group-based access control using your existing Windows AD infrastructure.
+
+### Features
+
+- ✅ **Seamless AD Authentication** - Users authenticate with their AD credentials
+- ✅ **Automatic Group Resolution** - AD security groups retrieved automatically via SSSD
+- ✅ **Group-Based ACL Rules** - Control access using AD groups (e.g., Developers, Temps, Admins)
+- ✅ **Kerberos Support** - Secure, encrypted authentication
+- ✅ **Works with Azure AD DS** - Compatible with Azure Active Directory Domain Services
+- ✅ **No Code Changes Required** - Uses standard Unix authentication stack (PAM/SSSD/NSS)
+
+### Quick Setup
+
+1. **Join Linux server to AD domain:**
+   ```bash
+   sudo realm join --user=administrator ad.company.com
+   ```
+
+2. **Configure PAM service** (`/etc/pam.d/rustsocks`):
+   ```
+   auth required pam_sss.so
+   account required pam_sss.so
+   ```
+
+3. **Configure RustSocks** (`config/rustsocks.toml`):
+   ```toml
+   [auth]
+   socks_method = "pam.username"
+
+   [acl]
+   enabled = true
+   config_file = "config/acl.toml"
+   ```
+
+4. **Define ACL rules with AD groups** (`config/acl.toml`):
+   ```toml
+   [[groups]]
+   name = "Developers@ad.company.com"
+     [[groups.rules]]
+     action = "allow"
+     destinations = ["*.dev.company.com"]
+     ports = ["*"]
+     priority = 100
+
+   [[groups]]
+   name = "Temps@ad.company.com"
+     [[groups.rules]]
+     action = "allow"
+     destinations = ["*.company.com"]  # Only company sites
+     ports = ["80", "443"]
+     priority = 50
+   ```
+
+5. **Test connection:**
+   ```bash
+   # Authenticate with AD credentials
+   curl -x socks5://alice:PASSWORD@localhost:1080 http://example.com
+   ```
+
+### Use Cases
+
+**Scenario:** Temporary employees need access to work sites only, while full employees have broader access.
+
+**Solution:** Create AD groups ("Temps", "Employees") and define ACL rules:
+- **Temps group:** Allow `*.company.com` and essential services only
+- **Employees group:** Allow all destinations except social media
+- **Admins group:** Unrestricted access
+
+### Documentation
+
+📖 **Complete Guide:** [Active Directory Integration Guide](docs/guides/active-directory.md)
+
+The guide covers:
+- Step-by-step AD domain join instructions
+- SSSD and Kerberos configuration
+- ACL rules with AD groups examples
+- Troubleshooting and best practices
+- Multi-domain and Azure AD DS support
+
+### Example Configuration Files
+
+All example configurations are available in `config/examples/`:
+- `sssd-ad.conf` - SSSD configuration for AD
+- `krb5-ad.conf` - Kerberos configuration
+- `acl-ad-example.toml` - ACL rules with AD groups
+- `rustsocks-ad.toml` - Complete RustSocks config for AD
 
 ---
 
