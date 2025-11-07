@@ -483,6 +483,107 @@ pub fn serialize_udp_packet(packet: &UdpPacket) -> Vec<u8> {
     buf
 }
 
+/// Parse GSS-API message (RFC 1961)
+/// Format: +------+------+------+.......................+
+///         | ver  | mtyp | len  |       token           |
+///         +------+------+------+.......................+
+///         | 0x01 | 0x?? | 0x02 | up to 2^16-1 octets  |
+pub async fn parse_gssapi_message<S>(stream: &mut S) -> Result<GssApiMessage>
+where
+    S: AsyncRead + AsyncWrite + Unpin + Send,
+{
+    // Read version (1 byte)
+    let version = stream.read_u8().await?;
+
+    if version != 0x01 {
+        return Err(RustSocksError::Protocol(format!(
+            "Unsupported GSS-API message version: 0x{:02x}",
+            version
+        )));
+    }
+
+    // Read message type (1 byte)
+    let mtyp = stream.read_u8().await?;
+    let message_type = GssApiMessageType::from(mtyp);
+
+    // Check for abort message (no length/token)
+    if message_type == GssApiMessageType::Abort {
+        trace!("Received GSS-API abort message");
+        return Ok(GssApiMessage {
+            version,
+            message_type,
+            token: Vec::new(),
+        });
+    }
+
+    // Read token length (2 bytes, big-endian)
+    let token_len = stream.read_u16().await? as usize;
+
+    // Read token
+    let mut token = vec![0u8; token_len];
+    stream.read_exact(&mut token).await?;
+
+    trace!(
+        "Parsed GSS-API message: version={}, type={:?}, token_len={}",
+        version,
+        message_type,
+        token_len
+    );
+
+    Ok(GssApiMessage {
+        version,
+        message_type,
+        token,
+    })
+}
+
+/// Send GSS-API message (RFC 1961)
+pub async fn send_gssapi_message<S>(
+    stream: &mut S,
+    message_type: GssApiMessageType,
+    token: &[u8],
+) -> Result<()>
+where
+    S: AsyncRead + AsyncWrite + Unpin + Send,
+{
+    let mut buf = Vec::new();
+
+    // Version (1 byte)
+    buf.push(0x01);
+
+    // Message type (1 byte)
+    buf.push(message_type as u8);
+
+    // For abort messages, don't send length/token
+    if message_type != GssApiMessageType::Abort {
+        // Token length (2 bytes, big-endian)
+        let token_len = token.len() as u16;
+        buf.extend_from_slice(&token_len.to_be_bytes());
+
+        // Token
+        buf.extend_from_slice(token);
+    }
+
+    stream.write_all(&buf).await?;
+    stream.flush().await?;
+
+    trace!(
+        "Sent GSS-API message: type={:?}, token_len={}",
+        message_type,
+        token.len()
+    );
+
+    Ok(())
+}
+
+/// Send GSS-API abort message (RFC 1961)
+pub async fn send_gssapi_abort<S>(stream: &mut S) -> Result<()>
+where
+    S: AsyncRead + AsyncWrite + Unpin + Send,
+{
+    send_gssapi_message(stream, GssApiMessageType::Abort, &[]).await
+}
+
 #[cfg(test)]
 mod tests {
     use super::{parse_socks5_client_greeting, AuthMethod, SOCKS_VERSION};

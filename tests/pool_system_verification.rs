@@ -59,6 +59,7 @@ async fn spawn_socks_with_pooling(
         socks_method: "none".to_string(),
         users: vec![],
         pam: Default::default(),
+        gssapi: Default::default(),
     };
 
     let auth_manager = Arc::new(AuthManager::new(&auth_config).unwrap());

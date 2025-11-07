@@ -18,6 +18,7 @@ async fn bind_basic_handshake() {
         socks_method: "none".to_string(),
         users: vec![],
         pam: PamSettings::default(),
+        gssapi: Default::default(),
     };
     let auth_manager = Arc::new(AuthManager::new(&auth_config).unwrap());
     let acl_stats = Arc::new(AclStats::new());
@@ -102,6 +103,7 @@ async fn bind_with_incoming_connection() {
         socks_method: "none".to_string(),
         users: vec![],
         pam: PamSettings::default(),
+        gssapi: Default::default(),
     };
     let auth_manager = Arc::new(AuthManager::new(&auth_config).unwrap());
     let acl_stats = Arc::new(AclStats::new());
@@ -226,6 +228,7 @@ username = "anonymous"
         socks_method: "none".to_string(),
         users: vec![],
         pam: PamSettings::default(),
+        gssapi: Default::default(),
     };
     let auth_manager = Arc::new(AuthManager::new(&auth_config).unwrap());
     let acl_stats = Arc::new(AclStats::new());
@@ -311,6 +314,7 @@ username = "anonymous"
         socks_method: "none".to_string(),
         users: vec![],
         pam: PamSettings::default(),
+        gssapi: Default::default(),
     };
     let auth_manager = Arc::new(AuthManager::new(&auth_config).unwrap());
     let acl_stats = Arc::new(AclStats::new());

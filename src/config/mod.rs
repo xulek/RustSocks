@@ -71,11 +71,13 @@ pub struct AuthConfig {
     #[serde(default = "default_client_method")]
     pub client_method: String, // "none", "pam.address"
     #[serde(default = "default_socks_method", alias = "method")]
-    pub socks_method: String, // "none", "userpass", "pam.address", "pam.username"
+    pub socks_method: String, // "none", "userpass", "pam.address", "pam.username", "gssapi"
     #[serde(default)]
     pub users: Vec<User>,
     #[serde(default)]
     pub pam: PamSettings,
+    #[serde(default)]
+    pub gssapi: GssApiSettings,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -98,6 +100,18 @@ pub struct PamSettings {
     pub verbose: bool,
     #[serde(default)]
     pub verify_service: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GssApiSettings {
+    #[serde(default = "default_gssapi_service_name")]
+    pub service_name: String,
+    #[serde(default)]
+    pub keytab_path: Option<String>,
+    #[serde(default = "default_gssapi_protection_level")]
+    pub protection_level: String,
+    #[serde(default)]
+    pub verbose: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -211,6 +225,14 @@ fn default_pam_default_user() -> String {
 
 fn default_pam_default_ruser() -> String {
     "rhostusr".to_string()
+}
+
+fn default_gssapi_service_name() -> String {
+    "socks".to_string()
+}
+
+fn default_gssapi_protection_level() -> String {
+    "integrity".to_string()
 }
 
 fn default_log_level() -> String {
@@ -405,6 +427,7 @@ impl Default for AuthConfig {
             socks_method: default_socks_method(),
             users: Vec::new(),
             pam: PamSettings::default(),
+            gssapi: GssApiSettings::default(),
         }
     }
 }
@@ -418,6 +441,17 @@ impl Default for PamSettings {
             default_ruser: default_pam_default_ruser(),
             verbose: false,
             verify_service: false,
+        }
+    }
+}
+
+impl Default for GssApiSettings {
+    fn default() -> Self {
+        Self {
+            service_name: default_gssapi_service_name(),
+            keytab_path: None,
+            protection_level: default_gssapi_protection_level(),
+            verbose: false,
         }
     }
 }

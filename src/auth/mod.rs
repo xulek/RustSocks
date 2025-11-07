@@ -1,6 +1,10 @@
 mod groups;
+#[cfg(feature = "gssapi")]
+mod gssapi;
 mod pam;
 
+#[cfg(feature = "gssapi")]
+use self::gssapi::{GssApiAuthError, GssApiAuthenticator};
 use self::pam::{PamAuthError, PamAuthenticator, PamMethod};
 use crate::config::AuthConfig;
 use crate::protocol::{parse_userpass_auth, send_auth_response, AuthMethod};
@@ -21,6 +25,8 @@ enum AuthBackend {
     UserPass(UserPassAuthenticator),
     PamAddress(PamAuthenticator),
     PamUsername(PamAuthenticator),
+    #[cfg(feature = "gssapi")]
+    Gssapi(GssApiAuthenticator),
 }
 
 struct UserPassAuthenticator {
@@ -58,6 +64,12 @@ impl AuthManager {
                     .map_err(map_pam_config_error)?;
                 Ok(AuthBackend::PamUsername(authenticator))
             }
+            #[cfg(feature = "gssapi")]
+            "gssapi" => {
+                let authenticator =
+                    GssApiAuthenticator::new(&config.gssapi).map_err(map_gssapi_config_error)?;
+                Ok(AuthBackend::Gssapi(authenticator))
+            }
             other => Err(RustSocksError::Config(format!(
                 "Unsupported authentication method: {}",
                 other
@@ -70,6 +82,8 @@ impl AuthManager {
         match self.socks_backend {
             AuthBackend::None | AuthBackend::PamAddress(_) => AuthMethod::NoAuth,
             AuthBackend::UserPass(_) | AuthBackend::PamUsername(_) => AuthMethod::UserPass,
+            #[cfg(feature = "gssapi")]
+            AuthBackend::Gssapi(_) => AuthMethod::Gssapi,
         }
     }
 
@@ -95,6 +109,14 @@ impl AuthManager {
                 .authenticate_address(client_ip)
                 .await
                 .map_err(map_pam_runtime_error),
+            #[cfg(feature = "gssapi")]
+            AuthBackend::UserPass(_) | AuthBackend::PamUsername(_) | AuthBackend::Gssapi(_) => {
+                Err(RustSocksError::Config(
+                    "Invalid client auth configuration: only none or pam.address are supported"
+                        .to_string(),
+                ))
+            }
+            #[cfg(not(feature = "gssapi"))]
             AuthBackend::UserPass(_) | AuthBackend::PamUsername(_) => Err(RustSocksError::Config(
                 "Invalid client auth configuration: only none or pam.address are supported"
                     .to_string(),
@@ -202,6 +224,26 @@ impl AuthManager {
                     }
                 }
             }
+            #[cfg(feature = "gssapi")]
+            (AuthBackend::Gssapi(gssapi), AuthMethod::Gssapi) => {
+                debug!("Performing GSS-API authentication");
+
+                match gssapi.authenticate(stream).await {
+                    Ok((username, groups)) => {
+                        info!(
+                            user = %username,
+                            group_count = groups.len(),
+                            groups = ?groups,
+                            "GSS-API authentication successful with groups"
+                        );
+                        Ok(Some((username, groups)))
+                    }
+                    Err(e) => {
+                        warn!(error = ?e, "GSS-API authentication failed");
+                        Err(map_gssapi_runtime_error(e))
+                    }
+                }
+            }
             _ => {
                 warn!(
                     "Authentication method mismatch: expected {:?}, got {:?}",
@@ -241,6 +283,26 @@ fn map_pam_runtime_error(err: PamAuthError) -> RustSocksError {
     }
 }
 
+#[cfg(feature = "gssapi")]
+fn map_gssapi_config_error(err: GssApiAuthError) -> RustSocksError {
+    match err {
+        GssApiAuthError::Config(msg) | GssApiAuthError::System(msg) => RustSocksError::Config(msg),
+        GssApiAuthError::NotSupported(msg) => RustSocksError::Config(msg),
+        GssApiAuthError::AuthFailed(msg) => RustSocksError::AuthFailed(msg),
+    }
+}
+
+#[cfg(feature = "gssapi")]
+fn map_gssapi_runtime_error(err: GssApiAuthError) -> RustSocksError {
+    match err {
+        GssApiAuthError::AuthFailed(msg) => RustSocksError::AuthFailed(msg),
+        GssApiAuthError::Config(msg) | GssApiAuthError::NotSupported(msg) => {
+            RustSocksError::Config(msg)
+        }
+        GssApiAuthError::System(msg) => RustSocksError::AuthFailed(msg),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -255,6 +317,7 @@ mod tests {
                 password: "secret123".to_string(),
             }],
             pam: PamSettings::default(),
+            gssapi: crate::config::GssApiSettings::default(),
         }
     }
 

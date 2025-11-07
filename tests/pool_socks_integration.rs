@@ -30,6 +30,7 @@ async fn pool_integrates_with_socks5_multiple_requests() {
         socks_method: "none".to_string(),
         users: vec![],
         pam: Default::default(),
+        gssapi: Default::default(),
     };
 
     let ctx = Arc::new(ClientHandlerContext {
@@ -153,6 +154,7 @@ async fn pool_handles_connection_failure_mid_request() {
         socks_method: "none".to_string(),
         users: vec![],
         pam: Default::default(),
+        gssapi: Default::default(),
     };
 
     let ctx = Arc::new(ClientHandlerContext {
@@ -230,6 +232,7 @@ async fn pool_with_pooling_disabled_still_works() {
         socks_method: "none".to_string(),
         users: vec![],
         pam: Default::default(),
+        gssapi: Default::default(),
     };
 
     let ctx = Arc::new(ClientHandlerContext {
@@ -322,6 +325,7 @@ async fn pool_stats_reflect_real_usage() {
         socks_method: "none".to_string(),
         users: vec![],
         pam: Default::default(),
+        gssapi: Default::default(),
     };
 
     let ctx = Arc::new(ClientHandlerContext {

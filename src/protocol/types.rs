@@ -184,3 +184,58 @@ pub enum SocksProtocol {
     V4,
     V5,
 }
+
+/// GSS-API message types (RFC 1961)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum GssApiMessageType {
+    Authentication = 0x01,
+    ProtectionLevelNegotiation = 0x02,
+    Encapsulation = 0x03,
+    Abort = 0xFF,
+}
+
+impl From<u8> for GssApiMessageType {
+    fn from(value: u8) -> Self {
+        match value {
+            0x01 => GssApiMessageType::Authentication,
+            0x02 => GssApiMessageType::ProtectionLevelNegotiation,
+            0x03 => GssApiMessageType::Encapsulation,
+            _ => GssApiMessageType::Abort,
+        }
+    }
+}
+
+/// GSS-API message format (RFC 1961)
+/// +------+------+------+.......................+
+/// | ver  | mtyp | len  |       token           |
+/// +------+------+------+.......................+
+/// | 0x01 | 0x?? | 0x02 | up to 2^16-1 octets  |
+#[derive(Debug, Clone)]
+pub struct GssApiMessage {
+    pub version: u8,
+    pub message_type: GssApiMessageType,
+    pub token: Vec<u8>,
+}
+
+/// GSS-API protection levels (RFC 1961 Section 4)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum GssApiProtectionLevel {
+    /// Per-message integrity only
+    Integrity = 0x01,
+    /// Per-message integrity and confidentiality
+    Confidentiality = 0x02,
+    /// Selective protection based on local configuration
+    Selective = 0x03,
+}
+
+impl From<u8> for GssApiProtectionLevel {
+    fn from(value: u8) -> Self {
+        match value {
+            0x01 => GssApiProtectionLevel::Integrity,
+            0x02 => GssApiProtectionLevel::Confidentiality,
+            _ => GssApiProtectionLevel::Selective,
+        }
+    }
+}

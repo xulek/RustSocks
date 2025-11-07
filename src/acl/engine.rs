@@ -63,12 +63,10 @@ impl AclEngine {
 
             // Pre-sort rules during compilation (optimization: avoid per-evaluation sorting)
             // BLOCK rules first, then by priority descending
-            compiled_rules.sort_by(|a, b| {
-                match (&a.action, &b.action) {
-                    (Action::Block, Action::Allow) => std::cmp::Ordering::Less,
-                    (Action::Allow, Action::Block) => std::cmp::Ordering::Greater,
-                    _ => b.priority.cmp(&a.priority),
-                }
+            compiled_rules.sort_by(|a, b| match (&a.action, &b.action) {
+                (Action::Block, Action::Allow) => std::cmp::Ordering::Less,
+                (Action::Allow, Action::Block) => std::cmp::Ordering::Greater,
+                _ => b.priority.cmp(&a.priority),
             });
 
             users.insert(
@@ -91,12 +89,10 @@ impl AclEngine {
 
             // Pre-sort rules during compilation (optimization: avoid per-evaluation sorting)
             // BLOCK rules first, then by priority descending
-            compiled_rules.sort_by(|a, b| {
-                match (&a.action, &b.action) {
-                    (Action::Block, Action::Allow) => std::cmp::Ordering::Less,
-                    (Action::Allow, Action::Block) => std::cmp::Ordering::Greater,
-                    _ => b.priority.cmp(&a.priority),
-                }
+            compiled_rules.sort_by(|a, b| match (&a.action, &b.action) {
+                (Action::Block, Action::Allow) => std::cmp::Ordering::Less,
+                (Action::Allow, Action::Block) => std::cmp::Ordering::Greater,
+                _ => b.priority.cmp(&a.priority),
             });
 
             let compiled_group = CompiledGroupAcl {
@@ -106,10 +102,7 @@ impl AclEngine {
 
             // Insert into both maps - regular and lowercase index
             groups.insert(group_acl.name.clone(), compiled_group.clone());
-            groups_by_lowercase.insert(
-                group_acl.name.to_ascii_lowercase(),
-                compiled_group,
-            );
+            groups_by_lowercase.insert(group_acl.name.to_ascii_lowercase(), compiled_group);
         }
 
         Ok(CompiledAclConfig {
@@ -241,12 +234,10 @@ impl AclEngine {
         // OPTIMIZATION: Re-sort combined rules to maintain global priority order
         // This is needed because we're mixing user rules + group rules
         // Pre-sorted data sorts faster (O(n) for already sorted data with adaptive sort)
-        all_rules.sort_unstable_by(|a, b| {
-            match (&a.action, &b.action) {
-                (Action::Block, Action::Allow) => std::cmp::Ordering::Less,
-                (Action::Allow, Action::Block) => std::cmp::Ordering::Greater,
-                _ => b.priority.cmp(&a.priority),
-            }
+        all_rules.sort_unstable_by(|a, b| match (&a.action, &b.action) {
+            (Action::Block, Action::Allow) => std::cmp::Ordering::Less,
+            (Action::Allow, Action::Block) => std::cmp::Ordering::Greater,
+            _ => b.priority.cmp(&a.priority),
         });
 
         all_rules

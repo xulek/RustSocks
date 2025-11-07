@@ -138,9 +138,7 @@ impl ConnectionPool {
         F: FnOnce(&mut DestinationMetrics),
     {
         // DashMap provides lock-free per-key access
-        let mut entry = self.destination_metrics
-            .entry(addr)
-            .or_default();
+        let mut entry = self.destination_metrics.entry(addr).or_default();
         update(&mut entry);
     }
 
@@ -623,7 +621,8 @@ impl ConnectionPool {
         let mut per_destination = Vec::with_capacity(all_addresses.len());
         for addr in all_addresses {
             let idle_connections = self.pools.get(&addr).map(|p| p.len()).unwrap_or(0);
-            let entry = self.destination_metrics
+            let entry = self
+                .destination_metrics
                 .get(&addr)
                 .map(|e| e.clone())
                 .unwrap_or_default();
@@ -654,7 +653,8 @@ impl ConnectionPool {
         let destinations = per_destination.len();
 
         // Sum active counts using atomic counters
-        let connections_in_use: u64 = self.active_counts
+        let connections_in_use: u64 = self
+            .active_counts
             .iter()
             .map(|entry| entry.value().load(Ordering::Relaxed) as u64)
             .sum();
@@ -715,9 +715,7 @@ impl ConnectionPool {
                         metrics.total_idle.fetch_sub(removed, Ordering::Relaxed);
 
                         // Update destination metrics
-                        let mut entry = destination_metrics
-                            .entry(*addr)
-                            .or_default();
+                        let mut entry = destination_metrics.entry(*addr).or_default();
                         entry.expired += removed as u64;
                         entry.last_activity = Some(SystemTime::now());
                     }

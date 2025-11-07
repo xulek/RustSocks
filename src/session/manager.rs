@@ -167,8 +167,11 @@ impl SessionManager {
         let mut total_bytes = 0u64;
 
         // Helper closure to aggregate a single session (avoids code duplication)
-        let mut aggregate_session = |user: &str, dest_ip: &str, bytes_sent: u64,
-                                     bytes_received: u64, acl_decision: &str| {
+        let mut aggregate_session = |user: &str,
+                                     dest_ip: &str,
+                                     bytes_sent: u64,
+                                     bytes_received: u64,
+                                     acl_decision: &str| {
             *user_counts.entry(user.to_string()).or_insert(0) += 1;
             *destination_counts.entry(dest_ip.to_string()).or_insert(0) += 1;
             total_bytes = total_bytes.saturating_add(bytes_sent.saturating_add(bytes_received));

@@ -51,6 +51,7 @@ async fn socks5_connect_over_tls() {
         socks_method: "none".to_string(),
         users: vec![],
         pam: Default::default(),
+        gssapi: Default::default(),
     };
     let auth_manager = Arc::new(AuthManager::new(&auth_config).unwrap());
     let acl_stats = Arc::new(AclStats::new());
@@ -201,6 +202,7 @@ async fn socks5_connect_with_mutual_tls() {
             socks_method: "none".to_string(),
             users: vec![],
             pam: Default::default(),
+            gssapi: Default::default(),
         })
         .unwrap(),
     );
