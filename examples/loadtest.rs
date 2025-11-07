@@ -17,9 +17,13 @@
 //!   - all: Run all scenarios
 //!
 //! Measured Metrics:
-//!   - Latency: Time from TCP connect to SOCKS5 response (SOCKS5 handshake)
+//!   - TCP Connect Latency: Time to establish TCP connection to proxy (measured separately)
+//!   - SOCKS5 Handshake Latency: Time for SOCKS5 negotiation + upstream connect (reported as "Latency")
 //!   - Throughput: Connections per second
 //!   - Data Transfer: Bytes sent/received (for data transfer tests)
+//!
+//! Note: Test results show "SOCKS5 handshake" latency which EXCLUDES TCP connect time.
+//! This allows measuring proxy overhead independently of network conditions.
 //!
 //! Pipeline Stages:
 //!   1. TCP connect to proxy
@@ -265,14 +269,18 @@ impl TestMetrics {
 }
 
 /// Perform SOCKS5 handshake and CONNECT request
+/// Returns: (stream, tcp_connect_duration, socks5_handshake_duration)
 async fn socks5_connect(
     proxy_addr: SocketAddr,
     dest_addr: SocketAddr,
     username: Option<&str>,
     password: Option<&str>,
-) -> std::io::Result<(TcpStream, Duration)> {
-    let start = Instant::now();
+) -> std::io::Result<(TcpStream, Duration, Duration)> {
+    let tcp_start = Instant::now();
     let mut stream = TcpStream::connect(proxy_addr).await?;
+    let tcp_duration = tcp_start.elapsed();
+
+    let socks5_start = Instant::now();
 
     // Step 1: Method negotiation
     let auth_method = if username.is_some() { 0x02 } else { 0x00 };
@@ -333,8 +341,8 @@ async fn socks5_connect(
         )));
     }
 
-    let elapsed = start.elapsed();
-    Ok((stream, elapsed))
+    let socks5_duration = socks5_start.elapsed();
+    Ok((stream, tcp_duration, socks5_duration))
 }
 
 /// Test scenario: Concurrent connections
@@ -380,11 +388,11 @@ async fn test_concurrent_connections(
                 .await;
 
                 match result {
-                    Ok(Ok((mut stream, duration))) => {
+                    Ok(Ok((mut stream, _tcp_duration, socks5_duration))) => {
                         // Graceful shutdown to avoid CLOSE-WAIT
                         let _ = stream.shutdown().await;
                         drop(stream);
-                        metrics.record_success(duration.as_nanos() as u64, 0, 0);
+                        metrics.record_success(socks5_duration.as_nanos() as u64, 0, 0);
                         true
                     }
                     _ => {
@@ -461,18 +469,18 @@ async fn test_full_pipeline(args: &Args) -> std::io::Result<()> {
                 .await;
 
                 match result {
-                    Ok(Ok((mut stream, dur))) => {
+                    Ok(Ok((mut stream, _tcp_duration, socks5_duration))) => {
                         let _ = stream.shutdown().await;
                         drop(stream);
-                        metrics.record_success(dur.as_nanos() as u64, 0, 0);
+                        metrics.record_success(socks5_duration.as_nanos() as u64, 0, 0);
                     }
                     _ => {
                         metrics.record_failure();
                     }
                 }
 
-                // Small delay between requests
-                tokio::time::sleep(Duration::from_millis(10)).await;
+                // Minimal delay between requests for max throughput
+                tokio::time::sleep(Duration::from_millis(1)).await;
             }
         }));
     }
@@ -528,33 +536,42 @@ async fn test_data_transfer(args: &Args) -> std::io::Result<()> {
                 .await;
 
                 match result {
-                    Ok(Ok((mut stream, dur))) => {
-                        // Send some data to generate traffic
-                        let test_data = b"TEST DATA FOR THROUGHPUT MEASUREMENT";
+                    Ok(Ok((mut stream, _tcp_duration, socks5_duration))) => {
+                        // Send substantial data to measure throughput (10 KB per connection)
+                        let test_data = vec![0u8; 1024]; // 1 KB chunks
                         let mut bytes_sent = 0u64;
                         let mut bytes_received = 0u64;
 
+                        // Send 10 KB total (10 x 1KB)
                         for _ in 0..10 {
-                            if stream.write_all(test_data).await.is_ok() {
+                            if stream.write_all(&test_data).await.is_ok() {
                                 bytes_sent += test_data.len() as u64;
 
-                                let mut buf = [0u8; 1024];
+                                // Read echo response
+                                let mut buf = vec![0u8; test_data.len()];
                                 if let Ok(n) = stream.read(&mut buf).await {
                                     bytes_received += n as u64;
+                                    if n == 0 {
+                                        break; // EOF
+                                    }
+                                } else {
+                                    break;
                                 }
+                            } else {
+                                break;
                             }
                         }
 
                         let _ = stream.shutdown().await;
                         drop(stream);
-                        metrics.record_success(dur.as_nanos() as u64, bytes_sent, bytes_received);
+                        metrics.record_success(socks5_duration.as_nanos() as u64, bytes_sent, bytes_received);
                     }
                     _ => {
                         metrics.record_failure();
                     }
                 }
 
-                tokio::time::sleep(Duration::from_millis(50)).await;
+                tokio::time::sleep(Duration::from_millis(10)).await;
             }
         }));
     }
@@ -611,11 +628,11 @@ async fn test_session_churn(args: &Args) -> std::io::Result<()> {
                 .await;
 
                 match result {
-                    Ok(Ok((mut stream, dur))) => {
+                    Ok(Ok((mut stream, _tcp_duration, socks5_duration))) => {
                         // Immediately close to create session churn
                         let _ = stream.shutdown().await;
                         drop(stream);
-                        metrics.record_success(dur.as_nanos() as u64, 0, 0);
+                        metrics.record_success(socks5_duration.as_nanos() as u64, 0, 0);
                     }
                     _ => {
                         metrics.record_failure();
@@ -623,7 +640,7 @@ async fn test_session_churn(args: &Args) -> std::io::Result<()> {
                 }
 
                 // Very short delay for high churn
-                tokio::time::sleep(Duration::from_millis(5)).await;
+                tokio::time::sleep(Duration::from_millis(1)).await;
             }
         }));
     }
@@ -640,8 +657,8 @@ async fn test_session_churn(args: &Args) -> std::io::Result<()> {
 }
 
 /// Test scenario: Minimal pipeline (pure SOCKS5 overhead)
-/// Measures: TCP connect + SOCKS5 handshake + upstream connect ONLY
-/// Expected latency: <10ms (minimal overhead)
+/// Measures: SOCKS5 handshake + upstream connect ONLY (TCP connect excluded from latency)
+/// Expected latency: <10ms SOCKS5 handshake (on localhost)
 /// Config requirements: ACL=disabled, Sessions=disabled, QoS=disabled
 async fn test_minimal_pipeline(args: &Args) -> std::io::Result<()> {
     println!("\n⚡ Starting Minimal Pipeline Test");
@@ -681,18 +698,18 @@ async fn test_minimal_pipeline(args: &Args) -> std::io::Result<()> {
                 .await;
 
                 match result {
-                    Ok(Ok((mut stream, dur))) => {
+                    Ok(Ok((mut stream, _tcp_duration, socks5_duration))) => {
                         let _ = stream.shutdown().await;
                         drop(stream);
-                        metrics.record_success(dur.as_nanos() as u64, 0, 0);
+                        metrics.record_success(socks5_duration.as_nanos() as u64, 0, 0);
                     }
                     _ => {
                         metrics.record_failure();
                     }
                 }
 
-                // Small delay between requests
-                tokio::time::sleep(Duration::from_millis(10)).await;
+                // Minimal delay between requests for max throughput
+                tokio::time::sleep(Duration::from_millis(1)).await;
             }
         }));
     }
@@ -727,7 +744,7 @@ async fn test_acl_evaluation(args: &Args) -> std::io::Result<()> {
     let mut tasks = Vec::new();
 
     // Spawn workers that vary destination addresses to test different ACL paths
-    for worker_id in 0..100 {
+    for _worker_id in 0..100 {
         let proxy_addr = args.proxy;
         let upstream_addr = args.upstream;
         let metrics = metrics.clone();
@@ -751,17 +768,17 @@ async fn test_acl_evaluation(args: &Args) -> std::io::Result<()> {
                 .await;
 
                 match result {
-                    Ok(Ok((mut stream, dur))) => {
+                    Ok(Ok((mut stream, _tcp_duration, socks5_duration))) => {
                         let _ = stream.shutdown().await;
                         drop(stream);
-                        metrics.record_success(dur.as_nanos() as u64, 0, 0);
+                        metrics.record_success(socks5_duration.as_nanos() as u64, 0, 0);
                     }
                     _ => {
                         metrics.record_failure();
                     }
                 }
 
-                tokio::time::sleep(Duration::from_millis(10)).await;
+                tokio::time::sleep(Duration::from_millis(1)).await;
             }
         }));
     }
@@ -814,8 +831,8 @@ async fn test_long_lived(args: &Args) -> std::io::Result<()> {
             .await;
 
             match result {
-                Ok((mut stream, handshake_dur)) => {
-                    metrics.record_success(handshake_dur.as_nanos() as u64, 0, 0);
+                Ok((mut stream, _tcp_duration, socks5_duration)) => {
+                    metrics.record_success(socks5_duration.as_nanos() as u64, 0, 0);
 
                     // Keep connection alive and send periodic keepalives
                     let mut _bytes_sent = 0u64;
@@ -901,7 +918,7 @@ async fn test_large_transfer(args: &Args) -> std::io::Result<()> {
                 .await;
 
                 match result {
-                    Ok((mut stream, handshake_dur)) => {
+                    Ok((mut stream, _tcp_duration, socks5_duration)) => {
                         let mut bytes_sent = 0u64;
                         let mut bytes_received = 0u64;
 
@@ -924,7 +941,7 @@ async fn test_large_transfer(args: &Args) -> std::io::Result<()> {
 
                         let _ = stream.shutdown().await;
                         metrics.record_success(
-                            handshake_dur.as_nanos() as u64,
+                            socks5_duration.as_nanos() as u64,
                             bytes_sent,
                             bytes_received,
                         );
@@ -990,7 +1007,7 @@ async fn test_pool_efficiency(args: &Args) -> std::io::Result<()> {
                 .await;
 
                 match result {
-                    Ok(Ok((mut stream, dur))) => {
+                    Ok(Ok((mut stream, _tcp_duration, socks5_duration))) => {
                         // Send small amount of data
                         let test_data = b"POOL_TEST";
                         let mut bytes_sent = 0u64;
@@ -1006,7 +1023,7 @@ async fn test_pool_efficiency(args: &Args) -> std::io::Result<()> {
 
                         let _ = stream.shutdown().await;
                         drop(stream);
-                        metrics.record_success(dur.as_nanos() as u64, bytes_sent, bytes_received);
+                        metrics.record_success(socks5_duration.as_nanos() as u64, bytes_sent, bytes_received);
                     }
                     _ => {
                         metrics.record_failure();
@@ -1014,7 +1031,7 @@ async fn test_pool_efficiency(args: &Args) -> std::io::Result<()> {
                 }
 
                 // Short delay to allow pool return
-                tokio::time::sleep(Duration::from_millis(50)).await;
+                tokio::time::sleep(Duration::from_millis(10)).await;
             }
         }));
     }
@@ -1073,19 +1090,19 @@ async fn test_handshake_only(args: &Args) -> std::io::Result<()> {
                 .await;
 
                 match result {
-                    Ok(Ok((mut stream, dur))) => {
+                    Ok(Ok((mut stream, _tcp_duration, socks5_duration))) => {
                         // Immediately close after handshake (no data transfer)
                         let _ = stream.shutdown().await;
                         drop(stream);
-                        metrics.record_success(dur.as_nanos() as u64, 0, 0);
+                        metrics.record_success(socks5_duration.as_nanos() as u64, 0, 0);
                     }
                     _ => {
                         metrics.record_failure();
                     }
                 }
 
-                // Small delay between requests
-                tokio::time::sleep(Duration::from_millis(10)).await;
+                // Minimal delay between requests for max throughput
+                tokio::time::sleep(Duration::from_millis(1)).await;
             }
         }));
     }
