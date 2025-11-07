@@ -146,6 +146,7 @@ mod unix_tests {
                 password: "test".to_string(),
             }],
             pam: pam_settings(),
+            gssapi: Default::default(),
         };
 
         // This should fail during config validation
@@ -420,6 +421,7 @@ async fn test_non_pam_methods_still_work() {
             password: "secret123".to_string(),
         }],
         pam: PamSettings::default(),
+        gssapi: Default::default(),
     };
 
     let result = AuthManager::new(&config);
