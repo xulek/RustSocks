@@ -61,6 +61,9 @@ async fn main() -> Result<()> {
         info!("Current working directory: {}", cwd.display());
     }
 
+    // Check system settings for optimal performance
+    rustsocks::utils::system::check_system_settings();
+
     // Load configuration
     let mut config = if let Some(config_path) = args.config {
         info!("Loading configuration from: {:?}", config_path);
