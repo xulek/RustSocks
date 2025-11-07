@@ -205,6 +205,7 @@ async fn e2e_basic_connect() {
         socks_method: "none".to_string(),
         users: vec![],
         pam: Default::default(),
+        gssapi: Default::default(),
     };
 
     let (ctx, session_manager) = create_basic_server_context(auth_config, None).await;
@@ -249,6 +250,7 @@ async fn e2e_auth_noauth() {
         socks_method: "none".to_string(),
         users: vec![],
         pam: Default::default(),
+        gssapi: Default::default(),
     };
 
     let (ctx, _) = create_basic_server_context(auth_config, None).await;
@@ -279,6 +281,7 @@ async fn e2e_auth_userpass() {
             password: "secret123".to_string(),
         }],
         pam: Default::default(),
+        gssapi: Default::default(),
     };
 
     let (ctx, _) = create_basic_server_context(auth_config, None).await;
@@ -309,6 +312,7 @@ async fn e2e_auth_userpass_invalid() {
             password: "secret123".to_string(),
         }],
         pam: Default::default(),
+        gssapi: Default::default(),
     };
 
     let (ctx, _) = create_basic_server_context(auth_config, None).await;
@@ -335,6 +339,7 @@ async fn e2e_acl_allow() {
         socks_method: "none".to_string(),
         users: vec![],
         pam: Default::default(),
+        gssapi: Default::default(),
     };
 
     // ACL config that allows all
@@ -370,6 +375,7 @@ async fn e2e_acl_block() {
         socks_method: "none".to_string(),
         users: vec![],
         pam: Default::default(),
+        gssapi: Default::default(),
     };
 
     // ACL config that blocks the echo server
@@ -425,6 +431,7 @@ async fn e2e_session_tracking() {
         socks_method: "none".to_string(),
         users: vec![],
         pam: Default::default(),
+        gssapi: Default::default(),
     };
 
     let (ctx, session_manager) = create_basic_server_context(auth_config, None).await;
@@ -488,6 +495,7 @@ async fn e2e_udp_associate() {
         socks_method: "none".to_string(),
         users: vec![],
         pam: Default::default(),
+        gssapi: Default::default(),
     };
 
     let (ctx, session_manager) = create_basic_server_context(auth_config, None).await;
@@ -542,6 +550,7 @@ async fn e2e_bind_command() {
         socks_method: "none".to_string(),
         users: vec![],
         pam: Default::default(),
+        gssapi: Default::default(),
     };
 
     let (ctx, _session_manager) = create_basic_server_context(auth_config, None).await;
@@ -604,6 +613,7 @@ async fn e2e_complete_flow() {
             password: "testpass".to_string(),
         }],
         pam: Default::default(),
+        gssapi: Default::default(),
     };
 
     let acl_config = AclConfig {
