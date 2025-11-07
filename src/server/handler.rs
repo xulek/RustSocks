@@ -18,10 +18,18 @@ use tracing::{debug, info, warn};
 
 /// Optimize TCP socket for low-latency proxying
 /// - Disables Nagle's algorithm (TCP_NODELAY) for lower latency
+/// - Increases send/recv buffers for better throughput
 fn optimize_tcp_socket(stream: &TcpStream) -> Result<()> {
     // Disable Nagle's algorithm - improves latency for small packets
     // This is the single most impactful TCP optimization for proxy workloads
     stream.set_nodelay(true)?;
+
+    // Increase TCP buffer sizes for better throughput (especially on high-latency links)
+    // These are hints; OS may adjust based on available memory
+    let sock_ref = socket2::SockRef::from(stream);
+    // 256 KB buffers provide good balance between memory usage and throughput
+    let _ = sock_ref.set_recv_buffer_size(262144); // 256 KB
+    let _ = sock_ref.set_send_buffer_size(262144); // 256 KB
 
     Ok(())
 }

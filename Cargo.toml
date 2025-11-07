@@ -20,6 +20,7 @@ tower = { version = "0.5", features = ["util"] }
 tower-http = { version = "0.5", features = ["fs", "trace", "normalize-path"] }
 rustls = "0.21"
 rustls-pemfile = "1.0"
+socket2 = "0.5"  # Low-level socket configuration (SO_REUSEADDR, buffers)
 
 # API Documentation
 utoipa = "4.2"

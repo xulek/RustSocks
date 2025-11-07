@@ -446,8 +446,8 @@ async fn test_full_pipeline(args: &Args) -> std::io::Result<()> {
 
     let mut tasks = Vec::new();
 
-    // Spawn multiple concurrent workers
-    for _ in 0..100 {
+    // Spawn multiple concurrent workers (50 to reduce contention on localhost)
+    for _ in 0..50 {
         let proxy_addr = args.proxy;
         let upstream_addr = args.upstream;
         let metrics = metrics.clone();
@@ -479,8 +479,9 @@ async fn test_full_pipeline(args: &Args) -> std::io::Result<()> {
                     }
                 }
 
-                // Minimal delay between requests for max throughput
-                tokio::time::sleep(Duration::from_millis(1)).await;
+                // No artificial delay - measure true throughput
+                // Small yield to prevent monopolizing CPU
+                tokio::task::yield_now().await;
             }
         }));
     }
@@ -571,7 +572,8 @@ async fn test_data_transfer(args: &Args) -> std::io::Result<()> {
                     }
                 }
 
-                tokio::time::sleep(Duration::from_millis(10)).await;
+                // Reduced delay for better throughput measurement
+                tokio::time::sleep(Duration::from_millis(1)).await;
             }
         }));
     }
@@ -595,7 +597,7 @@ async fn test_session_churn(args: &Args) -> std::io::Result<()> {
     println!("\n💾 Starting Session Churn Stress Test");
     println!("   Measures: Database write throughput with rapid session create/destroy");
     println!("   Duration: {} seconds", args.duration);
-    println!("   Workers: 200 concurrent (high churn)");
+    println!("   Workers: 100 concurrent (high churn)");
     println!("   Proxy: {}", args.proxy);
     println!("   ⚠️  Ensure config has: Sessions=on, DB=sqlite, batch_size=100-500");
 
@@ -605,8 +607,8 @@ async fn test_session_churn(args: &Args) -> std::io::Result<()> {
 
     let mut tasks = Vec::new();
 
-    // Spawn many short-lived connections to stress database writes
-    for _ in 0..200 {
+    // Spawn many short-lived connections to stress database writes (100 to reduce localhost contention)
+    for _ in 0..100 {
         let proxy_addr = args.proxy;
         let upstream_addr = args.upstream;
         let metrics = metrics.clone();
@@ -639,8 +641,8 @@ async fn test_session_churn(args: &Args) -> std::io::Result<()> {
                     }
                 }
 
-                // Very short delay for high churn
-                tokio::time::sleep(Duration::from_millis(1)).await;
+                // No artificial delay for maximum churn rate
+                tokio::task::yield_now().await;
             }
         }));
     }
@@ -675,8 +677,8 @@ async fn test_minimal_pipeline(args: &Args) -> std::io::Result<()> {
 
     let mut tasks = Vec::new();
 
-    // Spawn multiple concurrent workers
-    for _ in 0..100 {
+    // Spawn multiple concurrent workers (50 to reduce contention on localhost)
+    for _ in 0..50 {
         let proxy_addr = args.proxy;
         let upstream_addr = args.upstream;
         let metrics = metrics.clone();
@@ -708,8 +710,9 @@ async fn test_minimal_pipeline(args: &Args) -> std::io::Result<()> {
                     }
                 }
 
-                // Minimal delay between requests for max throughput
-                tokio::time::sleep(Duration::from_millis(1)).await;
+                // No artificial delay - measure true throughput
+                // Small yield to prevent monopolizing CPU
+                tokio::task::yield_now().await;
             }
         }));
     }
@@ -1031,7 +1034,7 @@ async fn test_pool_efficiency(args: &Args) -> std::io::Result<()> {
                 }
 
                 // Short delay to allow pool return
-                tokio::time::sleep(Duration::from_millis(10)).await;
+                tokio::time::sleep(Duration::from_millis(5)).await;
             }
         }));
     }
@@ -1067,8 +1070,8 @@ async fn test_handshake_only(args: &Args) -> std::io::Result<()> {
 
     let mut tasks = Vec::new();
 
-    // Spawn multiple concurrent workers
-    for _ in 0..100 {
+    // Spawn multiple concurrent workers (50 to reduce contention on localhost)
+    for _ in 0..50 {
         let proxy_addr = args.proxy;
         let upstream_addr = args.upstream;
         let metrics = metrics.clone();
@@ -1101,8 +1104,9 @@ async fn test_handshake_only(args: &Args) -> std::io::Result<()> {
                     }
                 }
 
-                // Minimal delay between requests for max throughput
-                tokio::time::sleep(Duration::from_millis(1)).await;
+                // No artificial delay - measure true throughput
+                // Small yield to prevent monopolizing CPU
+                tokio::task::yield_now().await;
             }
         }));
     }
