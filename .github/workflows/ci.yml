@@ -1,0 +1,221 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate workflow syntax
+        run: |
+          python3 - <<'PY'
+          import yaml
+          from pathlib import Path
+
+          workflows_dir = Path(".github/workflows")
+          for workflow in workflows_dir.glob("*.yml"):
+              with workflow.open() as fh:
+                  yaml.safe_load(fh)
+              print(f"Validated {workflow}")
+          PY
+
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y libpam0g-dev libkrb5-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build with database feature
+        run: cargo build --locked --all-targets --features database
+
+      - name: Build release binary for artifact
+        run: cargo build --locked --features database --release
+
+      - name: Upload binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: rustsocks-bin
+          path: target/release/rustsocks
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y libpam0g-dev libkrb5-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Check formatting
+        id: fmt-check
+        continue-on-error: true
+        run: cargo fmt --all -- --check
+
+      - name: Report formatting issues (warning)
+        if: steps.fmt-check.outcome == 'failure'
+        run: |
+          echo "::warning::Code formatting issues detected. Run 'cargo fmt --all' to fix them."
+          exit 0
+
+      - name: Run clippy
+        run: cargo clippy --all-features -- -D warnings
+
+  test:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y libpam0g-dev libkrb5-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Run tests (skip performance benchmarks)
+        id: cargo-tests
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          cargo test --locked --features database -- --skip performance 2>&1 | tee cargo-test-output.log
+          exit "${PIPESTATUS[0]}"
+
+      - name: Summarize test results
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+
+          log_path = Path("cargo-test-output.log")
+          if not log_path.exists():
+              print("No cargo-test-output.log found.")
+              raise SystemExit(0)
+
+          pattern = re.compile(r'(\d+)\s+(passed|failed|ignored|measured|filtered out)')
+          labels = {
+              "passed": "passed",
+              "failed": "failed",
+              "ignored": "ignored",
+              "measured": "measured",
+              "filtered out": "filtered_out",
+          }
+          totals = {v: 0 for v in labels.values()}
+          for line in log_path.read_text().splitlines():
+              if "test result:" not in line:
+                  continue
+              for count, label in pattern.findall(line):
+                  key = labels[label]
+                  totals[key] += int(count)
+
+          total_executed = totals["passed"] + totals["failed"]
+
+          print("Test summary:")
+          print(f"- Executed: {total_executed}")
+          print(f"- Passed:   {totals['passed']}")
+          print(f"- Failed:   {totals['failed']}")
+          print(f"- Ignored:  {totals['ignored']}")
+          print(f"- Measured: {totals['measured']}")
+          print(f"- Skipped (filtered out): {totals['filtered_out']}")
+          PY
+
+      - name: Fail if tests failed
+        if: always()
+        env:
+          CARGO_TEST_OUTCOME: ${{ steps.cargo-tests.outcome }}
+        run: |
+          python3 - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+          from sys import exit
+
+          log_path = Path("cargo-test-output.log")
+          outcome = os.environ.get("CARGO_TEST_OUTCOME", "")
+
+          def print_error_message():
+              print("cargo test failed even though no individual tests reported failures.")
+              print("Check cargo-test-output.log for other runtime/errors (e.g. bench failures).")
+
+          if not log_path.exists():
+              if outcome == "failure":
+                  print("No cargo-test-output.log found and cargo test failed -> aborting")
+                  exit(1)
+              exit(0)
+
+          pattern = re.compile(r'(\d+)\s+(passed|failed|ignored|measured|filtered out)')
+          labels = {
+              "passed": "passed",
+              "failed": "failed",
+              "ignored": "ignored",
+              "measured": "measured",
+              "filtered out": "filtered_out",
+          }
+          totals = {v: 0 for v in labels.values()}
+
+          for line in log_path.read_text().splitlines():
+              if "test result:" not in line:
+                  continue
+              for count, label in pattern.findall(line):
+                  key = labels[label]
+                  totals[key] += int(count)
+
+          if totals["failed"] > 0:
+              print(f"Detected {totals['failed']} failed tests (from log).")
+              exit(1)
+
+          if outcome == "failure":
+              print_error_message()
+              exit(1)
+
+          exit(0)
+          PY
+
+  security:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+
+      - name: Cargo audit (allow known unfixable issues)
+        run: |
+          cargo audit || {
+            echo "::warning::Cargo audit found vulnerabilities. Checking if they are in the ignore list..."
+
+            # Check if only known issues exist
+            cargo audit 2>&1 | grep -q "RUSTSEC-2023-0071" && echo "✓ RUSTSEC-2023-0071 (rsa) - Known, SQLite-only usage"
+            cargo audit 2>&1 | grep -q "RUSTSEC-2025-0040" && echo "✓ RUSTSEC-2025-0040 (users) - Known, PAM dependency"
+
+            # Fail only if there are NEW vulnerabilities (not in our ignore list)
+            if cargo audit 2>&1 | grep -E "RUSTSEC-" | grep -v -E "(RUSTSEC-2023-0071|RUSTSEC-2025-0040|RUSTSEC-2024-0370|RUSTSEC-2023-0040|RUSTSEC-2023-0059)"; then
+              echo "::error::New security vulnerabilities found!"
+              exit 1
+            else
+              echo "::notice::Only known unfixable vulnerabilities found (rsa, users via transitive deps)"
+              exit 0
+            fi
+          }

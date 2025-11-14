@@ -1,0 +1,126 @@
+# RustSocks Configuration for Docker Deployment
+# This is a production-ready configuration optimized for containers
+
+[server]
+# Bind to all interfaces in container (0.0.0.0)
+# Docker port mapping handles external access
+bind_address = "0.0.0.0"
+bind_port = 1080
+max_connections = 1000
+
+# Connection pool settings (optimization)
+[server.pool]
+enabled = true
+max_idle_per_dest = 4
+max_total_idle = 100
+idle_timeout_secs = 90
+connect_timeout_ms = 5000
+
+# TLS settings (optional, uncomment to enable)
+# [server.tls]
+# enabled = false
+# certificate_path = "/etc/rustsocks/tls/server.crt"
+# private_key_path = "/etc/rustsocks/tls/server.key"
+# min_protocol_version = "TLS13"
+# require_client_auth = false
+# client_ca_path = "/etc/rustsocks/tls/clients-ca.crt"
+
+# Authentication configuration
+[auth]
+# Options: "none", "userpass", "pam.address", "pam.username"
+# Client-level auth (before SOCKS handshake)
+client_method = "none"
+
+# SOCKS-level auth (after SOCKS handshake)
+socks_method = "none"
+
+# Username/password authentication (if socks_method = "userpass")
+# [[auth.users]]
+# username = "alice"
+# password = "secret123"
+
+# [[auth.users]]
+# username = "bob"
+# password = "password456"
+
+# PAM authentication settings
+[auth.pam]
+username_service = "rustsocks"
+address_service = "rustsocks-client"
+default_user = "anonymous"
+default_ruser = "anonymous"
+verbose = false
+verify_service = false
+
+# Access Control List (ACL)
+[acl]
+enabled = true
+config_file = "/etc/rustsocks/acl.toml"
+watch = true
+anonymous_user = "anonymous"
+
+# Session management and tracking
+[sessions]
+enabled = true
+storage = "sqlite"  # Options: "memory", "sqlite"
+
+# Database configuration (SQLite)
+database_url = "sqlite:///data/sessions.db"
+
+# Batch writer settings (performance tuning)
+batch_size = 100
+batch_interval_ms = 1000
+
+# Data retention
+retention_days = 90
+cleanup_interval_hours = 24
+
+# Traffic tracking
+traffic_update_packet_interval = 10
+
+# Statistics API
+stats_window_hours = 24
+stats_api_enabled = true
+stats_api_bind_address = "0.0.0.0"
+stats_api_port = 9090
+
+# Web dashboard
+dashboard_enabled = true
+swagger_enabled = true
+base_path = "/rustsocks/"
+[sessions.dashboard_auth]
+enabled = true
+[[sessions.dashboard_auth.users]]
+username = "admin"
+password = "admin"
+
+# Quality of Service (QoS) and Rate Limiting
+[qos]
+enabled = false
+
+# Global rate limits (optional)
+# [qos.global]
+# max_bandwidth_mbps = 100
+# max_connections_per_ip = 10
+# connection_timeout_secs = 300
+
+# Per-user rate limits (optional)
+# [[qos.users]]
+# username = "alice"
+# max_bandwidth_mbps = 10
+# max_connections = 5
+# max_new_connections_per_minute = 30
+
+# [[qos.users]]
+# username = "bob"
+# max_bandwidth_mbps = 5
+# max_connections = 3
+
+# Logging configuration
+# Log levels: trace, debug, info, warn, error
+# Set via environment variable: RUST_LOG=debug
+# Or uncomment below:
+# [logging]
+# level = "info"
+# format = "pretty"  # Options: "pretty", "json"
+# file = "/var/log/rustsocks/rustsocks.log"  # Optional file logging

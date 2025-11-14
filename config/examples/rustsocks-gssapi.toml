@@ -1,0 +1,272 @@
+# RustSocks Configuration Example: GSS-API/Kerberos Authentication
+#
+# This configuration demonstrates GSS-API (RFC 1961) authentication for enterprise
+# environments with Kerberos/Active Directory integration.
+#
+# Prerequisites:
+# - Kerberos KDC configured (MIT Kerberos or Active Directory)
+# - Service principal created (e.g., socks/proxy.example.com@EXAMPLE.COM)
+# - Keytab file installed on proxy server
+# - System Kerberos configuration (/etc/krb5.conf) set up
+# - Build RustSocks with: cargo build --release --features gssapi
+
+[server]
+bind_address = "0.0.0.0"
+bind_port = 1080
+max_connections = 10000
+
+# TLS is recommended for production (encrypts data, not just authentication)
+[server.tls]
+enabled = false
+# certificate_path = "/etc/rustsocks/server.crt"
+# private_key_path = "/etc/rustsocks/server.key"
+
+# Connection pooling for better performance
+[server.pool]
+enabled = true
+max_idle_per_dest = 10
+max_total_idle = 200
+idle_timeout_secs = 90
+connect_timeout_ms = 5000
+
+[auth]
+# Client-level authentication (before SOCKS handshake)
+# For GSS-API, typically use "none" here (authentication happens at SOCKS level)
+client_method = "none"
+
+# SOCKS-level authentication: GSS-API/Kerberos
+socks_method = "gssapi"
+
+# GSS-API/Kerberos settings
+[auth.gssapi]
+# Service name for Kerberos authentication
+# Format options:
+#   "socks"                           - Simple service name (recommended)
+#   "socks@EXAMPLE.COM"               - Service with realm
+#   "socks/proxy.example.com"         - Service with hostname
+#   "socks/proxy.example.com@EXAMPLE.COM" - Full principal (without -randkey part)
+service_name = "socks"
+
+# Path to Kerberos keytab file
+# If not specified, uses default system keytab (usually /etc/krb5.keytab)
+# Generate with: kadmin.local -q "ktadd -k /etc/krb5.keytab socks/proxy.example.com"
+keytab_path = "/etc/krb5.keytab"
+
+# Protection level for SOCKS5 communication
+# Options:
+#   "integrity"       - Message integrity only (default, recommended)
+#   "confidentiality" - Message integrity + encryption (higher overhead)
+#   "selective"       - Per-message determination (advanced)
+protection_level = "integrity"
+
+# Enable verbose GSS-API logging (useful for debugging)
+verbose = false
+
+[logging]
+level = "info"     # Options: trace, debug, info, warn, error
+format = "pretty"  # Options: pretty, json
+
+# ACL (Access Control List) for fine-grained authorization
+[acl]
+enabled = true
+config_file = "config/acl.toml"
+watch = true  # Hot-reload ACL rules without restart
+anonymous_user = "anonymous"
+
+# Session tracking and statistics
+[sessions]
+enabled = true
+storage = "sqlite"
+database_url = "sqlite://sessions.db"
+batch_size = 100
+batch_interval_ms = 1000
+retention_days = 90
+cleanup_interval_hours = 24
+traffic_update_packet_interval = 100
+
+# Statistics API and Web Dashboard
+stats_api_enabled = true
+stats_api_bind_address = "127.0.0.1"
+stats_api_port = 9090
+stats_window_hours = 24
+dashboard_enabled = true
+swagger_enabled = true
+base_path = "/"
+[sessions.dashboard_auth]
+enabled = false
+# [[sessions.dashboard_auth.users]]
+# username = "admin"
+# password = "strong-secret"
+
+# Prometheus metrics
+[metrics]
+enabled = true
+
+# QoS and Rate Limiting
+[qos]
+enabled = false
+# See rustsocks-ad.toml for QoS configuration examples
+
+# ============================================================================
+# Kerberos Setup Instructions
+# ============================================================================
+#
+# 1. Create service principal (on KDC):
+#    kadmin.local -q "addprinc -randkey socks/proxy.example.com@EXAMPLE.COM"
+#
+# 2. Export keytab (on KDC):
+#    kadmin.local -q "ktadd -k /tmp/socks.keytab socks/proxy.example.com@EXAMPLE.COM"
+#
+# 3. Copy keytab to proxy server:
+#    scp /tmp/socks.keytab proxy.example.com:/etc/krb5.keytab
+#    chmod 600 /etc/krb5.keytab
+#    chown rustsocks:rustsocks /etc/krb5.keytab
+#
+# 4. Verify keytab:
+#    kinit -k -t /etc/krb5.keytab socks/proxy.example.com
+#    klist
+#
+# 5. Configure /etc/krb5.conf (example in config/examples/krb5-ad.conf)
+#
+# 6. Build RustSocks with GSS-API support:
+#    cargo build --release --features gssapi
+#
+# 7. Start RustSocks:
+#    ./target/release/rustsocks --config config/examples/rustsocks-gssapi.toml
+#
+# ============================================================================
+# Client Usage
+# ============================================================================
+#
+# Clients need valid Kerberos tickets:
+#
+# 1. Obtain Kerberos ticket:
+#    kinit user@EXAMPLE.COM
+#
+# 2. Verify ticket:
+#    klist
+#
+# 3. Use SOCKS5 with GSS-API:
+#    curl --socks5 proxy.example.com:1080 \
+#         --socks5-gssapi-service socks \
+#         http://example.com
+#
+# 4. Firefox configuration:
+#    about:config
+#    network.negotiate-auth.trusted-uris = .example.com
+#    network.negotiate-auth.delegation-uris = .example.com
+#    network.proxy.socks = proxy.example.com
+#    network.proxy.socks_port = 1080
+#    network.proxy.socks_version = 5
+#
+# ============================================================================
+# Active Directory Integration
+# ============================================================================
+#
+# For Active Directory environments:
+#
+# 1. Join Linux server to AD domain:
+#    realm join --user=administrator ad.example.com
+#
+# 2. Verify AD connectivity:
+#    sssctl domain-status ad.example.com
+#
+# 3. Create service principal in AD:
+#    setspn -A socks/proxy.example.com PROXY$
+#
+# 4. Export keytab (on Windows DC):
+#    ktpass /out socks.keytab \
+#           /princ socks/proxy.example.com@AD.EXAMPLE.COM \
+#           /mapuser PROXY$ \
+#           /crypto AES256-SHA1 \
+#           /ptype KRB5_NT_PRINCIPAL
+#
+# 5. User groups automatically resolved via SSSD
+#
+# 6. ACL rules can use AD groups:
+#    [[groups]]
+#    name = "Domain Admins@ad.example.com"
+#      [[groups.rules]]
+#      action = "allow"
+#      destinations = ["*"]
+#
+# See docs/guides/active-directory.md for detailed setup instructions.
+#
+# ============================================================================
+# Security Considerations
+# ============================================================================
+#
+# 1. Keytab Security:
+#    - Protect keytab file with 600 permissions
+#    - Only readable by rustsocks process owner
+#    - Rotate keytab periodically (annually recommended)
+#
+# 2. Clock Synchronization:
+#    - Kerberos requires <5 minute clock skew
+#    - Use NTP/chrony to sync clocks
+#    - Critical for authentication success
+#
+# 3. Network Security:
+#    - GSS-API encrypts authentication tokens
+#    - Consider TLS for data encryption
+#    - Use ACL rules for authorization
+#
+# 4. Logging and Monitoring:
+#    - Enable session tracking for audit logs
+#    - Monitor failed authentication attempts
+#    - Set up alerts for suspicious activity
+#
+# 5. High Availability:
+#    - Configure multiple KDCs for redundancy
+#    - Use DNS SRV records for KDC discovery
+#    - Monitor KDC availability
+#
+# ============================================================================
+# Troubleshooting
+# ============================================================================
+#
+# Issue: "GSS-API context step failed"
+# - Check keytab: ls -l /etc/krb5.keytab
+# - Verify principal: klist -k /etc/krb5.keytab
+# - Test kinit: kinit -k -t /etc/krb5.keytab socks/proxy.example.com
+#
+# Issue: "Client sent GSS-API abort message"
+# - Client needs valid ticket: kinit user@EXAMPLE.COM
+# - Check clock skew: date (must be <5 min difference)
+# - Verify /etc/krb5.conf on client
+#
+# Issue: "Clock skew too great"
+# - Synchronize clocks: sudo ntpdate pool.ntp.org
+# - Or use chronyd: sudo chronyd -q
+#
+# Issue: "Server not found in Kerberos database"
+# - Principal doesn't exist in KDC
+# - Create with: kadmin.local -q "addprinc -randkey socks/HOSTNAME"
+#
+# Enable verbose logging for debugging:
+# [auth.gssapi]
+# verbose = true
+#
+# [logging]
+# level = "debug"
+#
+# ============================================================================
+# Performance Tuning
+# ============================================================================
+#
+# GSS-API authentication adds 60-180ms latency per connection establishment.
+# This is one-time overhead (not per-request).
+#
+# Optimization tips:
+# - Use connection pooling (already enabled above)
+# - Increase max_connections for high concurrency
+# - Use "integrity" protection level (lower overhead than "confidentiality")
+# - Cache DNS lookups on clients
+# - Co-locate proxy near KDC to reduce network latency
+#
+# Typical performance:
+# - Handshake: 60-180ms (includes KDC roundtrip)
+# - Data transfer: ~native speed (minimal overhead with "integrity")
+# - Memory: ~50KB per active connection
+#
+# See loadtests/MANUAL.md for performance benchmarking guide.

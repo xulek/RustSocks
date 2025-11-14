@@ -1,0 +1,555 @@
+# RustSocks Configuration for Active Directory Integration
+# File location: config/rustsocks.toml
+#
+# This configuration demonstrates a production-ready RustSocks SOCKS5 proxy
+# integrated with Microsoft Active Directory for authentication and group-based
+# access control.
+#
+# REQUIREMENTS:
+# - Linux server joined to AD domain (realm join or adcli join)
+# - SSSD configured and running (/etc/sssd/sssd.conf)
+# - PAM service configured (/etc/pam.d/rustsocks)
+# - ACL rules configured (config/acl.toml)
+#
+# QUICK START:
+# 1. Join AD domain: realm join --user=administrator ad.company.com
+# 2. Configure PAM: Copy config/examples/pam-rustsocks to /etc/pam.d/rustsocks
+# 3. Configure ACL: Copy config/examples/acl-ad-example.toml to config/acl.toml
+# 4. Update this file with your settings
+# 5. Run: ./rustsocks --config config/rustsocks.toml
+#
+# TEST:
+# curl -x socks5://username:password@localhost:1080 http://example.com
+
+################################################################################
+# SERVER CONFIGURATION
+################################################################################
+
+[server]
+# Bind address for SOCKS5 proxy
+# "0.0.0.0" = listen on all interfaces (accessible from other hosts)
+# "127.0.0.1" = localhost only (secure, but only local clients)
+# "::" = IPv6 all interfaces
+# Recommended: "0.0.0.0" for production proxy, "127.0.0.1" for testing
+bind_address = "0.0.0.0"
+
+# SOCKS5 port (default: 1080)
+# Standard port: 1080 (requires root if <1024)
+# Alternative: 1081, 1082, 8080, 9050 (Tor uses 9050)
+bind_port = 1080
+
+# Maximum concurrent connections
+# Adjust based on expected load and system resources
+# Each connection consumes ~100KB of memory
+# Recommended: 10000 for production, 1000 for testing
+max_connections = 10000
+
+# Worker threads for handling connections
+# "auto" = number of CPU cores
+# Recommended: "auto" for most cases, or explicit number for fine-tuning
+# worker_threads = "auto"
+
+################################################################################
+# AUTHENTICATION CONFIGURATION (Active Directory)
+################################################################################
+
+[auth]
+# Two-tier authentication system:
+# 1. client_method: Pre-SOCKS authentication (before SOCKS handshake)
+# 2. socks_method: SOCKS-level authentication (after SOCKS handshake)
+
+# Client-level authentication (pre-SOCKS)
+# Options: "none", "pam.address"
+# "none" = no pre-SOCKS auth (authenticate during SOCKS handshake)
+# "pam.address" = IP-based authentication via PAM
+# Recommended: "none" for standard SOCKS5, "pam.address" for IP-restricted access
+client_method = "none"
+
+# SOCKS-level authentication (RFC 1929)
+# Options: "none", "userpass", "pam.address", "pam.username"
+# "none" = no authentication (INSECURE, only for testing)
+# "userpass" = local username/password (defined in [[auth.users]] below)
+# "pam.address" = IP-based PAM authentication (no credentials needed)
+# "pam.username" = AD username/password via PAM (RECOMMENDED for AD)
+socks_method = "pam.username"
+
+# PAM configuration (for Active Directory)
+[auth.pam]
+# PAM service name for username/password authentication
+# Must match filename in /etc/pam.d/<service>
+# Default: "rustsocks"
+username_service = "rustsocks"
+
+# PAM service name for IP-based authentication
+# Default: "rustsocks-client"
+address_service = "rustsocks-client"
+
+# Default user identity for IP-based authentication
+# Used when client_method = "pam.address"
+default_user = "rhostusr"
+default_ruser = "rhostusr"
+
+# Verbose PAM logging (helpful for troubleshooting)
+# Logs all PAM authentication attempts, successes, and failures
+# Recommended: true during setup, false in production
+verbose = true
+
+# Verify PAM service file exists at startup
+# Prevents startup if /etc/pam.d/<service> is missing
+# Recommended: true
+verify_service = true
+
+# Local user authentication (alternative to PAM)
+# Only used if socks_method = "userpass"
+# For AD integration, use socks_method = "pam.username" instead
+# [[auth.users]]
+# username = "localuser"
+# password_hash = "$argon2id$v=19$m=65536,t=3,p=4$..."  # Use bcrypt or argon2
+
+################################################################################
+# ACCESS CONTROL LIST (ACL) CONFIGURATION
+################################################################################
+
+[acl]
+# Enable ACL engine for group-based access control
+# true = evaluate ACL rules for every connection
+# false = allow all connections (INSECURE)
+# Recommended: true for production
+enabled = true
+
+# Path to ACL configuration file
+# This file defines group-based rules (see config/examples/acl-ad-example.toml)
+config_file = "config/acl.toml"
+
+# Hot-reload support (watch ACL file for changes)
+# true = automatically reload ACL when config file changes (no restart needed)
+# false = require restart to apply ACL changes
+# Recommended: true for production (enables zero-downtime ACL updates)
+watch = true
+
+# Default user for unauthenticated connections
+# Used when socks_method = "none"
+# Not relevant for AD integration (all users are authenticated)
+anonymous_user = "anonymous"
+
+################################################################################
+# SESSION MANAGEMENT & DATABASE
+################################################################################
+
+[sessions]
+# Enable session tracking and metrics
+# Tracks all connections, traffic, and durations
+enabled = true
+
+# Storage backend
+# "memory" = in-memory only (lost on restart, fast)
+# "sqlite" = SQLite database (persistent, recommended)
+storage = "sqlite"
+
+# SQLite database URL
+# File path for SQLite database
+# Supports: "sqlite:///absolute/path/sessions.db" or "sqlite://relative/path/sessions.db"
+database_url = "sqlite://data/sessions.db"
+
+# Batch write settings (performance tuning)
+# Sessions are queued and written in batches to reduce disk I/O
+
+# Batch size (number of sessions per batch)
+# Higher = fewer DB writes (better performance), but more data loss on crash
+# Recommended: 100-1000 depending on session volume
+batch_size = 100
+
+# Batch interval (milliseconds)
+# Write batch even if not full after this interval
+# Recommended: 1000-5000ms (1-5 seconds)
+batch_interval_ms = 1000
+
+# Retention period (days)
+# Automatically delete sessions older than this
+# Recommended: 30-90 days for compliance
+retention_days = 90
+
+# Cleanup interval (hours)
+# How often to run cleanup task
+# Recommended: 24 hours (once per day)
+cleanup_interval_hours = 24
+
+# Traffic update interval (packets)
+# How often to update session traffic metrics during proxying
+# Lower = more accurate but more DB writes
+# Higher = less accurate but better performance
+# Recommended: 10-100 packets
+traffic_update_packet_interval = 10
+
+# Statistics window (hours)
+# Rolling window for statistics API
+# Recommended: 24-168 hours (1-7 days)
+stats_window_hours = 24
+
+# Statistics API (HTTP REST API for monitoring)
+stats_api_enabled = true
+stats_api_bind_address = "0.0.0.0"
+stats_api_port = 9090
+
+# Dashboard and Swagger UI
+dashboard_enabled = true
+swagger_enabled = true
+
+# URL base path (for reverse proxy deployment)
+# "/" = root path (default)
+# "/rustsocks" = serve under /rustsocks prefix
+# "/proxy" = serve under /proxy prefix
+# Recommended: "/" for standalone, "/rustsocks" for reverse proxy
+base_path = "/"
+[sessions.dashboard_auth]
+enabled = false
+# [[sessions.dashboard_auth.users]]
+# username = "admin"
+# password = "strong-secret"
+
+################################################################################
+# CONNECTION POOL (Performance Optimization)
+################################################################################
+
+[server.pool]
+# Enable connection pooling for upstream connections
+# Reuses TCP connections to reduce handshake overhead
+# Recommended: true for production (improves performance)
+enabled = true
+
+# Maximum idle connections per destination
+# Higher = more reuse but more memory
+# Recommended: 4-10 connections
+max_idle_per_dest = 4
+
+# Maximum total idle connections (all destinations)
+# Prevents unbounded memory growth
+# Recommended: 100-500 connections
+max_total_idle = 100
+
+# Idle timeout (seconds)
+# How long to keep idle connections before closing
+# Recommended: 60-120 seconds
+idle_timeout_secs = 90
+
+# Connect timeout (milliseconds)
+# Timeout for establishing new upstream connections
+# Recommended: 5000-10000ms (5-10 seconds)
+connect_timeout_ms = 5000
+
+################################################################################
+# TLS/SSL CONFIGURATION (Optional - Encrypt SOCKS5 Traffic)
+################################################################################
+
+# Uncomment to enable TLS encryption for SOCKS5 connections
+# This encrypts the entire SOCKS5 session, including authentication credentials
+# Recommended for production to protect passwords in transit
+
+# [server.tls]
+# # Enable TLS
+# enabled = true
+#
+# # Server certificate (PEM format)
+# certificate_path = "/etc/rustsocks/tls/server.crt"
+#
+# # Server private key (PEM format)
+# private_key_path = "/etc/rustsocks/tls/server.key"
+#
+# # Minimum TLS protocol version
+# # Options: "TLS12", "TLS13"
+# # Recommended: "TLS13" for maximum security, "TLS12" for compatibility
+# min_protocol_version = "TLS13"
+#
+# # Mutual TLS (mTLS) - Client certificate authentication
+# # Uncomment to require client certificates (defense in depth)
+# # require_client_auth = true
+# # client_ca_path = "/etc/rustsocks/tls/clients-ca.crt"
+
+# Generate self-signed certificate (for testing only):
+# openssl req -x509 -newkey rsa:4096 -keyout server.key -out server.crt -days 365 -nodes -subj "/CN=rustsocks.company.com"
+
+################################################################################
+# LOGGING CONFIGURATION
+################################################################################
+
+[logging]
+# Log level
+# Options: "error", "warn", "info", "debug", "trace"
+# "error" = errors only
+# "warn" = warnings and errors
+# "info" = general info + warnings + errors (RECOMMENDED for production)
+# "debug" = detailed debugging info (verbose)
+# "trace" = maximum verbosity (very verbose, for development only)
+level = "info"
+
+# Log format
+# Options: "pretty", "json", "compact"
+# "pretty" = human-readable with colors (good for terminal)
+# "json" = JSON format (good for log aggregation like ELK, Splunk)
+# "compact" = condensed format
+# Recommended: "pretty" for development, "json" for production
+format = "pretty"
+
+# Log file (optional)
+# If not specified, logs to stdout/stderr
+# log_file = "/var/log/rustsocks/rustsocks.log"
+
+################################################################################
+# ADVANCED SETTINGS
+################################################################################
+
+# [advanced]
+# # TCP keepalive settings
+# tcp_keepalive_secs = 60
+# tcp_keepalive_interval_secs = 10
+# tcp_keepalive_retries = 5
+#
+# # Buffer sizes (bytes)
+# read_buffer_size = 8192
+# write_buffer_size = 8192
+#
+# # Connection timeout settings
+# handshake_timeout_secs = 30
+# idle_timeout_secs = 300
+#
+# # DNS resolution
+# dns_timeout_secs = 5
+# dns_cache_ttl_secs = 300
+
+################################################################################
+# EXAMPLE DEPLOYMENTS
+################################################################################
+
+# DEPLOYMENT 1: Small Office (50-100 users)
+# [server]
+# bind_address = "0.0.0.0"
+# bind_port = 1080
+# max_connections = 1000
+# [sessions]
+# batch_size = 50
+# batch_interval_ms = 2000
+# [server.pool]
+# max_idle_per_dest = 2
+# max_total_idle = 50
+
+# DEPLOYMENT 2: Medium Enterprise (500-1000 users)
+# [server]
+# bind_address = "0.0.0.0"
+# bind_port = 1080
+# max_connections = 5000
+# [sessions]
+# batch_size = 200
+# batch_interval_ms = 1000
+# [server.pool]
+# max_idle_per_dest = 8
+# max_total_idle = 200
+
+# DEPLOYMENT 3: Large Enterprise (5000+ users)
+# [server]
+# bind_address = "0.0.0.0"
+# bind_port = 1080
+# max_connections = 20000
+# [sessions]
+# batch_size = 1000
+# batch_interval_ms = 500
+# storage = "sqlite"  # Consider PostgreSQL for very high load
+# [server.pool]
+# max_idle_per_dest = 16
+# max_total_idle = 500
+
+################################################################################
+# MONITORING & OBSERVABILITY
+################################################################################
+
+# Prometheus metrics available at: http://localhost:9090/metrics
+#
+# Key metrics:
+# - rustsocks_active_sessions: Number of active SOCKS5 sessions
+# - rustsocks_sessions_total: Total sessions accepted
+# - rustsocks_sessions_rejected_total: Total sessions rejected by ACL
+# - rustsocks_bytes_sent_total: Total bytes sent to destinations
+# - rustsocks_bytes_received_total: Total bytes received from destinations
+# - rustsocks_user_sessions_total{user="alice@ad.company.com"}: Per-user session count
+# - rustsocks_user_bandwidth_bytes_total{user="alice@ad.company.com",direction="sent"}: Per-user bandwidth
+#
+# REST API endpoints (port 9090):
+# - GET /api/sessions/active: List active sessions
+# - GET /api/sessions/history: List historical sessions
+# - GET /api/sessions/stats: Session statistics
+# - GET /api/sessions/user/:username: User-specific sessions
+# - GET /api/acl/groups: List ACL groups
+# - GET /api/acl/users: List ACL users
+# - GET /api/acl/rules/group/:groupname: Group-specific rules
+# - GET /health: Health check
+# - GET /metrics: Prometheus metrics
+#
+# Dashboard:
+# - http://localhost:9090/ (if dashboard_enabled = true)
+#
+# Swagger UI (API documentation):
+# - http://localhost:9090/swagger-ui/ (if swagger_enabled = true)
+
+################################################################################
+# SYSTEMD INTEGRATION
+################################################################################
+
+# Create systemd service file: /etc/systemd/system/rustsocks.service
+#
+# [Unit]
+# Description=RustSocks SOCKS5 Proxy with Active Directory Integration
+# After=network.target sssd.service
+# Requires=sssd.service
+#
+# [Service]
+# Type=simple
+# User=rustsocks
+# Group=rustsocks
+# ExecStart=/usr/local/bin/rustsocks --config /etc/rustsocks/rustsocks.toml
+# Restart=on-failure
+# RestartSec=10
+# StandardOutput=journal
+# StandardError=journal
+# SyslogIdentifier=rustsocks
+#
+# # Security hardening
+# NoNewPrivileges=true
+# PrivateTmp=true
+# ProtectSystem=strict
+# ProtectHome=true
+# ReadWritePaths=/var/lib/rustsocks
+#
+# [Install]
+# WantedBy=multi-user.target
+#
+# Enable and start:
+# sudo systemctl daemon-reload
+# sudo systemctl enable rustsocks
+# sudo systemctl start rustsocks
+# sudo systemctl status rustsocks
+
+################################################################################
+# SECURITY BEST PRACTICES
+################################################################################
+
+# 1. Authentication:
+#    - Use socks_method = "pam.username" (not "none" or "userpass")
+#    - Enable PAM service verification (verify_service = true)
+#    - Use strong AD password policies (12+ chars, complexity)
+#
+# 2. Encryption:
+#    - Enable TLS (server.tls.enabled = true)
+#    - Use TLS 1.3 minimum (min_protocol_version = "TLS13")
+#    - Consider mTLS for critical environments
+#
+# 3. Access Control:
+#    - Enable ACL (acl.enabled = true)
+#    - Use default_policy = "block" (whitelist approach)
+#    - Review and update ACL rules regularly
+#
+# 4. Logging & Monitoring:
+#    - Use log level "info" or higher in production
+#    - Enable session tracking (sessions.enabled = true)
+#    - Monitor metrics via Prometheus
+#    - Set up alerts for rejected sessions spike
+#
+# 5. Network Security:
+#    - Bind to specific interface if possible (not 0.0.0.0)
+#    - Use firewall to restrict access (e.g., only from corporate network)
+#    - Consider running behind reverse proxy (nginx, haproxy)
+#
+# 6. System Hardening:
+#    - Run as non-root user (create dedicated rustsocks user)
+#    - Use systemd security features (see systemd section)
+#    - Enable SELinux/AppArmor
+#    - Keep system and RustSocks updated
+#
+# 7. AD Integration:
+#    - Use LDAPS (encrypted LDAP) in SSSD config
+#    - Restrict AD access with ad_access_filter in SSSD
+#    - Monitor AD authentication failures
+#    - Regularly review AD group memberships
+#
+# 8. Compliance:
+#    - Set retention_days per compliance requirements (GDPR, HIPAA, etc.)
+#    - Enable audit logging
+#    - Implement log rotation
+#    - Backup session database regularly
+
+################################################################################
+# TROUBLESHOOTING
+################################################################################
+
+# Issue: "PAM authentication failed"
+# - Check PAM service file exists: /etc/pam.d/rustsocks
+# - Test PAM: sudo pamtester rustsocks alice authenticate
+# - Check SSSD status: sudo systemctl status sssd
+# - Verify user exists: getent passwd alice@ad.company.com
+# - Enable verbose PAM logging: verbose = true
+
+# Issue: "No groups retrieved for user"
+# - Check SSSD is online: sudo sssctl domain-status ad.company.com
+# - Test NSS groups: id alice@ad.company.com
+# - Check SSSD cache: sudo sss_cache -E && sudo systemctl restart sssd
+# - Enable debug logging: level = "debug"
+
+# Issue: "ACL blocks legitimate traffic"
+# - Check user's AD groups: id username@ad.company.com
+# - Review ACL rules: Check config/acl.toml for matching rules
+# - Check ACL logs: Look for "ACL decision: Block" with rule description
+# - Verify group names match (case-insensitive)
+
+# Issue: "Cannot connect to database"
+# - Check database path exists: ls -l data/sessions.db
+# - Check permissions: User running RustSocks can write to data/ directory
+# - Check disk space: df -h
+# - Try in-memory storage temporarily: storage = "memory"
+
+# Issue: "High latency"
+# - Check SSSD cache: Groups should be cached (not querying AD every time)
+# - Enable connection pool: server.pool.enabled = true
+# - Increase pool size: max_idle_per_dest = 10
+# - Lower traffic_update_packet_interval if DB writes are slow
+# - Check network latency to AD DCs
+
+# Issue: "Connection refused"
+# - Check RustSocks is running: ps aux | grep rustsocks
+# - Check port is bound: lsof -i :1080
+# - Check firewall: sudo firewall-cmd --list-all
+# - Check bind_address (0.0.0.0 vs 127.0.0.1)
+
+# For more help, see:
+# - Active Directory Integration Guide: docs/guides/active-directory.md
+# - LDAP Groups Guide: docs/guides/ldap-groups.md
+# - GitHub Issues: https://github.com/xulek/rustsocks/issues
+
+################################################################################
+# NOTES
+################################################################################
+
+# 1. This configuration assumes:
+#    - Linux server joined to AD domain
+#    - SSSD configured and running
+#    - PAM service /etc/pam.d/rustsocks exists
+#    - ACL rules defined in config/acl.toml
+#
+# 2. Default ports:
+#    - SOCKS5: 1080 (standard)
+#    - API: 9090 (statistics and dashboard)
+#
+# 3. Performance tuning:
+#    - Adjust max_connections based on expected load
+#    - Enable connection pooling for better performance
+#    - Tune batch_size and batch_interval_ms for your workload
+#    - Use SQLite for <10K sessions/day, consider PostgreSQL for higher
+#
+# 4. Hot-reload support:
+#    - ACL rules: Automatic reload when file changes (if watch = true)
+#    - Config changes: Require restart (SIGHUP planned for future)
+#
+# 5. Compatibility:
+#    - SOCKS5 protocol (RFC 1928)
+#    - SOCKS5 username/password auth (RFC 1929)
+#    - SOCKS4/4a protocol (backward compatible)
+#    - HTTP CONNECT proxy (future enhancement)
+#
+################################################################################

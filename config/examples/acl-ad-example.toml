@@ -1,0 +1,601 @@
+# ACL Configuration Example for Active Directory Groups
+# File location: config/acl.toml
+#
+# This configuration demonstrates group-based access control using Active Directory
+# security groups. Rules are evaluated based on user's AD group memberships.
+#
+# KEY CONCEPTS:
+# - Groups are retrieved automatically from AD via SSSD
+# - Group names are case-insensitive ("Developers" = "developers")
+# - Only groups defined here are checked (ignores thousands of other AD groups)
+# - Rules are evaluated by priority (higher first, BLOCK before ALLOW at same priority)
+# - First matching rule wins
+# - If no rules match, default_policy is used
+#
+# TYPICAL USE CASE (from requirements):
+# - Temporary employees: Only work-related sites
+# - Full employees: Full internet access except social media
+# - Developers: Access to dev/staging environments
+# - Administrators: Unrestricted access
+#
+# INSTRUCTIONS:
+# 1. Replace group names with your actual AD groups (e.g., "CN=Developers,OU=Groups,DC=company,DC=com")
+# 2. Adjust destinations to match your environment
+# 3. Set appropriate priorities (higher = evaluated first)
+# 4. Test with: curl -x socks5://username:password@localhost:1080 http://example.com
+# 5. Enable hot-reload: acl.watch = true in rustsocks.toml
+
+[global]
+# Default policy when no rules match
+# "block" = deny by default (whitelist approach, RECOMMENDED)
+# "allow" = allow by default (blacklist approach, less secure)
+default_policy = "block"
+
+################################################################################
+# GROUP: Domain Admins (Unrestricted Access)
+################################################################################
+# AD Group: CN=Domain Admins,CN=Users,DC=company,DC=com
+# Short form: Domain Admins@ad.company.com
+# Priority: Highest (1000) - evaluated first
+
+[[groups]]
+name = "Domain Admins@ad.company.com"  # Use your actual AD group name
+
+  [[groups.rules]]
+  action = "allow"
+  description = "Domain Admins: Unrestricted access to all destinations"
+  destinations = ["*"]  # All destinations (IPv4, IPv6, domains)
+  ports = ["*"]  # All ports
+  protocols = ["tcp", "udp", "both"]  # All protocols
+  priority = 1000  # Highest priority
+
+################################################################################
+# GROUP: IT Administrators (Full Access + Monitoring)
+################################################################################
+# AD Group: CN=IT-Admins,OU=IT,OU=Groups,DC=company,DC=com
+
+[[groups]]
+name = "IT-Admins@ad.company.com"
+
+  [[groups.rules]]
+  action = "allow"
+  description = "IT Admins: Full access to all internal and external resources"
+  destinations = ["*"]
+  ports = ["*"]
+  protocols = ["tcp", "udp", "both"]
+  priority = 900
+
+################################################################################
+# GROUP: Developers (Development Environments + Tools)
+################################################################################
+# AD Group: CN=Developers,OU=IT,OU=Groups,DC=company,DC=com
+
+[[groups]]
+name = "Developers@ad.company.com"
+
+  # Allow access to development environments
+  [[groups.rules]]
+  action = "allow"
+  description = "Developers: Access to dev/staging/test environments"
+  destinations = [
+    "*.dev.company.com",
+    "*.staging.company.com",
+    "*.test.company.com",
+    "*.qa.company.com",
+    "*.uat.company.com"
+  ]
+  ports = ["*"]  # All ports (web, SSH, databases, etc.)
+  protocols = ["tcp"]
+  priority = 500
+
+  # Allow access to code repositories
+  [[groups.rules]]
+  action = "allow"
+  description = "Developers: Access to code repositories"
+  destinations = [
+    "github.com",
+    "*.github.com",
+    "gitlab.com",
+    "*.gitlab.com",
+    "bitbucket.org",
+    "*.bitbucket.org",
+    "git.company.com",
+    "*.git.company.com"
+  ]
+  ports = ["22", "80", "443", "9418"]  # SSH, HTTP, HTTPS, Git protocol
+  protocols = ["tcp"]
+  priority = 500
+
+  # Allow access to package registries and container registries
+  [[groups.rules]]
+  action = "allow"
+  description = "Developers: Access to package and container registries"
+  destinations = [
+    "registry.npmjs.org",      # npm
+    "*.npmjs.org",
+    "registry.yarnpkg.com",    # Yarn
+    "*.yarnpkg.com",
+    "pypi.org",                # Python PyPI
+    "*.pypi.org",
+    "files.pythonhosted.org",
+    "repo.maven.apache.org",   # Maven
+    "*.maven.org",
+    "api.nuget.org",           # NuGet (.NET)
+    "*.nuget.org",
+    "hub.docker.com",          # Docker Hub
+    "registry.hub.docker.com",
+    "*.docker.io",
+    "*.docker.com",
+    "gcr.io",                  # Google Container Registry
+    "*.gcr.io",
+    "quay.io",                 # Quay
+    "*.quay.io",
+    "ghcr.io",                 # GitHub Container Registry
+    "*.ghcr.io"
+  ]
+  ports = ["80", "443"]
+  protocols = ["tcp"]
+  priority = 500
+
+  # Allow access to developer documentation and learning resources
+  [[groups.rules]]
+  action = "allow"
+  description = "Developers: Access to documentation and learning platforms"
+  destinations = [
+    "stackoverflow.com",
+    "*.stackoverflow.com",
+    "stackexchange.com",
+    "*.stackexchange.com",
+    "developer.mozilla.org",
+    "docs.microsoft.com",
+    "learn.microsoft.com",
+    "devdocs.io",
+    "*.readthedocs.io"
+  ]
+  ports = ["80", "443"]
+  protocols = ["tcp"]
+  priority = 500
+
+################################################################################
+# GROUP: Full Employees (Full Internet - Blocked Social Media)
+################################################################################
+# AD Group: CN=Employees,OU=Users,DC=company,DC=com
+
+[[groups]]
+name = "Employees@ad.company.com"
+
+  # BLOCK social media (higher priority than allow-all below)
+  [[groups.rules]]
+  action = "block"
+  description = "Employees: Block social media during work hours"
+  destinations = [
+    "facebook.com",
+    "*.facebook.com",
+    "*.fb.com",
+    "instagram.com",
+    "*.instagram.com",
+    "twitter.com",
+    "*.twitter.com",
+    "x.com",
+    "*.x.com",
+    "tiktok.com",
+    "*.tiktok.com",
+    "reddit.com",
+    "*.reddit.com",
+    "snapchat.com",
+    "*.snapchat.com",
+    "pinterest.com",
+    "*.pinterest.com",
+    "linkedin.com",          # Optional: Remove if LinkedIn is work-related
+    "*.linkedin.com"
+  ]
+  ports = ["*"]
+  protocols = ["tcp"]
+  priority = 200  # Higher priority than allow-all (evaluated first)
+
+  # ALLOW all other traffic
+  [[groups.rules]]
+  action = "allow"
+  description = "Employees: Allow all traffic except blocked social media"
+  destinations = ["*"]
+  ports = ["*"]
+  protocols = ["tcp", "udp", "both"]
+  priority = 100  # Lower priority (evaluated after blocks)
+
+################################################################################
+# GROUP: Temporary Employees (Restricted - Work Sites Only)
+################################################################################
+# AD Group: CN=Temps,OU=Users,DC=company,DC=com
+#
+# REQUIREMENT: "Temporary employees to only work related sites, while giving
+# full access to other users."
+
+[[groups]]
+name = "Temps@ad.company.com"
+
+  # Allow company websites and intranet
+  [[groups.rules]]
+  action = "allow"
+  description = "Temps: Allow access to company websites and intranet"
+  destinations = [
+    "*.company.com",           # All company subdomains
+    "*.company.local",         # Internal domains
+    "intranet.company.com",
+    "portal.company.com",
+    "wiki.company.com",
+    "docs.company.com"
+  ]
+  ports = ["*"]
+  protocols = ["tcp", "udp", "both"]
+  priority = 50
+
+  # Allow essential cloud services (Office 365, Google Workspace)
+  [[groups.rules]]
+  action = "allow"
+  description = "Temps: Allow essential cloud productivity services"
+  destinations = [
+    # Microsoft Office 365 / Microsoft 365
+    "*.microsoft.com",
+    "*.office.com",
+    "*.office365.com",
+    "*.microsoftonline.com",
+    "*.windows.net",
+    "outlook.office365.com",
+    "*.sharepoint.com",
+    "*.onedrive.com",
+    "teams.microsoft.com",
+
+    # Google Workspace (if used)
+    "mail.google.com",
+    "drive.google.com",
+    "docs.google.com",
+    "sheets.google.com",
+    "slides.google.com",
+    "calendar.google.com",
+    "meet.google.com",
+    "*.googleapis.com",
+    "*.gstatic.com"
+  ]
+  ports = ["80", "443"]
+  protocols = ["tcp"]
+  priority = 50
+
+  # Allow communication tools (if needed)
+  [[groups.rules]]
+  action = "allow"
+  description = "Temps: Allow communication and collaboration tools"
+  destinations = [
+    "teams.microsoft.com",     # Microsoft Teams
+    "*.teams.microsoft.com",
+    "slack.com",               # Slack
+    "*.slack.com",
+    "zoom.us",                 # Zoom
+    "*.zoom.us",
+    "webex.com",               # Webex
+    "*.webex.com"
+  ]
+  ports = ["80", "443", "8080"]
+  protocols = ["tcp", "udp", "both"]
+  priority = 50
+
+  # Allow internal networks (RFC 1918 private address space)
+  [[groups.rules]]
+  action = "allow"
+  description = "Temps: Allow access to internal private networks"
+  destinations = [
+    "10.0.0.0/8",              # Class A private
+    "172.16.0.0/12",           # Class B private
+    "192.168.0.0/16"           # Class C private
+  ]
+  ports = ["*"]
+  protocols = ["tcp", "udp", "both"]
+  priority = 50
+
+  # Allow essential services (time servers, updates, certificate validation)
+  [[groups.rules]]
+  action = "allow"
+  description = "Temps: Allow essential system services"
+  destinations = [
+    "time.windows.com",        # Windows time server
+    "time.nist.gov",           # NIST time server
+    "*.windowsupdate.com",     # Windows updates
+    "*.microsoft.com",         # Microsoft services (already above, but explicit)
+    "ocsp.digicert.com",       # Certificate validation
+    "*.verisign.com",
+    "*.symantec.com"
+  ]
+  ports = ["80", "443", "123"]  # HTTP, HTTPS, NTP
+  protocols = ["tcp", "udp", "both"]
+  priority = 50
+
+  # BLOCK all other destinations (default_policy=block handles this, but explicit for clarity)
+  # Note: With default_policy = "block", unmatched traffic is automatically blocked
+  # This explicit rule is optional but makes the policy clearer
+
+################################################################################
+# GROUP: Contractors (Limited Access - Project-Specific)
+################################################################################
+# AD Group: CN=Contractors,OU=External,OU=Users,DC=company,DC=com
+
+[[groups]]
+name = "Contractors@ad.company.com"
+
+  # Allow project-specific resources
+  [[groups.rules]]
+  action = "allow"
+  description = "Contractors: Allow project-specific resources"
+  destinations = [
+    "project.company.com",
+    "*.project.company.com",
+    "contractor-portal.company.com"
+  ]
+  ports = ["80", "443"]
+  protocols = ["tcp"]
+  priority = 50
+
+  # Allow company email and communication (if needed)
+  [[groups.rules]]
+  action = "allow"
+  description = "Contractors: Allow email and basic communication"
+  destinations = [
+    "mail.company.com",
+    "webmail.company.com",
+    "*.office365.com"
+  ]
+  ports = ["80", "443", "587", "993"]  # HTTPS, SMTP, IMAP
+  protocols = ["tcp"]
+  priority = 50
+
+################################################################################
+# GROUP: Finance (Access to Financial Systems)
+################################################################################
+# AD Group: CN=Finance,OU=Departments,OU=Groups,DC=company,DC=com
+
+[[groups]]
+name = "Finance@ad.company.com"
+
+  # Allow access to financial systems
+  [[groups.rules]]
+  action = "allow"
+  description = "Finance: Access to financial and ERP systems"
+  destinations = [
+    "erp.company.com",
+    "sap.company.com",
+    "finance.company.com",
+    "*.financials.company.com",
+    "payroll.company.com"
+  ]
+  ports = ["*"]
+  protocols = ["tcp"]
+  priority = 100
+
+  # Block cryptocurrency and trading sites (financial policy)
+  [[groups.rules]]
+  action = "block"
+  description = "Finance: Block cryptocurrency exchanges"
+  destinations = [
+    "coinbase.com",
+    "*.coinbase.com",
+    "binance.com",
+    "*.binance.com",
+    "kraken.com",
+    "*.kraken.com"
+  ]
+  ports = ["*"]
+  protocols = ["tcp"]
+  priority = 200  # Higher priority than allows
+
+  # Allow general business sites
+  [[groups.rules]]
+  action = "allow"
+  description = "Finance: Allow general business websites"
+  destinations = ["*"]
+  ports = ["80", "443"]
+  protocols = ["tcp"]
+  priority = 50
+
+################################################################################
+# PER-USER OVERRIDES
+################################################################################
+# User-specific rules override group rules (higher priority)
+# Use this for exceptions, special permissions, or disciplinary actions
+
+# Example: Alice needs production access for on-call duties
+[[users]]
+username = "alice@ad.company.com"
+groups = ["Developers@ad.company.com", "Employees@ad.company.com"]
+
+  [[users.rules]]
+  action = "allow"
+  description = "Alice: Allow production access (on-call engineer)"
+  destinations = ["*.prod.company.com", "*.production.company.com"]
+  ports = ["*"]
+  protocols = ["tcp"]
+  priority = 600  # Higher than group rules (evaluated first)
+
+# Example: Bob (temp) blocked from specific resources (disciplinary action)
+[[users]]
+username = "bob@ad.company.com"
+groups = ["Temps@ad.company.com"]
+
+  [[users.rules]]
+  action = "block"
+  description = "Bob: Blocked from HR systems (disciplinary action)"
+  destinations = [
+    "hr.company.com",
+    "payroll.company.com",
+    "10.10.50.0/24"  # HR subnet
+  ]
+  ports = ["*"]
+  protocols = ["tcp", "udp", "both"]
+  priority = 1000  # Very high priority (overrides all group rules)
+
+# Example: Charlie (developer) has admin access during migration project
+[[users]]
+username = "charlie@ad.company.com"
+groups = ["Developers@ad.company.com"]
+
+  [[users.rules]]
+  action = "allow"
+  description = "Charlie: Temporary admin access for migration project"
+  destinations = [
+    "admin.company.com",
+    "*.admin.company.com",
+    "db-migration.company.com"
+  ]
+  ports = ["*"]
+  protocols = ["tcp"]
+  priority = 700
+
+################################################################################
+# RULE EVALUATION LOGIC
+################################################################################
+#
+# 1. Collect all applicable rules:
+#    - User-specific rules (from [[users]] section)
+#    - Rules from all user's AD groups (from [[groups]] sections)
+#
+# 2. Sort rules by priority:
+#    - Higher priority first (1000 before 100)
+#    - BLOCK rules before ALLOW rules (at same priority)
+#
+# 3. Evaluate rules until first match:
+#    - Check destination (IP, CIDR, domain, wildcard)
+#    - Check port (exact, range, list, or "*")
+#    - Check protocol (tcp, udp, both)
+#    - If match found, return action (ALLOW or BLOCK)
+#
+# 4. If no rules match:
+#    - Use default_policy (block or allow)
+#
+# Example for user alice@ad.company.com:
+#   Groups: Developers@ad.company.com, Employees@ad.company.com
+#   Destination: app.dev.company.com:443
+#
+#   Rules collected:
+#     - Alice's per-user rules (priority 600)
+#     - Developers group rules (priority 500)
+#     - Employees group BLOCK social media (priority 200)
+#     - Employees group ALLOW all (priority 100)
+#
+#   Evaluation:
+#     1. Alice's rules (priority 600) - no match for app.dev.company.com
+#     2. Developers allow *.dev.company.com (priority 500) - MATCH!
+#     Result: ALLOW
+#
+################################################################################
+# HOT RELOAD
+################################################################################
+#
+# To enable hot-reload (apply changes without restart):
+# 1. Set in rustsocks.toml: acl.watch = true
+# 2. Edit this file
+# 3. Save
+# 4. RustSocks automatically reloads within ~1 second
+# 5. Check logs for: "ACL configuration reloaded successfully"
+#
+# Hot reload applies to:
+#   - Group rules
+#   - User rules
+#   - Default policy
+#   - All ACL settings
+#
+# No restart required!
+#
+################################################################################
+# TESTING
+################################################################################
+#
+# Test ACL rules with curl:
+#
+# 1. Test as temporary employee (should block social media):
+#    curl -x socks5://temp_user:PASSWORD@localhost:1080 http://facebook.com
+#    Expected: Connection refused
+#
+# 2. Test as temporary employee (should allow company site):
+#    curl -x socks5://temp_user:PASSWORD@localhost:1080 http://intranet.company.com
+#    Expected: Success
+#
+# 3. Test as developer (should allow dev environment):
+#    curl -x socks5://alice:PASSWORD@localhost:1080 http://api.dev.company.com
+#    Expected: Success
+#
+# 4. Test as full employee (should block social media):
+#    curl -x socks5://employee:PASSWORD@localhost:1080 http://twitter.com
+#    Expected: Connection refused
+#
+# 5. Test as full employee (should allow normal sites):
+#    curl -x socks5://employee:PASSWORD@localhost:1080 http://news.bbc.co.uk
+#    Expected: Success
+#
+# 6. Test as admin (should allow everything):
+#    curl -x socks5://admin:PASSWORD@localhost:1080 http://anything.com
+#    Expected: Success
+#
+# Check RustSocks logs for ACL decisions:
+#   - "ACL decision: Allow" or "ACL decision: Block"
+#   - "Matched rule: <rule description>"
+#   - "User groups: [Developers@ad.company.com, ...]"
+#
+################################################################################
+# GROUP NAME FORMATS
+################################################################################
+#
+# Group names can be specified in several formats:
+#
+# 1. Short form (sAMAccountName):
+#    name = "Developers@ad.company.com"
+#    name = "Developers"  # If use_fully_qualified_names = False in sssd.conf
+#
+# 2. Distinguished Name (DN):
+#    name = "CN=Developers,OU=IT,OU=Groups,DC=company,DC=com"
+#    (Not recommended - harder to read and maintain)
+#
+# 3. Case-insensitive:
+#    "Developers" = "developers" = "DEVELOPERS"
+#    RustSocks normalizes group names for comparison
+#
+# Recommended: Use short form with domain (Developers@ad.company.com)
+#
+################################################################################
+# BEST PRACTICES
+################################################################################
+#
+# 1. Principle of Least Privilege:
+#    - Use default_policy = "block"
+#    - Explicitly allow only what's needed
+#    - Grant minimal access for temps/contractors
+#
+# 2. Priority Organization:
+#    - Admins: 900-1000 (highest)
+#    - User overrides: 600-800
+#    - Developers/Power users: 400-600
+#    - BLOCK rules: 200-400
+#    - Regular users ALLOW: 50-200
+#
+# 3. Rule Descriptions:
+#    - Always include meaningful description
+#    - Helps with auditing and troubleshooting
+#    - Shows in logs and metrics
+#
+# 4. Group Management:
+#    - Manage groups in AD, not in ACL config
+#    - Add/remove users from AD groups
+#    - ACL automatically picks up changes (via SSSD cache)
+#
+# 5. Testing:
+#    - Test all ACL rules before production
+#    - Use non-production users for testing
+#    - Enable debug logging during testing
+#
+# 6. Monitoring:
+#    - Review blocked connections regularly
+#    - Check for false positives (legitimate traffic blocked)
+#    - Adjust rules based on usage patterns
+#
+# 7. Documentation:
+#    - Document why specific rules exist
+#    - Note business justification for blocks/allows
+#    - Keep change log of ACL modifications
+#
+################################################################################

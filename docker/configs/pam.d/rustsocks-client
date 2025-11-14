@@ -1,0 +1,46 @@
+#%PAM-1.0
+# PAM configuration for RustSocks IP-based authentication
+# Service name: rustsocks-client
+# Method: pam.address
+#
+# This configuration authenticates clients based on IP address only.
+# No username/password required.
+
+# Authentication
+# pam_listfile: Allow connections from specific IP addresses/networks
+# For Docker: Allow from all container networks by default
+# Customize by mounting your own configuration
+auth sufficient pam_permit.so
+auth required pam_deny.so
+
+# Account management
+account sufficient pam_permit.so
+account required pam_deny.so
+
+# Password management (not used)
+password sufficient pam_permit.so
+
+# Session management
+session optional pam_permit.so
+
+# Production recommendations for IP-based authentication:
+#
+# 1. Use pam_listfile.so to whitelist allowed IPs/networks:
+#    auth required pam_listfile.so onerr=fail item=rhost sense=allow file=/etc/rustsocks/allowed_ips.txt
+#
+# 2. Use pam_access.so for complex access rules:
+#    auth required pam_access.so
+#    # Then configure /etc/security/access.conf
+#
+# 3. Integrate with firewall rules (iptables/nftables)
+#
+# 4. Use ACL engine in RustSocks for application-level filtering
+#
+# Example allowed_ips.txt:
+# 192.168.1.0/24
+# 10.0.0.0/8
+# 172.16.0.0/12
+#
+# Example with pam_listfile:
+# auth sufficient pam_listfile.so onerr=fail item=rhost sense=allow file=/etc/rustsocks/allowed_ips.txt
+# auth required pam_deny.so

@@ -1,0 +1,14 @@
+#%PAM-1.0
+#
+# PAM configuration for RustSocks integration tests
+#
+# This file should be copied to: /etc/pam.d/rustsocks-test
+#
+# Used by: tests/pam_integration.rs
+#
+# This is a permissive configuration for testing purposes only.
+# DO NOT USE IN PRODUCTION!
+
+# Allow all authentication for testing
+auth       required     pam_permit.so
+account    required     pam_permit.so

@@ -1,0 +1,108 @@
+[package]
+name = "rustsocks"
+version = "0.9.0"
+edition = "2021"
+authors = ["RustSocks Contributors"]
+description = "High-performance SOCKS5 proxy server in Rust"
+license = "MIT"
+
+[dependencies]
+# Async runtime
+tokio = { version = "1.48", features = ["full"] }
+tokio-util = { version = "0.7", features = ["codec"] }
+tokio-rustls = "0.26"
+
+# Networking
+bytes = "1.5"
+base64 = "0.21"
+futures = "0.3"
+axum = { version = "0.8", features = ["json"] }
+tower = { version = "0.5", features = ["util"] }
+tower-http = { version = "0.6", features = ["fs", "trace", "normalize-path"] }
+rustls = { version = "0.23", features = ["ring"] }
+rustls-pemfile = "2.2"
+socket2 = "0.5"  # Low-level socket configuration (SO_REUSEADDR, buffers)
+
+# API Documentation
+utoipa = "5.4"
+utoipa-swagger-ui = { version = "9.0", features = ["axum"] }
+
+# Configuration
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+toml = "0.8"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+# CLI
+clap = { version = "4.5", features = ["derive"] }
+
+# Error handling
+thiserror = "2.0"
+anyhow = "1.0"
+
+# ACL & Session Management
+ipnet = "2.11"          # CIDR parsing and matching
+notify = "8.2"          # File watching for hot reload
+dashmap = "6.1"         # Concurrent hashmap for active sessions
+uuid = { version = "1.11", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+regex = "1.11"          # For wildcard domain matching
+sysinfo = "0.34"        # System and process resource monitoring
+sha2 = "0.10"           # SHA-256 for session tokens
+hmac = "0.12"           # HMAC for Altcha signatures
+
+# Database (SQLite for session history)
+sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "sqlite", "mysql", "any", "chrono", "uuid", "macros", "migrate"], optional = true }
+
+# Metrics
+prometheus = { version = "0.14", optional = true }
+lazy_static = { version = "1.4", optional = true }
+
+# Performance: Fast allocator (5-15% faster than system allocator)
+mimalloc = { version = "0.1", optional = true }
+smallvec = "1.13"  # Stack-allocated vectors for small buffers (protocol parsing optimization)
+
+[features]
+default = ["metrics", "fast-allocator"]
+metrics = ["prometheus", "lazy_static"]
+database = ["sqlx"]
+fast-allocator = ["mimalloc"]
+gssapi = ["libgssapi"]
+
+[dev-dependencies]
+tokio-test = "0.4"
+tempfile = "3.23"
+serde_json = "1.0"
+pam-sys = "0.5"
+rcgen = "0.14"
+criterion = { version = "0.5", features = ["async_tokio", "html_reports"] }
+
+[target.'cfg(unix)'.dependencies]
+pam = "0.7"
+nix = { version = "0.30", features = ["user"] }  # For getgrouplist() - LDAP groups
+libc = "0.2"  # For getgrouplist() syscall
+libgssapi = { version = "0.7", optional = true }  # For GSS-API/Kerberos authentication
+
+# Benchmarks for performance optimizations
+[[bench]]
+name = "batch_writer_lock"
+harness = false
+
+[[bench]]
+name = "protocol_parsing"
+harness = false
+
+[[bench]]
+name = "session_cloning"
+harness = false
+
+[[bench]]
+name = "handshake_latency"
+harness = false
+
+[[bench]]
+name = "udp_serialization"
+harness = false

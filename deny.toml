@@ -1,0 +1,31 @@
+# cargo-deny configuration
+# https://embarkstudios.github.io/cargo-deny/
+
+[advisories]
+# Ignore known unfixable vulnerabilities in transitive dependencies
+ignore = [
+    # rsa 0.9.8 - Marvin Attack (via sqlx-mysql)
+    # We only use SQLite, not MySQL, so this doesn't affect us
+    "RUSTSEC-2023-0071",
+
+    # users 0.8.1 - root appended to group listings (via pam)
+    # PAM dependency, no alternative available
+    "RUSTSEC-2025-0040",
+]
+
+# Warn on unmaintained crates but don't fail
+[advisories.unmaintained]
+ignore = [
+    # proc-macro-error (via utoipa) - compile-time only
+    "RUSTSEC-2024-0370",
+
+    # users (via pam) - no alternative
+    "RUSTSEC-2023-0040",
+]
+
+# Allow unsound issues in dependencies we can't control
+[advisories.unsound]
+ignore = [
+    # users 0.8.1 - unaligned read (via pam)
+    "RUSTSEC-2023-0059",
+]

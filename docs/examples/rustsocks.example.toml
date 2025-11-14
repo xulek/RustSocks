@@ -1,0 +1,101 @@
+[server]
+bind_address = "127.0.0.1"
+bind_port = 1080
+max_connections = 10000
+
+[server.tls]
+enabled = false
+certificate_path = "config/server.crt"
+private_key_path = "config/server.key"
+require_client_auth = false
+# client_ca_path = "config/clients-ca.crt"
+# alpn_protocols = ["socks"]
+# min_protocol_version = "TLS13"
+
+[auth]
+client_method = "none"  # Options: "none", "pam.address"
+socks_method = "none"   # Options: "none", "userpass", "pam.address", "pam.username"
+
+# For userpass authentication, add users:
+ [[auth.users]]
+ username = "alice"
+ password = "secret123"
+
+[auth.pam]
+username_service = "rustsocks"
+address_service = "rustsocks-client"
+default_user = "rhostusr"
+default_ruser = "rhostusr"
+verbose = false
+verify_service = false
+
+[logging]
+level = "info"  # Options: "trace", "debug", "info", "warn", "error"
+format = "pretty"  # Options: "pretty", "json"
+
+[acl]
+enabled = true
+config_file = "config/acl.toml"
+watch = true
+anonymous_user = "anonymous"
+
+[sessions]
+enabled = true
+storage = "sqlite"  # Options: "memory", "sqlite", "mariadb"
+# For MariaDB/MySQL use something like:
+# database_url = "mysql://user:pass@host:3306/rustsocks_sessions"
+database_url = "sqlite://sessions.db"
+batch_size = 100
+batch_interval_ms = 1000
+retention_days = 90
+cleanup_interval_hours = 24
+traffic_update_packet_interval = 10
+stats_window_hours = 24
+stats_api_enabled = true
+stats_api_bind_address = "127.0.0.1"
+stats_api_port = 9090
+swagger_enabled = true      # Enable Swagger UI at /swagger-ui/
+dashboard_enabled = true    # Enable Web Dashboard at /
+# Base URL path prefix ("/" or e.g. "/rustsocks")
+base_path = "/"
+[sessions.dashboard_auth]
+enabled = false             # Enable Basic Auth for the dashboard
+# [[sessions.dashboard_auth.users]]
+# username = "admin"
+# password = "strong-secret"
+
+[qos]
+enabled = true  # Enable QoS (Quality of Service) / Rate Limiting
+algorithm = "htb"  # Options: "htb" (Hierarchical Token Bucket with fair sharing)
+
+[qos.htb]
+# Global bandwidth limit (1 Gbps = 125 MB/s = 125000000 bytes/sec)
+global_bandwidth_bytes_per_sec = 125000000
+
+# Per-user guaranteed minimum bandwidth (1 Mbps = 131072 bytes/sec)
+guaranteed_bandwidth_bytes_per_sec = 131072
+
+# Per-user maximum bandwidth when borrowing (100 Mbps = 12500000 bytes/sec)
+max_bandwidth_bytes_per_sec = 12500000
+
+# Burst size (how much can be transferred instantly)
+burst_size_bytes = 1048576  # 1 MB
+
+# Token bucket refill interval (milliseconds)
+refill_interval_ms = 50
+
+# Fair sharing - dynamically allocate unused bandwidth to active users
+fair_sharing_enabled = true
+
+# How often to recalculate fair shares (milliseconds)
+rebalance_interval_ms = 100
+
+# User inactivity timeout (seconds) - user considered idle after this period
+idle_timeout_secs = 5
+
+[qos.connection_limits]
+# Maximum connections per user (set high for load testing)
+max_connections_per_user = 10000
+
+# Maximum total connections (global)
+max_connections_global = 10000

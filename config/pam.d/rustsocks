@@ -1,0 +1,31 @@
+#%PAM-1.0
+#
+# PAM configuration for RustSocks SOCKS5 username/password authentication
+#
+# This file should be copied to: /etc/pam.d/rustsocks
+#
+# SECURITY WARNING:
+# - SOCKS5 username/password auth transmits passwords in CLEAR-TEXT
+# - Only use in trusted networks or with additional encryption (TLS tunnel)
+#
+# Usage: Configure in rustsocks.toml with:
+#   [auth]
+#   socks_method = "pam.username"
+#   [auth.pam]
+#   username_service = "rustsocks"
+
+# Authentication - verify username and password
+auth       required     pam_unix.so
+auth       required     pam_env.so
+
+# Account management - check if account is valid and not locked
+account    required     pam_unix.so
+account    required     pam_nologin.so
+account    required     pam_access.so
+
+# Optional: Session management for logging
+session    optional     pam_limits.so
+session    optional     pam_lastlog.so
+
+# Optional: Password management (not typically used for SOCKS)
+# password   required     pam_unix.so

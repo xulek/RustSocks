@@ -1,0 +1,32 @@
+name: Coverage
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+
+jobs:
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config llvm clang libpam0g-dev libkrb5-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install cargo-tarpaulin
+        run: cargo install cargo-tarpaulin --locked
+
+      - name: Run coverage
+        run: cargo tarpaulin --locked --features database --out Xml --output-dir coverage
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: tarpaulin-report
+          path: coverage
