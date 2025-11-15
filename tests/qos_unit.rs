@@ -5,6 +5,8 @@
 //! - HtbQos: Hierarchical Token Bucket with fair sharing
 //! - QosEngine: High-level QoS engine and configuration
 
+#![allow(unexpected_cfgs)]
+
 use rustsocks::qos::{ConnectionLimits, HtbConfig, QosConfig, QosEngine};
 use std::sync::Arc;
 use std::time::Duration;
@@ -13,7 +15,8 @@ use tokio::time::{sleep, Instant};
 const COVERAGE_SLOWDOWN_MS: u64 = 40;
 
 fn running_under_coverage() -> bool {
-    std::env::var_os("CARGO_TARPAULIN").is_some()
+    cfg!(tarpaulin)
+        || std::env::var_os("CARGO_TARPAULIN").is_some()
         || std::env::var_os("TARPAULIN").is_some()
 }
 
