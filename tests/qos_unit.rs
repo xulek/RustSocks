@@ -10,6 +10,33 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::{sleep, Instant};
 
+const COVERAGE_SLOWDOWN_MS: u64 = 40;
+
+fn running_under_coverage() -> bool {
+    std::env::var_os("CARGO_TARPAULIN").is_some()
+        || std::env::var_os("TARPAULIN").is_some()
+}
+
+fn coverage_adjusted_budget(strict_ms: u64) -> Duration {
+    let allowance = if running_under_coverage() {
+        strict_ms + COVERAGE_SLOWDOWN_MS
+    } else {
+        strict_ms
+    };
+    Duration::from_millis(allowance)
+}
+
+fn assert_fast(elapsed: Duration, strict_ms: u64, context: &str) {
+    let budget = coverage_adjusted_budget(strict_ms);
+    assert!(
+        elapsed < budget,
+        "{} should complete under {:?}, took {:?}",
+        context,
+        budget,
+        elapsed
+    );
+}
+
 // ============================================================================
 // TokenBucket Tests (via HtbQos - TokenBucket is private)
 // ============================================================================
@@ -49,11 +76,7 @@ mod token_bucket_tests {
             .expect("allocate burst");
         let elapsed = start.elapsed();
 
-        assert!(
-            elapsed < Duration::from_millis(10),
-            "burst should be instant, took {:?}",
-            elapsed
-        );
+        assert_fast(elapsed, 10, "burst should be instant");
     }
 
     #[tokio::test]
@@ -136,11 +159,7 @@ mod token_bucket_tests {
         qos.allocate_bandwidth("user1", 10_000).await.unwrap();
         let elapsed = start.elapsed();
 
-        assert!(
-            elapsed < Duration::from_millis(50),
-            "refilled tokens should be available, took {:?}",
-            elapsed
-        );
+        assert_fast(elapsed, 50, "refilled tokens should be available");
     }
 
     #[tokio::test]
@@ -210,7 +229,7 @@ mod token_bucket_tests {
         qos.allocate_bandwidth("user1", 0).await.unwrap();
         let elapsed = start.elapsed();
 
-        assert!(elapsed < Duration::from_millis(1));
+        assert_fast(elapsed, 1, "zero consumption allocation");
     }
 }
 
@@ -428,11 +447,7 @@ mod bandwidth_allocation_tests {
         qos.allocate_bandwidth("user1", 1_000_000).await.unwrap();
         let elapsed = start.elapsed();
 
-        assert!(
-            elapsed < Duration::from_millis(10),
-            "guaranteed burst should be instant, took {:?}",
-            elapsed
-        );
+        assert_fast(elapsed, 10, "guaranteed burst should be instant");
     }
 
     #[tokio::test]
@@ -468,10 +483,10 @@ mod bandwidth_allocation_tests {
         qos.allocate_bandwidth("user1", 100_000).await.unwrap();
         let elapsed = start.elapsed();
 
-        assert!(
-            elapsed < Duration::from_millis(20),
-            "borrowing should use max bucket burst, took {:?}",
-            elapsed
+        assert_fast(
+            elapsed,
+            20,
+            "borrowing should use max bucket burst"
         );
     }
 
@@ -569,8 +584,8 @@ mod bandwidth_allocation_tests {
         let alice_time = alice_task.await.unwrap();
         let bob_time = bob_task.await.unwrap();
 
-        assert!(alice_time < Duration::from_millis(20));
-        assert!(bob_time < Duration::from_millis(20));
+        assert_fast(alice_time, 20, "alice burst allocation");
+        assert_fast(bob_time, 20, "bob burst allocation");
     }
 }
 
@@ -808,7 +823,7 @@ mod qos_engine_tests {
         qos.allocate_bandwidth("user1", 999_999_999).await.unwrap();
         let elapsed = start.elapsed();
 
-        assert!(elapsed < Duration::from_millis(1));
+        assert_fast(elapsed, 1, "unlimited QoS allocation");
     }
 
     #[tokio::test]
@@ -1085,7 +1100,7 @@ mod edge_cases_tests {
             .unwrap();
         let elapsed = start.elapsed();
 
-        assert!(elapsed < Duration::from_millis(10));
+        assert_fast(elapsed, 10, "very large bandwidth allocation");
     }
 
     #[tokio::test]
