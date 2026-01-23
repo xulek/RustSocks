@@ -15,6 +15,7 @@ use rustsocks::server::{
 use rustsocks::session::SessionManager;
 use std::net::TcpListener as StdTcpListener;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio_rustls::TlsConnector;
@@ -70,6 +71,7 @@ async fn socks5_connect_over_tls() {
         qos_engine: QosEngine::None,
         connection_limits: ConnectionLimits::default(),
         connection_pool: Arc::new(ConnectionPool::new(PoolConfig::default())),
+        handshake_timeout: Duration::from_secs(5),
     });
 
     let socks_listener = bind_nonblocking("127.0.0.1:0");
@@ -223,6 +225,7 @@ async fn socks5_connect_with_mutual_tls() {
         qos_engine: QosEngine::None,
         connection_limits: ConnectionLimits::default(),
         connection_pool: Arc::new(ConnectionPool::new(PoolConfig::default())),
+        handshake_timeout: Duration::from_secs(5),
     });
 
     let socks_listener = bind_nonblocking("127.0.0.1:0");

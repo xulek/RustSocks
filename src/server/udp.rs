@@ -1,4 +1,6 @@
+use crate::acl::{AclDecision, AclEngine, AclStats, Protocol};
 use crate::protocol::{parse_udp_packet, serialize_udp_packet, Address, UdpHeader, UdpPacket};
+use crate::qos::QosEngine;
 use crate::server::resolver::resolve_address;
 use crate::session::{SessionManager, SessionStatus};
 use crate::utils::error::{Result, RustSocksError};
@@ -19,6 +21,15 @@ struct UdpSessionMap {
     sessions: DashMap<SocketAddr, (SocketAddr, Uuid)>,
     // Map destination address back to client for responses
     reverse: DashMap<SocketAddr, SocketAddr>,
+}
+
+#[derive(Clone)]
+pub struct UdpRelayContext {
+    pub user: Arc<str>,
+    pub user_groups: Arc<Vec<String>>,
+    pub acl_engine: Option<Arc<AclEngine>>,
+    pub acl_stats: Arc<AclStats>,
+    pub qos_engine: QosEngine,
 }
 
 impl UdpSessionMap {
@@ -58,6 +69,7 @@ pub async fn handle_udp_associate(
     session_manager: Arc<SessionManager>,
     session_id: Uuid,
     shutdown_rx: broadcast::Receiver<()>,
+    udp_ctx: UdpRelayContext,
 ) -> Result<SocketAddr> {
     // Bind UDP socket on any available port
     let udp_socket = UdpSocket::bind("0.0.0.0:0").await?;
@@ -76,6 +88,7 @@ pub async fn handle_udp_associate(
             session_manager.clone(),
             session_id,
             shutdown_rx,
+            udp_ctx,
         )
         .await
         {
@@ -100,9 +113,11 @@ async fn run_udp_relay(
     session_manager: Arc<SessionManager>,
     session_id: Uuid,
     mut shutdown_rx: broadcast::Receiver<()>,
+    udp_ctx: UdpRelayContext,
 ) -> Result<()> {
     let socket = Arc::new(socket);
     let session_map = Arc::new(UdpSessionMap::new());
+    let udp_ctx = Arc::new(udp_ctx);
 
     const MAX_DATAGRAM: usize = 65_535;
     let mut buf = BytesMut::with_capacity(MAX_DATAGRAM);
@@ -135,6 +150,7 @@ async fn run_udp_relay(
                                 &session_map,
                                 &session_manager,
                                 &session_id,
+                                &udp_ctx,
                             )
                             .await
                             {
@@ -149,6 +165,7 @@ async fn run_udp_relay(
                                 &session_map,
                                 &session_manager,
                                 &session_id,
+                                &udp_ctx,
                             )
                             .await
                             {
@@ -197,6 +214,7 @@ async fn handle_client_packet(
     session_map: &Arc<UdpSessionMap>,
     session_manager: &Arc<SessionManager>,
     session_id: &Uuid,
+    udp_ctx: &Arc<UdpRelayContext>,
 ) -> Result<()> {
     // Parse SOCKS5 UDP packet
     let packet = parse_udp_packet(packet_data)?;
@@ -208,6 +226,49 @@ async fn handle_client_packet(
         packet.header.port,
         packet.data.len()
     );
+
+    if let Some(engine) = udp_ctx.acl_engine.as_ref() {
+        let (decision, matched_rule) = engine
+            .evaluate_with_groups(
+                udp_ctx.user.as_ref(),
+                udp_ctx.user_groups.as_ref(),
+                &packet.header.address,
+                packet.header.port,
+                &Protocol::Udp,
+            )
+            .await;
+
+        match decision {
+            AclDecision::Block => {
+                udp_ctx.acl_stats.record_block(udp_ctx.user.as_ref());
+                let rule = matched_rule.as_deref().unwrap_or("unknown rule");
+                warn!(
+                    user = %udp_ctx.user.as_ref(),
+                    dest = %packet.header.address,
+                    port = packet.header.port,
+                    rule,
+                    "ACL blocked UDP packet"
+                );
+                return Ok(());
+            }
+            AclDecision::Allow => {
+                udp_ctx.acl_stats.record_allow(udp_ctx.user.as_ref());
+            }
+        }
+    }
+
+    if let Err(err) = udp_ctx
+        .qos_engine
+        .allocate_bandwidth_arc(&udp_ctx.user, packet.data.len() as u64)
+        .await
+    {
+        warn!(
+            user = %udp_ctx.user.as_ref(),
+            error = %err,
+            "QoS allocation failed for UDP upload"
+        );
+        return Ok(());
+    }
 
     // Resolve destination address
     let dest_candidates = resolve_address(&packet.header.address, packet.header.port).await?;
@@ -241,6 +302,7 @@ async fn handle_destination_packet(
     session_map: &Arc<UdpSessionMap>,
     session_manager: &Arc<SessionManager>,
     session_id: &Uuid,
+    udp_ctx: &Arc<UdpRelayContext>,
 ) -> Result<()> {
     // Find client address from reverse mapping
     let client_addr = session_map.get_client(&dest_addr).ok_or_else(|| {
@@ -270,6 +332,19 @@ async fn handle_destination_packet(
     let response_bytes = serialize_udp_packet(&response_packet);
 
     // Send to client
+    if let Err(err) = udp_ctx
+        .qos_engine
+        .allocate_bandwidth_arc(&udp_ctx.user, packet_len as u64)
+        .await
+    {
+        warn!(
+            user = %udp_ctx.user.as_ref(),
+            error = %err,
+            "QoS allocation failed for UDP download"
+        );
+        return Ok(());
+    }
+
     let sent = socket.send_to(&response_bytes, client_addr).await?;
 
     session_manager.queue_traffic_update(session_id, 0, packet_len as u64, 0, 1);

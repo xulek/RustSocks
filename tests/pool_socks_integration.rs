@@ -10,6 +10,7 @@ use rustsocks::server::{
 };
 use rustsocks::session::SessionManager;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 
@@ -43,6 +44,7 @@ async fn pool_integrates_with_socks5_multiple_requests() {
         qos_engine: QosEngine::None,
         connection_limits: ConnectionLimits::default(),
         connection_pool: connection_pool.clone(),
+        handshake_timeout: Duration::from_secs(5),
     });
 
     // SOCKS server
@@ -167,6 +169,7 @@ async fn pool_handles_connection_failure_mid_request() {
         qos_engine: QosEngine::None,
         connection_limits: ConnectionLimits::default(),
         connection_pool: connection_pool.clone(),
+        handshake_timeout: Duration::from_secs(5),
     });
 
     let socks_listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -245,6 +248,7 @@ async fn pool_with_pooling_disabled_still_works() {
         qos_engine: QosEngine::None,
         connection_limits: ConnectionLimits::default(),
         connection_pool: connection_pool.clone(),
+        handshake_timeout: Duration::from_secs(5),
     });
 
     let socks_listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -338,6 +342,7 @@ async fn pool_stats_reflect_real_usage() {
         qos_engine: QosEngine::None,
         connection_limits: ConnectionLimits::default(),
         connection_pool: connection_pool.clone(),
+        handshake_timeout: Duration::from_secs(5),
     });
 
     let socks_listener = TcpListener::bind("127.0.0.1:0").await.unwrap();

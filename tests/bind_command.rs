@@ -7,6 +7,7 @@ use rustsocks::server::{
 };
 use rustsocks::session::SessionManager;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 
@@ -35,6 +36,7 @@ async fn bind_basic_handshake() {
         qos_engine: QosEngine::None,
         connection_limits: ConnectionLimits::default(),
         connection_pool: Arc::new(ConnectionPool::new(PoolConfig::default())),
+        handshake_timeout: Duration::from_secs(5),
     });
 
     // Start SOCKS5 server
@@ -120,6 +122,7 @@ async fn bind_with_incoming_connection() {
         qos_engine: QosEngine::None,
         connection_limits: ConnectionLimits::default(),
         connection_pool: Arc::new(ConnectionPool::new(PoolConfig::default())),
+        handshake_timeout: Duration::from_secs(5),
     });
 
     // Start SOCKS5 server
@@ -245,6 +248,7 @@ username = "anonymous"
         qos_engine: QosEngine::None,
         connection_limits: ConnectionLimits::default(),
         connection_pool: Arc::new(ConnectionPool::new(PoolConfig::default())),
+        handshake_timeout: Duration::from_secs(5),
     });
 
     // Start SOCKS5 server
@@ -331,6 +335,7 @@ username = "anonymous"
         qos_engine: QosEngine::None,
         connection_limits: ConnectionLimits::default(),
         connection_pool: Arc::new(ConnectionPool::new(PoolConfig::default())),
+        handshake_timeout: Duration::from_secs(5),
     });
 
     // Start SOCKS5 server

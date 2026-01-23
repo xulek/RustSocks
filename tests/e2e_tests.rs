@@ -53,6 +53,7 @@ async fn create_basic_server_context(
         qos_engine: QosEngine::None,
         connection_limits: ConnectionLimits::default(),
         connection_pool: connection_pool.clone(),
+        handshake_timeout: Duration::from_secs(5),
     });
 
     (ctx, session_manager)

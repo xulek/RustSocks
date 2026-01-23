@@ -59,6 +59,9 @@ session_secret = "change-me-to-very-long-random-secret-string"
 
 # How long sessions remain valid (in hours)
 session_duration_hours = 24  # Default: 24 hours
+
+# Mark cookies as Secure when serving the dashboard over HTTPS
+cookie_secure = true
 ```
 
 ### User Management
@@ -79,10 +82,9 @@ username = "operator"
 password = "OperatorPassword789"
 ```
 
-**Note**: In future versions, user management will support:
-- Password hashing (bcrypt/argon2)
-- Role-based access control
-- LDAP/Active Directory integration
+**Note**: Password hashes in PHC format are supported today. If the `password` field starts with
+`$argon2`, RustSocks will verify the hash using Argon2. Plaintext passwords are still accepted
+for local testing, but production deployments should use hashed credentials.
 
 ### Base Path Support
 
@@ -250,7 +252,18 @@ certificate_path = "/path/to/cert.pem"
 private_key_path = "/path/to/key.pem"
 ```
 
-### 4. Session Duration
+### 4. Protect API Endpoints
+
+If the API is exposed, set a token to require auth on `/api/*`:
+
+```toml
+[sessions]
+api_token = "change-me"
+```
+
+Requests can authenticate via `Authorization: Bearer <token>` or `x-api-token`.
+
+### 5. Session Duration
 
 Adjust based on security needs:
 
@@ -260,7 +273,7 @@ session_duration_hours = 8  # Work day
 # session_duration_hours = 168  # 1 week (convenience)
 ```
 
-### 5. Firewall Protection
+### 6. Firewall Protection
 
 Restrict dashboard access:
 

@@ -10,6 +10,7 @@ use rustsocks::server::{
 };
 use rustsocks::session::SessionManager;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 
@@ -48,6 +49,7 @@ async fn connection_pool_reuses_upstream_connections() {
         qos_engine: QosEngine::None,
         connection_limits: ConnectionLimits::default(),
         connection_pool: connection_pool.clone(),
+        handshake_timeout: Duration::from_secs(5),
     });
 
     // Start SOCKS5 server

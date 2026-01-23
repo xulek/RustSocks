@@ -18,11 +18,7 @@ use std::sync::Arc;
 #[cfg(feature = "database")]
 use std::sync::OnceLock;
 use std::time::Duration;
-use tokio::sync::{
-    broadcast,
-    mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender},
-    RwLock,
-};
+use tokio::sync::{broadcast, mpsc, RwLock};
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 use uuid::Uuid;
@@ -42,7 +38,7 @@ pub struct SessionManager {
     store: Option<Arc<SessionStore>>,
     #[cfg(feature = "database")]
     batch_writer: OnceLock<Arc<BatchWriter>>,
-    traffic_tx: UnboundedSender<TrafficUpdate>,
+    traffic_tx: mpsc::Sender<TrafficUpdate>,
 }
 
 #[derive(Debug, Clone)]
@@ -60,10 +56,16 @@ struct TrafficUpdate {
     packets_received: u64,
 }
 
+const DEFAULT_TRAFFIC_QUEUE_CAPACITY: usize = 10_000;
+
 impl SessionManager {
     /// Create a new empty manager.
     pub fn new() -> Self {
-        let (traffic_tx, traffic_rx) = unbounded_channel();
+        Self::new_with_capacity(DEFAULT_TRAFFIC_QUEUE_CAPACITY)
+    }
+
+    pub fn new_with_capacity(capacity: usize) -> Self {
+        let (traffic_tx, traffic_rx) = mpsc::channel(capacity);
         let manager = Self {
             active_sessions: DashMap::new(),
             closed_sessions: RwLock::new(Vec::new()),
@@ -80,7 +82,7 @@ impl SessionManager {
         manager
     }
 
-    fn start_traffic_worker(&self, mut rx: UnboundedReceiver<TrafficUpdate>) {
+    fn start_traffic_worker(&self, mut rx: mpsc::Receiver<TrafficUpdate>) {
         let active_sessions = self.active_sessions.clone();
         #[cfg(feature = "database")]
         let batch_writer = self.batch_writer.clone();
@@ -367,13 +369,18 @@ impl SessionManager {
             packets_received,
         };
 
-        if let Err(err) = self.traffic_tx.send(update) {
-            warn!(
+        if let Err(err) = self.traffic_tx.try_send(update) {
+            tracing::debug!(
                 session = %session_id,
                 "Failed to enqueue traffic update: {}",
                 err
             );
         }
+    }
+
+    #[cfg(test)]
+    pub fn traffic_queue_remaining(&self) -> usize {
+        self.traffic_tx.capacity()
     }
 
     async fn apply_traffic_update(
@@ -959,5 +966,11 @@ mod tests {
             USER_SESSIONS.with_label_values(&["bob"]).get() > base_user_bob,
             "user sessions counter should track rejected users"
         );
+    }
+
+    #[tokio::test]
+    async fn new_with_capacity_sets_queue_size() {
+        let manager = SessionManager::new_with_capacity(5);
+        assert_eq!(manager.traffic_queue_remaining(), 5);
     }
 }

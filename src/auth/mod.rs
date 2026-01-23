@@ -9,9 +9,12 @@ use self::pam::{PamAuthError, PamAuthenticator, PamMethod};
 use crate::config::AuthConfig;
 use crate::protocol::{parse_userpass_auth, send_auth_response, AuthMethod};
 use crate::utils::error::{Result, RustSocksError};
+use argon2::password_hash::{PasswordHash, PasswordVerifier};
+use argon2::Argon2;
 pub use groups::get_user_groups;
 use std::collections::HashMap;
 use std::net::IpAddr;
+use subtle::ConstantTimeEq;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tracing::{debug, info, warn};
 
@@ -262,8 +265,21 @@ impl UserPassAuthenticator {
     fn authenticate(&self, username: &str, password: &str) -> bool {
         self.users
             .get(username)
-            .map(|stored_password| stored_password == password)
+            .map(|stored_password| verify_password(stored_password, password))
             .unwrap_or(false)
+    }
+}
+
+pub(crate) fn verify_password(stored: &str, provided: &str) -> bool {
+    if stored.starts_with("$argon2") {
+        match PasswordHash::new(stored) {
+            Ok(hash) => Argon2::default()
+                .verify_password(provided.as_bytes(), &hash)
+                .is_ok(),
+            Err(_) => false,
+        }
+    } else {
+        stored.as_bytes().ct_eq(provided.as_bytes()).into()
     }
 }
 
@@ -307,6 +323,8 @@ fn map_gssapi_runtime_error(err: GssApiAuthError) -> RustSocksError {
 mod tests {
     use super::*;
     use crate::config::{AuthConfig, PamSettings, User};
+    use argon2::password_hash::{PasswordHasher, SaltString};
+    use rand::rngs::OsRng;
 
     fn userpass_config() -> AuthConfig {
         AuthConfig {
@@ -335,5 +353,24 @@ mod tests {
         let config = userpass_config();
         let auth_manager = AuthManager::new(&config).unwrap();
         assert_eq!(auth_manager.get_method(), AuthMethod::UserPass);
+    }
+
+    #[test]
+    fn verify_password_plaintext() {
+        assert!(verify_password("secret123", "secret123"));
+        assert!(!verify_password("secret123", "wrong"));
+    }
+
+    #[test]
+    fn verify_password_argon2() {
+        let password = "s3cur3!";
+        let salt = SaltString::generate(&mut OsRng);
+        let hash = Argon2::default()
+            .hash_password(password.as_bytes(), &salt)
+            .unwrap()
+            .to_string();
+
+        assert!(verify_password(&hash, password));
+        assert!(!verify_password(&hash, "nope"));
     }
 }

@@ -79,6 +79,7 @@ async fn acl_blocks_connection_and_tracks_stats() {
             qos_engine: QosEngine::None,
             connection_limits: ConnectionLimits::default(),
             connection_pool: Arc::new(ConnectionPool::new(PoolConfig::default())),
+            handshake_timeout: Duration::from_secs(5),
         });
 
         tokio::spawn(async move {
@@ -209,6 +210,7 @@ async fn spawn_allow_env(expected: usize) -> AllowEnv {
             qos_engine: QosEngine::None,
             connection_limits: ConnectionLimits::default(),
             connection_pool: Arc::new(ConnectionPool::new(PoolConfig::default())),
+            handshake_timeout: Duration::from_secs(5),
         });
 
         tokio::spawn(async move {

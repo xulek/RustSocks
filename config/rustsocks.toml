@@ -2,6 +2,7 @@
 bind_address = "127.0.0.1"
 bind_port = 1080
 max_connections = 10000
+handshake_timeout_ms = 10000
 
 [server.tls]
 enabled = false
@@ -57,10 +58,13 @@ batch_interval_ms = 250
 retention_days = 90
 cleanup_interval_hours = 24
 traffic_update_packet_interval = 10
+traffic_queue_capacity = 10000
 stats_window_hours = 24
 stats_api_enabled = true
 stats_api_bind_address = "127.0.0.1"
 stats_api_port = 9090
+# Optional API token; when set, /api/* requires token or dashboard session
+# api_token = "change-me"
 swagger_enabled = true
 dashboard_enabled = true
 base_path = "/rustsocks"
@@ -70,6 +74,7 @@ enabled = true
 altcha_enabled = true
 session_secret = "your-super-secret-random-string-here"
 session_duration_hours = 24
+cookie_secure = false
 
 [[sessions.dashboard_auth.users]]
 username = "admin"

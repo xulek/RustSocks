@@ -78,6 +78,7 @@ async fn spawn_socks_with_pooling(
         qos_engine: QosEngine::None,
         connection_limits: ConnectionLimits::default(),
         connection_pool: connection_pool.clone(),
+        handshake_timeout: Duration::from_secs(5),
     });
 
     let ctx_clone = Arc::clone(&ctx);

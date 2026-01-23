@@ -20,8 +20,9 @@ use std::fs::File;
 use std::io::BufReader;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::net::TcpListener;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, Semaphore};
 use tokio::task::JoinHandle;
 use tokio_rustls::{rustls, TlsAcceptor};
 use tracing::{error, info, warn};
@@ -38,6 +39,23 @@ pub struct SocksServer {
     qos_engine: QosEngine,
     tls_acceptor: Option<TlsAcceptor>,
     connection_pool: Arc<ConnectionPool>,
+}
+
+#[derive(Clone)]
+struct ConnectionLimiter {
+    semaphore: Arc<Semaphore>,
+}
+
+impl ConnectionLimiter {
+    fn new(max_connections: usize) -> Self {
+        Self {
+            semaphore: Arc::new(Semaphore::new(max_connections)),
+        }
+    }
+
+    fn try_acquire(&self) -> Option<tokio::sync::OwnedSemaphorePermit> {
+        self.semaphore.clone().try_acquire_owned().ok()
+    }
 }
 
 /// Create a `TlsAcceptor` based on the server TLS settings.
@@ -264,7 +282,8 @@ impl SocksServer {
         };
 
         #[cfg_attr(not(feature = "database"), allow(unused_mut))]
-        let mut session_manager_inner = SessionManager::new();
+        let mut session_manager_inner =
+            SessionManager::new_with_capacity(config.sessions.traffic_queue_capacity);
 
         #[cfg(feature = "database")]
         if config.sessions.enabled
@@ -372,7 +391,7 @@ impl SocksServer {
                 bind_address: config.sessions.stats_api_bind_address.clone(),
                 bind_port: config.sessions.stats_api_port,
                 enable_api: true,
-                token: None,
+                token: config.sessions.api_token.clone(),
                 swagger_enabled: config.sessions.swagger_enabled,
                 dashboard_enabled: config.sessions.dashboard_enabled,
                 dashboard_auth: config.sessions.dashboard_auth.clone(),
@@ -508,6 +527,7 @@ impl SocksServer {
         );
 
         let listener = TcpListener::bind(&bind_addr).await?;
+        let limiter = ConnectionLimiter::new(self.config.server.max_connections);
 
         info!("RustSocks server listening on {}", bind_addr);
         info!(
@@ -533,6 +553,7 @@ impl SocksServer {
             qos_engine: self.qos_engine.clone(),
             connection_limits: self.config.qos.connection_limits.clone(),
             connection_pool: self.connection_pool.clone(),
+            handshake_timeout: Duration::from_millis(self.config.server.handshake_timeout_ms),
         });
 
         let tls_acceptor = self.tls_acceptor.clone();
@@ -541,6 +562,18 @@ impl SocksServer {
             match listener.accept().await {
                 Ok((stream, addr)) => {
                     info!("New connection from {}", addr);
+
+                    let permit = match limiter.try_acquire() {
+                        Some(permit) => permit,
+                        None => {
+                            warn!(
+                                client = %addr,
+                                max_connections = self.config.server.max_connections,
+                                "Connection limit reached; dropping connection"
+                            );
+                            continue;
+                        }
+                    };
 
                     // Optimize client TCP socket for low latency and throughput
                     if let Err(e) = stream.set_nodelay(true) {
@@ -556,6 +589,7 @@ impl SocksServer {
                     let tls_acceptor = tls_acceptor.clone();
 
                     tokio::spawn(async move {
+                        let _permit = permit;
                         let result = if let Some(acceptor) = tls_acceptor {
                             match acceptor.accept(stream).await {
                                 Ok(tls_stream) => handle_client(tls_stream, ctx, addr).await,
@@ -615,5 +649,24 @@ impl SocksServer {
                 path, e
             ))
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ConnectionLimiter;
+
+    #[test]
+    fn connection_limiter_enforces_capacity() {
+        let limiter = ConnectionLimiter::new(2);
+        let permit1 = limiter.try_acquire();
+        let permit2 = limiter.try_acquire();
+
+        assert!(permit1.is_some());
+        assert!(permit2.is_some());
+        assert!(limiter.try_acquire().is_none());
+
+        drop(permit1);
+        assert!(limiter.try_acquire().is_some());
     }
 }

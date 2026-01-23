@@ -6,14 +6,17 @@ use crate::server::bind::handle_bind as handle_bind_relay;
 use crate::server::pool::{ConnectionPool, ReuseHint};
 use crate::server::proxy::{proxy_data, TrafficUpdateConfig};
 use crate::server::resolver::resolve_address;
-use crate::server::udp::handle_udp_associate as handle_udp_relay;
+use crate::server::udp::{handle_udp_associate as handle_udp_relay, UdpRelayContext};
 use crate::session::{ConnectionInfo, SessionManager, SessionProtocol, SessionStatus};
 use crate::utils::error::{Result, RustSocksError};
+use std::io::ErrorKind;
 use std::net::IpAddr;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, BufReader};
 use tokio::net::TcpStream;
 use tokio::sync::broadcast;
+use tokio::time::timeout;
 use tracing::{debug, info, instrument, warn};
 
 /// Optimize TCP socket for low-latency proxying
@@ -34,6 +37,13 @@ fn optimize_tcp_socket(stream: &TcpStream) -> Result<()> {
     Ok(())
 }
 
+fn handshake_timeout_error() -> RustSocksError {
+    RustSocksError::Io(std::io::Error::new(
+        ErrorKind::TimedOut,
+        "handshake timed out",
+    ))
+}
+
 /// Context for handling client connections
 pub struct ClientHandlerContext {
     pub auth_manager: Arc<AuthManager>,
@@ -45,6 +55,7 @@ pub struct ClientHandlerContext {
     pub qos_engine: QosEngine,
     pub connection_limits: ConnectionLimits,
     pub connection_pool: Arc<ConnectionPool>,
+    pub handshake_timeout: Duration,
 }
 
 pub trait IoStream: AsyncRead + AsyncWrite + Unpin + Send + 'static {}
@@ -67,7 +78,11 @@ where
         .authenticate_client(client_addr.ip())
         .await?;
 
-    let version = client_stream.read_u8().await?;
+    let version = match timeout(ctx.handshake_timeout, client_stream.read_u8()).await {
+        Ok(Ok(version)) => version,
+        Ok(Err(err)) => return Err(RustSocksError::Io(err)),
+        Err(_) => return Err(handshake_timeout_error()),
+    };
 
     match version {
         SOCKS_VERSION => handle_socks5(client_stream, ctx, client_addr, version).await,
@@ -127,180 +142,217 @@ async fn handle_socks5<S>(
 where
     S: IoStream,
 {
-    // Optimization: Wrap stream in BufReader to reduce syscalls during protocol parsing
-    // This reduces 3 separate read() calls to 1 buffered read
-    // BufReader will be unwrapped before data proxying phase
-    let mut buffered_stream = BufReader::with_capacity(4096, client_stream);
+    let handshake_timeout = ctx.handshake_timeout;
+    let handshake = timeout(handshake_timeout, async {
+        // Optimization: Wrap stream in BufReader to reduce syscalls during protocol parsing
+        // This reduces 3 separate read() calls to 1 buffered read
+        // BufReader will be unwrapped before data proxying phase
+        let mut buffered_stream = BufReader::with_capacity(4096, client_stream);
 
-    // Step 1: Method selection
-    let greeting = parse_socks5_client_greeting(&mut buffered_stream, version).await?;
+        // Step 1: Method selection
+        let greeting = parse_socks5_client_greeting(&mut buffered_stream, version).await?;
 
-    debug!("Client offered methods: {:?}", greeting.methods);
+        debug!("Client offered methods: {:?}", greeting.methods);
 
-    // Select auth method
-    let server_method = if greeting.methods.contains(&ctx.auth_manager.get_method()) {
-        ctx.auth_manager.get_method()
-    } else if greeting.methods.contains(&AuthMethod::NoAuth)
-        && ctx.auth_manager.supports(AuthMethod::NoAuth)
-    {
-        AuthMethod::NoAuth
-    } else {
-        // Use get_mut() to access underlying stream for write operations
-        send_server_choice(buffered_stream.get_mut(), AuthMethod::NoAcceptable).await?;
-        return Err(RustSocksError::AuthFailed(
-            "No acceptable auth method".to_string(),
-        ));
-    };
-
-    send_server_choice(buffered_stream.get_mut(), server_method).await?;
-
-    // Step 2: Authentication (reads buffered, writes through get_mut())
-    let auth_result = ctx
-        .auth_manager
-        .authenticate(&mut buffered_stream, server_method, client_addr.ip())
-        .await?;
-
-    // Extract username and groups from authentication result
-    let (user, user_groups) = match auth_result {
-        Some((username, groups)) => {
-            info!(
-                user = %username,
-                group_count = groups.len(),
-                "User authenticated with groups from LDAP"
-            );
-            (Some(username), groups)
-        }
-        None => {
-            debug!("No authentication (anonymous user)");
-            (None, Vec::new())
-        }
-    };
-
-    let acl_user: Arc<str> = user
-        .map(|username| Arc::from(username.into_boxed_str()))
-        .unwrap_or_else(|| Arc::from(ctx.anonymous_user.as_str()));
-
-    // Step 2b: Check connection limits (QoS)
-    if let Err(e) = ctx
-        .qos_engine
-        .check_and_inc_connection_arc(&acl_user, &ctx.connection_limits)
-    {
-        warn!(
-            user = %acl_user.as_ref(),
-            error = %e,
-            "Connection limit exceeded"
-        );
-        send_socks_response(
-            buffered_stream.get_mut(),
-            SocksProtocol::V5,
-            ReplyCode::ConnectionNotAllowed,
-            Address::IPv4([0, 0, 0, 0]),
-            0,
-        )
-        .await?;
-        return Err(e);
-    }
-
-    // Ensure connection is decremented on drop
-    let _connection_guard = ConnectionGuard {
-        qos_engine: ctx.qos_engine.clone(),
-        user: Arc::clone(&acl_user),
-    };
-
-    // Step 3: SOCKS5 request (buffered read for final handshake message)
-    let request = parse_socks5_request(&mut buffered_stream).await?;
-
-    let dest_string = request.address.to_string();
-    info!(
-        user = %acl_user.as_ref(),
-        "SOCKS5 request: command={:?}, dest={}:{}",
-        request.command, dest_string, request.port
-    );
-
-    let session_protocol = match request.command {
-        Command::UdpAssociate => SessionProtocol::Udp,
-        _ => SessionProtocol::Tcp,
-    };
-
-    let mut acl_rule_match: Option<String> = None;
-    let mut acl_decision = "allow".to_string();
-
-    // Step 3b: ACL enforcement (if enabled)
-    if let Some(engine) = ctx.acl_engine.as_ref() {
-        let protocol = match request.command {
-            Command::UdpAssociate => Protocol::Udp,
-            _ => Protocol::Tcp,
+        // Select auth method
+        let server_method = if greeting.methods.contains(&ctx.auth_manager.get_method()) {
+            ctx.auth_manager.get_method()
+        } else if greeting.methods.contains(&AuthMethod::NoAuth)
+            && ctx.auth_manager.supports(AuthMethod::NoAuth)
+        {
+            AuthMethod::NoAuth
+        } else {
+            // Use get_mut() to access underlying stream for write operations
+            send_server_choice(buffered_stream.get_mut(), AuthMethod::NoAcceptable).await?;
+            return Err(RustSocksError::AuthFailed(
+                "No acceptable auth method".to_string(),
+            ));
         };
 
-        // Use evaluate_with_groups() for dynamic LDAP group matching
-        let (decision, matched_rule) = engine
-            .evaluate_with_groups(
-                acl_user.as_ref(),
-                &user_groups,
-                &request.address,
-                request.port,
-                &protocol,
-            )
-            .await;
+        send_server_choice(buffered_stream.get_mut(), server_method).await?;
 
-        match decision {
-            AclDecision::Block => {
-                ctx.acl_stats.record_block(acl_user.as_ref());
-                let rule = matched_rule.as_deref().unwrap_or("unknown rule");
+        // Step 2: Authentication (reads buffered, writes through get_mut())
+        let auth_result = ctx
+            .auth_manager
+            .authenticate(&mut buffered_stream, server_method, client_addr.ip())
+            .await?;
 
-                warn!(
-                    user = %acl_user.as_ref(),
-                    dest = %dest_string,
-                    port = request.port,
-                    rule,
-                    "ACL blocked connection"
+        // Extract username and groups from authentication result
+        let (user, user_groups) = match auth_result {
+            Some((username, groups)) => {
+                info!(
+                    user = %username,
+                    group_count = groups.len(),
+                    "User authenticated with groups from LDAP"
                 );
-
-                let conn_info = ConnectionInfo {
-                    source_ip: client_addr.ip(),
-                    source_port: client_addr.port(),
-                    dest_ip: dest_string.clone(),
-                    dest_port: request.port,
-                    protocol: session_protocol,
-                };
-                ctx.session_manager
-                    .track_rejected_session(acl_user.as_ref(), conn_info, matched_rule.clone())
-                    .await;
-
-                send_socks_response(
-                    buffered_stream.get_mut(),
-                    SocksProtocol::V5,
-                    ReplyCode::ConnectionNotAllowed,
-                    Address::IPv4([0, 0, 0, 0]),
-                    0,
-                )
-                .await?;
-
-                return Ok(());
+                (Some(username), groups)
             }
-            AclDecision::Allow => {
-                ctx.acl_stats.record_allow(acl_user.as_ref());
-                acl_rule_match = matched_rule.clone();
-                acl_decision = "allow".to_string();
+            None => {
+                debug!("No authentication (anonymous user)");
+                (None, Vec::new())
+            }
+        };
 
-                match matched_rule.as_deref() {
-                    Some(rule) => debug!(
+        let acl_user: Arc<str> = user
+            .map(|username| Arc::from(username.into_boxed_str()))
+            .unwrap_or_else(|| Arc::from(ctx.anonymous_user.as_str()));
+
+        // Step 2b: Check connection limits (QoS)
+        if let Err(e) = ctx
+            .qos_engine
+            .check_and_inc_connection_arc(&acl_user, &ctx.connection_limits)
+        {
+            warn!(
+                user = %acl_user.as_ref(),
+                error = %e,
+                "Connection limit exceeded"
+            );
+            send_socks_response(
+                buffered_stream.get_mut(),
+                SocksProtocol::V5,
+                ReplyCode::ConnectionNotAllowed,
+                Address::IPv4([0, 0, 0, 0]),
+                0,
+            )
+            .await?;
+            return Err(e);
+        }
+
+        // Ensure connection is decremented on drop
+        let connection_guard = ConnectionGuard {
+            qos_engine: ctx.qos_engine.clone(),
+            user: Arc::clone(&acl_user),
+        };
+
+        // Step 3: SOCKS5 request (buffered read for final handshake message)
+        let request = parse_socks5_request(&mut buffered_stream).await?;
+
+        let dest_string = request.address.to_string();
+        info!(
+            user = %acl_user.as_ref(),
+            "SOCKS5 request: command={:?}, dest={}:{}",
+            request.command, dest_string, request.port
+        );
+
+        let session_protocol = match request.command {
+            Command::UdpAssociate => SessionProtocol::Udp,
+            _ => SessionProtocol::Tcp,
+        };
+
+        let mut acl_rule_match: Option<String> = None;
+        let mut acl_decision = "allow".to_string();
+
+        // Step 3b: ACL enforcement (if enabled)
+        if let Some(engine) = ctx.acl_engine.as_ref() {
+            let protocol = match request.command {
+                Command::UdpAssociate => Protocol::Udp,
+                _ => Protocol::Tcp,
+            };
+
+            // Use evaluate_with_groups() for dynamic LDAP group matching
+            let (decision, matched_rule) = engine
+                .evaluate_with_groups(
+                    acl_user.as_ref(),
+                    &user_groups,
+                    &request.address,
+                    request.port,
+                    &protocol,
+                )
+                .await;
+
+            match decision {
+                AclDecision::Block => {
+                    ctx.acl_stats.record_block(acl_user.as_ref());
+                    let rule = matched_rule.as_deref().unwrap_or("unknown rule");
+
+                    warn!(
                         user = %acl_user.as_ref(),
                         dest = %dest_string,
                         port = request.port,
                         rule,
-                        "ACL allowed connection"
-                    ),
-                    None => debug!(
-                        user = %acl_user.as_ref(),
-                        dest = %dest_string,
-                        port = request.port,
-                        "ACL allowed connection (default policy)"
-                    ),
+                        "ACL blocked connection"
+                    );
+
+                    let conn_info = ConnectionInfo {
+                        source_ip: client_addr.ip(),
+                        source_port: client_addr.port(),
+                        dest_ip: dest_string.clone(),
+                        dest_port: request.port,
+                        protocol: session_protocol,
+                    };
+                    ctx.session_manager
+                        .track_rejected_session(acl_user.as_ref(), conn_info, matched_rule.clone())
+                        .await;
+
+                    send_socks_response(
+                        buffered_stream.get_mut(),
+                        SocksProtocol::V5,
+                        ReplyCode::ConnectionNotAllowed,
+                        Address::IPv4([0, 0, 0, 0]),
+                        0,
+                    )
+                    .await?;
+
+                    return Ok(None);
+                }
+                AclDecision::Allow => {
+                    ctx.acl_stats.record_allow(acl_user.as_ref());
+                    acl_rule_match = matched_rule.clone();
+                    acl_decision = "allow".to_string();
+
+                    match matched_rule.as_deref() {
+                        Some(rule) => debug!(
+                            user = %acl_user.as_ref(),
+                            dest = %dest_string,
+                            port = request.port,
+                            rule,
+                            "ACL allowed connection"
+                        ),
+                        None => debug!(
+                            user = %acl_user.as_ref(),
+                            dest = %dest_string,
+                            port = request.port,
+                            "ACL allowed connection (default policy)"
+                        ),
+                    }
                 }
             }
         }
-    }
+
+        Ok(Some((
+            buffered_stream,
+            request,
+            acl_user,
+            acl_decision,
+            acl_rule_match,
+            session_protocol,
+            connection_guard,
+            user_groups,
+        )))
+    })
+    .await;
+
+    let (
+        buffered_stream,
+        request,
+        acl_user,
+        acl_decision,
+        acl_rule_match,
+        session_protocol,
+        _connection_guard,
+        user_groups,
+    ) = match handshake {
+        Ok(Ok(Some(values))) => values,
+        Ok(Ok(None)) => return Ok(()),
+        Ok(Err(err)) => return Err(err),
+        Err(_) => {
+            warn!(
+                client = %client_addr,
+                "SOCKS5 handshake timed out"
+            );
+            return Err(handshake_timeout_error());
+        }
+    };
 
     // Step 4: Handle command
     // Unwrap BufReader to get raw stream for data transfer phase
@@ -360,12 +412,20 @@ where
                 protocol: session_protocol,
                 qos_engine: ctx.qos_engine.clone(),
             };
+            let udp_ctx = UdpRelayContext {
+                user: Arc::clone(&acl_user),
+                user_groups: Arc::new(user_groups),
+                acl_engine: ctx.acl_engine.clone(),
+                acl_stats: ctx.acl_stats.clone(),
+                qos_engine: ctx.qos_engine.clone(),
+            };
             handle_udp_associate(
                 client_stream,
                 &request.address,
                 request.port,
                 ctx.session_manager.clone(),
                 session_ctx,
+                udp_ctx,
             )
             .await?;
         }
@@ -405,122 +465,160 @@ where
         ));
     }
 
-    // Perform no-auth path to allow future auth hooks (e.g., PAM address)
-    let auth_result = ctx
-        .auth_manager
-        .authenticate(&mut client_stream, AuthMethod::NoAuth, client_addr.ip())
-        .await?;
+    let handshake_timeout = ctx.handshake_timeout;
+    let handshake = timeout(handshake_timeout, async {
+        // Perform no-auth path to allow future auth hooks (e.g., PAM address)
+        let auth_result = ctx
+            .auth_manager
+            .authenticate(&mut client_stream, AuthMethod::NoAuth, client_addr.ip())
+            .await?;
 
-    // Extract groups if any (usually None for SOCKS4 no-auth)
-    let user_groups = match auth_result {
-        Some((_, groups)) => groups,
-        None => Vec::new(),
+        // Extract groups if any (usually None for SOCKS4 no-auth)
+        let user_groups = match auth_result {
+            Some((_, groups)) => groups,
+            None => Vec::new(),
+        };
+
+        let request = parse_socks4_request(&mut client_stream).await?;
+
+        let dest_string = request.address.to_string();
+        info!(
+            "SOCKS4 request: command={:?}, dest={}:{} user_id={:?}",
+            request.command, dest_string, request.port, request.user_id
+        );
+
+        let user = request.user_id.clone();
+        let acl_user: Arc<str> = user
+            .clone()
+            .filter(|s| !s.is_empty())
+            .map(|username| Arc::from(username.into_boxed_str()))
+            .unwrap_or_else(|| Arc::from(ctx.anonymous_user.as_str()));
+
+        if let Some(ref username) = user {
+            if !username.is_empty() {
+                info!("SOCKS4 user identifier received: {}", username);
+            }
+        }
+
+        if let Err(e) = ctx
+            .qos_engine
+            .check_and_inc_connection_arc(&acl_user, &ctx.connection_limits)
+        {
+            warn!(
+                user = %acl_user.as_ref(),
+                error = %e,
+                "Connection limit exceeded (SOCKS4)"
+            );
+            send_socks_response(
+                &mut client_stream,
+                SocksProtocol::V4,
+                ReplyCode::ConnectionNotAllowed,
+                Address::IPv4([0, 0, 0, 0]),
+                0,
+            )
+            .await?;
+            return Err(e);
+        }
+
+        let connection_guard = ConnectionGuard {
+            qos_engine: ctx.qos_engine.clone(),
+            user: Arc::clone(&acl_user),
+        };
+
+        let session_protocol = SessionProtocol::Tcp;
+        let mut acl_rule_match: Option<String> = None;
+        let mut acl_decision = "allow".to_string();
+
+        if let Some(engine) = ctx.acl_engine.as_ref() {
+            // Use evaluate_with_groups() for dynamic LDAP group matching
+            let (decision, matched_rule) = engine
+                .evaluate_with_groups(
+                    acl_user.as_ref(),
+                    &user_groups,
+                    &request.address,
+                    request.port,
+                    &Protocol::Tcp,
+                )
+                .await;
+
+            match decision {
+                AclDecision::Block => {
+                    ctx.acl_stats.record_block(acl_user.as_ref());
+                    let rule = matched_rule.as_deref().unwrap_or("unknown rule");
+
+                    warn!(
+                        user = %acl_user.as_ref(),
+                        dest = %dest_string,
+                        port = request.port,
+                        rule,
+                        "ACL blocked SOCKS4 connection"
+                    );
+
+                    let conn_info = ConnectionInfo {
+                        source_ip: client_addr.ip(),
+                        source_port: client_addr.port(),
+                        dest_ip: dest_string.clone(),
+                        dest_port: request.port,
+                        protocol: session_protocol,
+                    };
+                    ctx.session_manager
+                        .track_rejected_session(acl_user.as_ref(), conn_info, matched_rule.clone())
+                        .await;
+
+                    send_socks_response(
+                        &mut client_stream,
+                        SocksProtocol::V4,
+                        ReplyCode::ConnectionNotAllowed,
+                        Address::IPv4([0, 0, 0, 0]),
+                        0,
+                    )
+                    .await?;
+
+                    return Ok(None);
+                }
+                AclDecision::Allow => {
+                    ctx.acl_stats.record_allow(acl_user.as_ref());
+                    acl_rule_match = matched_rule.clone();
+                    acl_decision = "allow".to_string();
+                }
+            }
+        }
+
+        Ok(Some((
+            client_stream,
+            request,
+            acl_user,
+            acl_decision,
+            acl_rule_match,
+            session_protocol,
+            connection_guard,
+        )))
+    })
+    .await;
+
+    let (
+        client_stream,
+        request,
+        acl_user,
+        acl_decision,
+        acl_rule_match,
+        session_protocol,
+        _connection_guard,
+    ) = match handshake {
+        Ok(Ok(Some(values))) => values,
+        Ok(Ok(None)) => return Ok(()),
+        Ok(Err(err)) => return Err(err),
+        Err(_) => {
+            warn!(
+                client = %client_addr,
+                "SOCKS4 handshake timed out"
+            );
+            return Err(handshake_timeout_error());
+        }
     };
-
-    let request = parse_socks4_request(&mut client_stream).await?;
 
     let dest_string = request.address.to_string();
-    info!(
-        "SOCKS4 request: command={:?}, dest={}:{} user_id={:?}",
-        request.command, dest_string, request.port, request.user_id
-    );
-
-    let user = request.user_id.clone();
-    let acl_user: Arc<str> = user
-        .clone()
-        .filter(|s| !s.is_empty())
-        .map(|username| Arc::from(username.into_boxed_str()))
-        .unwrap_or_else(|| Arc::from(ctx.anonymous_user.as_str()));
-
-    if let Some(ref username) = user {
-        if !username.is_empty() {
-            info!("SOCKS4 user identifier received: {}", username);
-        }
-    }
-
-    if let Err(e) = ctx
-        .qos_engine
-        .check_and_inc_connection_arc(&acl_user, &ctx.connection_limits)
-    {
-        warn!(
-            user = %acl_user.as_ref(),
-            error = %e,
-            "Connection limit exceeded (SOCKS4)"
-        );
-        send_socks_response(
-            &mut client_stream,
-            SocksProtocol::V4,
-            ReplyCode::ConnectionNotAllowed,
-            Address::IPv4([0, 0, 0, 0]),
-            0,
-        )
-        .await?;
-        return Err(e);
-    }
-
-    let _connection_guard = ConnectionGuard {
-        qos_engine: ctx.qos_engine.clone(),
-        user: Arc::clone(&acl_user),
-    };
-
-    let session_protocol = SessionProtocol::Tcp;
-    let mut acl_rule_match: Option<String> = None;
-    let mut acl_decision = "allow".to_string();
-
-    if let Some(engine) = ctx.acl_engine.as_ref() {
-        // Use evaluate_with_groups() for dynamic LDAP group matching
-        let (decision, matched_rule) = engine
-            .evaluate_with_groups(
-                acl_user.as_ref(),
-                &user_groups,
-                &request.address,
-                request.port,
-                &Protocol::Tcp,
-            )
-            .await;
-
-        match decision {
-            AclDecision::Block => {
-                ctx.acl_stats.record_block(acl_user.as_ref());
-                let rule = matched_rule.as_deref().unwrap_or("unknown rule");
-
-                warn!(
-                    user = %acl_user.as_ref(),
-                    dest = %dest_string,
-                    port = request.port,
-                    rule,
-                    "ACL blocked SOCKS4 connection"
-                );
-
-                let conn_info = ConnectionInfo {
-                    source_ip: client_addr.ip(),
-                    source_port: client_addr.port(),
-                    dest_ip: dest_string.clone(),
-                    dest_port: request.port,
-                    protocol: session_protocol,
-                };
-                ctx.session_manager
-                    .track_rejected_session(acl_user.as_ref(), conn_info, matched_rule.clone())
-                    .await;
-
-                send_socks_response(
-                    &mut client_stream,
-                    SocksProtocol::V4,
-                    ReplyCode::ConnectionNotAllowed,
-                    Address::IPv4([0, 0, 0, 0]),
-                    0,
-                )
-                .await?;
-
-                return Ok(());
-            }
-            AclDecision::Allow => {
-                ctx.acl_stats.record_allow(acl_user.as_ref());
-                acl_rule_match = matched_rule.clone();
-                acl_decision = "allow".to_string();
-            }
-        }
-    }
+    let mut client_stream = client_stream;
 
     match request.command {
         Command::Connect => {
@@ -826,13 +924,17 @@ where
     }
 }
 
-#[instrument(level = "debug", skip(client_stream, session_manager, session_ctx))]
+#[instrument(
+    level = "debug",
+    skip(client_stream, session_manager, session_ctx, udp_ctx)
+)]
 async fn handle_udp_associate<S>(
     mut client_stream: S,
     _dest_addr: &Address,
     _dest_port: u16,
     session_manager: Arc<SessionManager>,
     session_ctx: SessionContext,
+    udp_ctx: UdpRelayContext,
 ) -> Result<()>
 where
     S: IoStream,
@@ -867,6 +969,7 @@ where
         session_manager.clone(),
         session_id,
         shutdown_rx,
+        udp_ctx,
     )
     .await
     {

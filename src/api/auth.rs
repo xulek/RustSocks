@@ -14,8 +14,10 @@ use tracing::{debug, info, warn};
 
 // HMAC for Altcha signature
 use hmac::{Hmac, Mac};
+use rand::RngCore;
 type HmacSha256 = Hmac<Sha256>;
 
+use crate::auth::verify_password;
 use crate::config::DashboardAuthSettings;
 
 const SESSION_COOKIE_NAME: &str = "rustsocks_session";
@@ -24,6 +26,8 @@ const SESSION_COOKIE_NAME: &str = "rustsocks_session";
 pub struct AuthState {
     pub settings: DashboardAuthSettings,
     pub sessions: Arc<DashMap<String, Session>>,
+    pub base_path: String,
+    pub api_token: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -34,10 +38,16 @@ pub struct Session {
 }
 
 impl AuthState {
-    pub fn new(settings: DashboardAuthSettings) -> Self {
+    pub fn new(
+        settings: DashboardAuthSettings,
+        base_path: String,
+        api_token: Option<String>,
+    ) -> Self {
         Self {
             settings,
             sessions: Arc::new(DashMap::new()),
+            base_path,
+            api_token,
         }
     }
 
@@ -89,7 +99,15 @@ impl AuthState {
         self.settings
             .users
             .iter()
-            .any(|user| user.username == username && user.password == password)
+            .any(|user| user.username == username && verify_password(&user.password, password))
+    }
+
+    pub fn cookie_path(&self) -> &str {
+        if self.base_path.is_empty() {
+            "/"
+        } else {
+            self.base_path.as_str()
+        }
     }
 }
 
@@ -110,17 +128,8 @@ fn generate_session_token(username: &str, timestamp: u64, secret: &str) -> Strin
 }
 
 fn rand_bytes(len: usize) -> Vec<u8> {
-    use std::collections::hash_map::RandomState;
-    use std::hash::BuildHasher;
-
-    let mut bytes = Vec::with_capacity(len);
-    let state = RandomState::new();
-
-    for i in 0..len {
-        let hash = state.hash_one((current_timestamp(), i));
-        bytes.push((hash & 0xFF) as u8);
-    }
-
+    let mut bytes = vec![0u8; len];
+    rand::rngs::OsRng.fill_bytes(&mut bytes);
     bytes
 }
 
@@ -233,12 +242,17 @@ pub async fn login_handler(
 
     info!("User logged in: {}", req.username);
 
-    let cookie = format!(
-        "{}={}; Path=/; HttpOnly; SameSite=Strict; Max-Age={}",
+    let mut cookie = format!(
+        "{}={}; Path={}; HttpOnly; SameSite=Strict; Max-Age={}",
         SESSION_COOKIE_NAME,
         token,
+        auth_state.cookie_path(),
         auth_state.settings.session_duration_hours * 3600
     );
+
+    if auth_state.settings.cookie_secure {
+        cookie.push_str("; Secure");
+    }
 
     let json_body = serde_json::to_string(&LoginResponse {
         success: true,
@@ -334,10 +348,14 @@ pub async fn logout_handler(
     }
 
     let mut response_headers = HeaderMap::new();
-    let cookie = format!(
-        "{}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0",
-        SESSION_COOKIE_NAME
+    let mut cookie = format!(
+        "{}=; Path={}; HttpOnly; SameSite=Strict; Max-Age=0",
+        SESSION_COOKIE_NAME,
+        auth_state.cookie_path()
     );
+    if auth_state.settings.cookie_secure {
+        cookie.push_str("; Secure");
+    }
     response_headers.insert(header::SET_COOKIE, cookie.parse().unwrap());
 
     (
@@ -439,20 +457,14 @@ pub async fn altcha_challenge_handler(
 }
 
 fn generate_random_string(len: usize) -> String {
-    use std::collections::hash_map::RandomState;
-    use std::hash::BuildHasher;
+    const CHARSET: &[u8] = b"0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
-    let state = RandomState::new();
-    let timestamp = current_timestamp();
+    let mut bytes = vec![0u8; len];
+    rand::rngs::OsRng.fill_bytes(&mut bytes);
 
-    let mut result = String::new();
-    for i in 0..len {
-        let byte = (state.hash_one((timestamp, i, rand_bytes(4))) % 62) as u8;
-        let ch = match byte {
-            0..=9 => (b'0' + byte) as char,
-            10..=35 => (b'a' + byte - 10) as char,
-            _ => (b'A' + byte - 36) as char,
-        };
+    let mut result = String::with_capacity(len);
+    for byte in bytes {
+        let ch = CHARSET[(byte as usize) % CHARSET.len()] as char;
         result.push(ch);
     }
     result
@@ -460,7 +472,7 @@ fn generate_random_string(len: usize) -> String {
 
 // Extract session from request headers
 pub fn extract_session_from_headers(headers: &HeaderMap) -> Option<String> {
-    if let Some(cookie_header) = headers.get(header::COOKIE) {
+    for cookie_header in headers.get_all(header::COOKIE).iter() {
         if let Ok(cookie_str) = cookie_header.to_str() {
             for cookie in cookie_str.split(';') {
                 let cookie = cookie.trim();
@@ -471,4 +483,48 @@ pub fn extract_session_from_headers(headers: &HeaderMap) -> Option<String> {
         }
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::http::{header, HeaderMap, HeaderValue};
+
+    #[test]
+    fn random_string_has_expected_shape() {
+        let value = generate_random_string(32);
+        assert_eq!(value.len(), 32);
+        assert!(value.chars().all(|c| c.is_ascii_alphanumeric()));
+    }
+
+    #[test]
+    fn rand_bytes_returns_requested_length() {
+        let bytes = rand_bytes(24);
+        assert_eq!(bytes.len(), 24);
+    }
+
+    #[test]
+    fn cookie_path_uses_base_path_or_root() {
+        let settings = DashboardAuthSettings::default();
+        let state = AuthState::new(settings.clone(), "/rustsocks".to_string(), None);
+        assert_eq!(state.cookie_path(), "/rustsocks");
+
+        let root_state = AuthState::new(settings, "".to_string(), None);
+        assert_eq!(root_state.cookie_path(), "/");
+    }
+
+    #[test]
+    fn extract_session_from_multiple_cookie_headers() {
+        let mut headers = HeaderMap::new();
+        headers.append(header::COOKIE, HeaderValue::from_static("other=1"));
+        headers.append(
+            header::COOKIE,
+            HeaderValue::from_static("rustsocks_session=abc123; theme=dark"),
+        );
+
+        assert_eq!(
+            extract_session_from_headers(&headers),
+            Some("abc123".to_string())
+        );
+    }
 }

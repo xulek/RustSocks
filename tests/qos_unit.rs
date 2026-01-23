@@ -486,11 +486,7 @@ mod bandwidth_allocation_tests {
         qos.allocate_bandwidth("user1", 100_000).await.unwrap();
         let elapsed = start.elapsed();
 
-        assert_fast(
-            elapsed,
-            20,
-            "borrowing should use max bucket burst"
-        );
+        assert_fast(elapsed, 20, "borrowing should use max bucket burst");
     }
 
     #[tokio::test]

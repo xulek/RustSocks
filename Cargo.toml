@@ -53,6 +53,9 @@ regex = "1.11"          # For wildcard domain matching
 sysinfo = "0.34"        # System and process resource monitoring
 sha2 = "0.10"           # SHA-256 for session tokens
 hmac = "0.12"           # HMAC for Altcha signatures
+rand = "0.8"            # CSPRNG for session secrets/tokens
+argon2 = "0.5"          # Password hashing (dashboard + userpass)
+subtle = "2.6"          # Constant-time comparisons
 
 # Database (SQLite for session history)
 sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "sqlite", "mysql", "any", "chrono", "uuid", "macros", "migrate"], optional = true }

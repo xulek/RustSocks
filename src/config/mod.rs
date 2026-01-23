@@ -32,6 +32,8 @@ pub struct ServerConfig {
     pub bind_port: u16,
     #[serde(default = "default_max_connections")]
     pub max_connections: usize,
+    #[serde(default = "default_handshake_timeout_ms")]
+    pub handshake_timeout_ms: u64,
     #[serde(default)]
     pub tls: TlsSettings,
     #[serde(default)]
@@ -158,6 +160,8 @@ pub struct SessionSettings {
     pub cleanup_interval_hours: u64,
     #[serde(default = "default_session_traffic_update_packet_interval")]
     pub traffic_update_packet_interval: u64,
+    #[serde(default = "default_session_traffic_queue_capacity")]
+    pub traffic_queue_capacity: usize,
     #[serde(default = "default_stats_window_hours")]
     pub stats_window_hours: u64,
     #[serde(default = "default_stats_api_enabled")]
@@ -166,6 +170,8 @@ pub struct SessionSettings {
     pub stats_api_bind_address: String,
     #[serde(default = "default_stats_api_port")]
     pub stats_api_port: u16,
+    #[serde(default)]
+    pub api_token: Option<String>,
     #[serde(default = "default_swagger_enabled")]
     pub swagger_enabled: bool,
     #[serde(default = "default_dashboard_enabled")]
@@ -186,6 +192,8 @@ pub struct DashboardAuthSettings {
     pub altcha_enabled: bool,
     #[serde(default)]
     pub altcha_challenge_url: Option<String>,
+    #[serde(default = "default_dashboard_cookie_secure")]
+    pub cookie_secure: bool,
     #[serde(default = "default_session_secret")]
     pub session_secret: String,
     #[serde(default = "default_session_duration_hours")]
@@ -237,6 +245,10 @@ fn default_bind_port() -> u16 {
 
 fn default_max_connections() -> usize {
     1000
+}
+
+fn default_handshake_timeout_ms() -> u64 {
+    10_000
 }
 
 fn default_tls_enabled() -> bool {
@@ -327,6 +339,10 @@ fn default_session_traffic_update_packet_interval() -> u64 {
     10
 }
 
+fn default_session_traffic_queue_capacity() -> usize {
+    10_000
+}
+
 fn default_stats_window_hours() -> u64 {
     24
 }
@@ -359,13 +375,18 @@ fn default_altcha_enabled() -> bool {
     false
 }
 
+fn default_dashboard_cookie_secure() -> bool {
+    false
+}
+
 fn default_session_secret() -> String {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs();
-    format!("rustsocks-secret-{}", timestamp)
+    use base64::engine::general_purpose;
+    use base64::Engine;
+    use rand::RngCore;
+
+    let mut bytes = [0u8; 32];
+    rand::rngs::OsRng.fill_bytes(&mut bytes);
+    general_purpose::URL_SAFE_NO_PAD.encode(bytes)
 }
 
 fn default_session_duration_hours() -> u64 {
@@ -452,6 +473,7 @@ impl Default for ServerConfig {
             bind_address: default_bind_address(),
             bind_port: default_bind_port(),
             max_connections: default_max_connections(),
+            handshake_timeout_ms: default_handshake_timeout_ms(),
             tls: TlsSettings::default(),
             pool: PoolSettings::default(),
         }
@@ -564,10 +586,12 @@ impl Default for SessionSettings {
             retention_days: default_session_retention_days(),
             cleanup_interval_hours: default_session_cleanup_interval_hours(),
             traffic_update_packet_interval: default_session_traffic_update_packet_interval(),
+            traffic_queue_capacity: default_session_traffic_queue_capacity(),
             stats_window_hours: default_stats_window_hours(),
             stats_api_enabled: default_stats_api_enabled(),
             stats_api_bind_address: default_stats_api_bind_address(),
             stats_api_port: default_stats_api_port(),
+            api_token: None,
             swagger_enabled: default_swagger_enabled(),
             dashboard_enabled: default_dashboard_enabled(),
             dashboard_auth: DashboardAuthSettings::default(),
@@ -583,6 +607,7 @@ impl Default for DashboardAuthSettings {
             users: Vec::new(),
             altcha_enabled: default_altcha_enabled(),
             altcha_challenge_url: None,
+            cookie_secure: default_dashboard_cookie_secure(),
             session_secret: default_session_secret(),
             session_duration_hours: default_session_duration_hours(),
         }
@@ -845,6 +870,12 @@ impl Config {
             ));
         }
 
+        if self.sessions.traffic_queue_capacity == 0 {
+            return Err(RustSocksError::Config(
+                "sessions.traffic_queue_capacity must be greater than 0".to_string(),
+            ));
+        }
+
         if self.sessions.traffic_update_packet_interval == 0 {
             return Err(RustSocksError::Config(
                 "sessions.traffic_update_packet_interval must be greater than 0".to_string(),
@@ -855,6 +886,14 @@ impl Config {
             return Err(RustSocksError::Config(
                 "sessions.stats_window_hours must be greater than 0".to_string(),
             ));
+        }
+
+        if let Some(token) = &self.sessions.api_token {
+            if token.trim().is_empty() {
+                return Err(RustSocksError::Config(
+                    "sessions.api_token cannot be empty when provided".to_string(),
+                ));
+            }
         }
 
         if self.sessions.base_path.trim().is_empty() {
@@ -874,6 +913,18 @@ impl Config {
                 "Invalid server.bind_address '{}': expected IPv4 or IPv6 literal",
                 self.server.bind_address
             )));
+        }
+
+        if self.server.max_connections == 0 {
+            return Err(RustSocksError::Config(
+                "server.max_connections must be greater than 0".to_string(),
+            ));
+        }
+
+        if self.server.handshake_timeout_ms == 0 {
+            return Err(RustSocksError::Config(
+                "server.handshake_timeout_ms must be greater than 0".to_string(),
+            ));
         }
 
         if self.sessions.stats_api_enabled {
@@ -955,6 +1006,7 @@ impl Config {
 bind_address = "127.0.0.1"
 bind_port = 1080
 max_connections = 1000
+handshake_timeout_ms = 10000
 
 [server.tls]
 enabled = false
@@ -1006,15 +1058,18 @@ batch_interval_ms = 1000
 retention_days = 90
 cleanup_interval_hours = 24
 traffic_update_packet_interval = 10
+traffic_queue_capacity = 10000
 stats_window_hours = 24
 stats_api_enabled = false
 stats_api_bind_address = "127.0.0.1"
 stats_api_port = 9090
+# api_token = "change-me"
 swagger_enabled = true
 dashboard_enabled = false
 
 [sessions.dashboard_auth]
 enabled = false
+# cookie_secure = false
 # [[sessions.dashboard_auth.users]]
 # username = "admin"
 # password = "strong-secret"
@@ -1088,6 +1143,7 @@ mod tests {
         let config = Config::default();
         assert_eq!(config.server.bind_address, "127.0.0.1");
         assert_eq!(config.server.bind_port, 1080);
+        assert_eq!(config.server.handshake_timeout_ms, 10_000);
         assert_eq!(config.auth.client_method, "none");
         assert_eq!(config.auth.socks_method, "none");
         assert_eq!(config.sessions.storage, "memory");
@@ -1098,14 +1154,17 @@ mod tests {
         assert_eq!(config.sessions.storage, "memory");
         assert_eq!(config.sessions.batch_size, 100);
         assert_eq!(config.sessions.traffic_update_packet_interval, 10);
+        assert_eq!(config.sessions.traffic_queue_capacity, 10_000);
         assert_eq!(config.sessions.stats_window_hours, 24);
         assert!(!config.sessions.stats_api_enabled);
         assert_eq!(config.sessions.stats_api_bind_address, "127.0.0.1");
         assert_eq!(config.sessions.stats_api_port, 9090);
+        assert!(config.sessions.api_token.is_none());
         assert!(config.sessions.swagger_enabled);
         assert!(!config.sessions.dashboard_enabled);
         assert!(!config.sessions.dashboard_auth.enabled);
         assert!(config.sessions.dashboard_auth.users.is_empty());
+        assert!(!config.sessions.dashboard_auth.cookie_secure);
         assert_eq!(config.sessions.base_path, "/");
         assert_eq!(config.sessions.normalized_base_path(), "/");
     }
@@ -1152,6 +1211,22 @@ mod tests {
         assert!(config.validate().is_err());
 
         config.sessions.cleanup_interval_hours = 12;
+        assert!(config.validate().is_ok());
+
+        config.sessions.traffic_queue_capacity = 0;
+        assert!(config.validate().is_err());
+
+        config.sessions.traffic_queue_capacity = 1000;
+        assert!(config.validate().is_ok());
+
+        config.server.max_connections = 0;
+        assert!(config.validate().is_err());
+
+        config.server.max_connections = 100;
+        config.server.handshake_timeout_ms = 0;
+        assert!(config.validate().is_err());
+
+        config.server.handshake_timeout_ms = 5000;
         assert!(config.validate().is_ok());
 
         config.sessions.stats_window_hours = 0;

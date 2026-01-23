@@ -1,7 +1,7 @@
 use axum::{
     body::Body,
     extract::{DefaultBodyLimit, State},
-    http::{Request, Response, StatusCode},
+    http::{header, Request, Response, StatusCode},
     middleware::{self, Next},
     response::{Html, IntoResponse, Redirect},
     routing::{get, get_service, post, put},
@@ -46,6 +46,7 @@ use crate::server::pool::ConnectionPool;
 use crate::session::SessionManager;
 use crate::telemetry::TelemetryHistory;
 use crate::utils::error::{Result, RustSocksError};
+use subtle::ConstantTimeEq;
 
 /// Serve Swagger UI HTML with dynamic base path
 async fn swagger_ui(base_path: String) -> Html<String> {
@@ -1282,7 +1283,11 @@ pub async fn start_api_server(
         base_path.as_str()
     };
 
-    let auth_state = Arc::new(AuthState::new(config.dashboard_auth.clone()));
+    let auth_state = Arc::new(AuthState::new(
+        config.dashboard_auth.clone(),
+        base_path.clone(),
+        config.token.clone(),
+    ));
 
     info!(
         "Mounting API router at base path '{}'",
@@ -1495,6 +1500,12 @@ pub async fn start_api_server(
         }
     }
 
+    // Protect API endpoints when auth is configured (token or dashboard auth).
+    app = app.layer(middleware::from_fn_with_state(
+        auth_state.clone(),
+        api_auth_middleware,
+    ));
+
     let app = if base_path == "/" {
         app
     } else {
@@ -1558,9 +1569,10 @@ async fn dashboard_session_auth(
         return next.run(request).await;
     }
 
+    let path = normalize_request_path(request.uri().path(), &auth_state.base_path);
+
     // Skip auth check for login-related paths
-    let path = request.uri().path();
-    if path.starts_with("/api/auth/") {
+    if path.starts_with("/api/auth/") || path == "/api/auth" {
         return next.run(request).await;
     }
 
@@ -1581,6 +1593,89 @@ async fn dashboard_session_auth(
         // For dashboard HTML requests, the frontend will handle the redirect
         next.run(request).await
     }
+}
+
+/// Middleware that guards API endpoints with token or dashboard session auth (if configured).
+async fn api_auth_middleware(
+    State(auth_state): State<Arc<AuthState>>,
+    request: Request<Body>,
+    next: Next,
+) -> Response<Body> {
+    let path = normalize_request_path(request.uri().path(), &auth_state.base_path);
+
+    if !path.starts_with("/api/") {
+        return next.run(request).await;
+    }
+
+    // Allow auth endpoints to be accessed without an existing session/token.
+    if path.starts_with("/api/auth/") || path == "/api/auth" {
+        return next.run(request).await;
+    }
+
+    let auth_required = auth_state.settings.enabled || auth_state.api_token.is_some();
+    if !auth_required {
+        return next.run(request).await;
+    }
+
+    let has_session = auth_state.settings.enabled
+        && extract_session_from_headers(request.headers())
+            .and_then(|token| auth_state.validate_session(&token))
+            .is_some();
+
+    let has_token = match auth_state.api_token.as_deref() {
+        Some(expected) => extract_api_token(request.headers())
+            .map(|provided| constant_time_eq(provided, expected))
+            .unwrap_or(false),
+        None => false,
+    };
+
+    if has_session || has_token {
+        next.run(request).await
+    } else {
+        Response::builder()
+            .status(StatusCode::UNAUTHORIZED)
+            .body(Body::empty())
+            .unwrap()
+    }
+}
+
+fn extract_api_token(headers: &axum::http::HeaderMap) -> Option<&str> {
+    if let Some(value) = headers.get(header::AUTHORIZATION) {
+        if let Ok(raw) = value.to_str() {
+            if let Some(token) = raw.strip_prefix("Bearer ") {
+                let trimmed = token.trim();
+                if !trimmed.is_empty() {
+                    return Some(trimmed);
+                }
+            }
+        }
+    }
+
+    headers
+        .get("x-api-token")
+        .and_then(|value| value.to_str().ok())
+        .map(str::trim)
+        .filter(|token| !token.is_empty())
+}
+
+fn normalize_request_path<'a>(path: &'a str, base_path: &str) -> &'a str {
+    if base_path.is_empty() || base_path == "/" {
+        return path;
+    }
+
+    if let Some(stripped) = path.strip_prefix(base_path) {
+        if stripped.is_empty() {
+            "/"
+        } else {
+            stripped
+        }
+    } else {
+        path
+    }
+}
+
+fn constant_time_eq(a: &str, b: &str) -> bool {
+    a.as_bytes().ct_eq(b.as_bytes()).into()
 }
 
 fn rewrite_dashboard_index(original: &str, base_prefix: &str) -> String {
@@ -1651,5 +1746,106 @@ fn inject_base_path_script(html: &mut String, base_prefix: &str) {
             )
         };
         html.insert_str(idx, &script);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::DashboardAuthSettings;
+    use axum::body::Body;
+    use axum::http::Request;
+    use axum::routing::get;
+    use tower::ServiceExt;
+
+    fn auth_state_with(
+        enabled: bool,
+        api_token: Option<String>,
+        base_path: &str,
+    ) -> Arc<AuthState> {
+        let settings = DashboardAuthSettings {
+            enabled,
+            ..DashboardAuthSettings::default()
+        };
+        Arc::new(AuthState::new(settings, base_path.to_string(), api_token))
+    }
+
+    fn build_api_router(auth_state: Arc<AuthState>) -> Router {
+        Router::new()
+            .route("/api/secure", get(|| async { "ok" }))
+            .layer(middleware::from_fn_with_state(
+                auth_state,
+                api_auth_middleware,
+            ))
+    }
+
+    #[tokio::test]
+    async fn api_allows_when_auth_disabled() {
+        let app = build_api_router(auth_state_with(false, None, "/"));
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/secure")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn api_requires_token_when_configured() {
+        let app = build_api_router(auth_state_with(false, Some("secret".to_string()), "/"));
+
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/secure")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/secure")
+                    .header("x-api-token", "secret")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn api_accepts_dashboard_session() {
+        let auth_state = auth_state_with(true, None, "/");
+        let token = auth_state.create_session("alice".to_string());
+        let cookie_name = "rustsocks_session";
+
+        let app = build_api_router(auth_state);
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/secure")
+                    .header(header::COOKIE, format!("{}={}", cookie_name, token))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
     }
 }
