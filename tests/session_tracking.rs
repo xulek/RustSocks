@@ -1,5 +1,5 @@
 use rustsocks::qos::QosEngine;
-use rustsocks::server::proxy::{proxy_data, TrafficUpdateConfig};
+use rustsocks::server::proxy::{proxy_data, ProxyContext, TrafficUpdateConfig};
 use rustsocks::session::{ConnectionInfo, SessionManager, SessionProtocol, SessionStatus};
 use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -48,15 +48,18 @@ async fn proxy_updates_session_traffic_on_shutdown_flush() {
         .new_session_with_control("integration-user", connection_info, "allow", None, None)
         .await;
 
+    let proxy_ctx = ProxyContext {
+        session_manager: session_manager.clone(),
+        session_id,
+        cancel_token,
+        update_config: TrafficUpdateConfig::new(10),
+        qos_engine: QosEngine::None,
+        user: Arc::<str>::from("integration-user"),
+    };
     let proxy_task = tokio::spawn(proxy_data(
         server_client_stream,
         upstream_stream,
-        session_manager.clone(),
-        session_id,
-        cancel_token,
-        TrafficUpdateConfig::new(10),
-        QosEngine::None,
-        Arc::<str>::from("integration-user"),
+        proxy_ctx,
     ));
 
     // Client -> Upstream payload (forces flush on close, not threshold)

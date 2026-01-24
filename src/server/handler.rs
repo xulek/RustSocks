@@ -4,7 +4,7 @@ use crate::protocol::*;
 use crate::qos::{ConnectionLimits, QosEngine};
 use crate::server::bind::handle_bind as handle_bind_relay;
 use crate::server::pool::{ConnectionPool, ReuseHint};
-use crate::server::proxy::{proxy_data, TrafficUpdateConfig};
+use crate::server::proxy::{proxy_data, ProxyContext, TrafficUpdateConfig};
 use crate::server::resolver::resolve_address;
 use crate::server::udp::{handle_udp_associate as handle_udp_relay, UdpRelayContext};
 use crate::session::{ConnectionInfo, SessionManager, SessionProtocol, SessionStatus};
@@ -198,31 +198,13 @@ where
             .unwrap_or_else(|| Arc::from(ctx.anonymous_user.as_str()));
 
         // Step 2b: Check connection limits (QoS)
-        if let Err(e) = ctx
-            .qos_engine
-            .check_and_inc_connection_arc(&acl_user, &ctx.connection_limits)
-        {
-            warn!(
-                user = %acl_user.as_ref(),
-                error = %e,
-                "Connection limit exceeded"
-            );
-            send_socks_response(
-                buffered_stream.get_mut(),
-                SocksProtocol::V5,
-                ReplyCode::ConnectionNotAllowed,
-                Address::IPv4([0, 0, 0, 0]),
-                0,
-            )
-            .await?;
-            return Err(e);
-        }
-
-        // Ensure connection is decremented on drop
-        let connection_guard = ConnectionGuard {
-            qos_engine: ctx.qos_engine.clone(),
-            user: Arc::clone(&acl_user),
-        };
+        let connection_guard = check_connection_limits(
+            buffered_stream.get_mut(),
+            SocksProtocol::V5,
+            &ctx,
+            &acl_user,
+        )
+        .await?;
 
         // Step 3: SOCKS5 request (buffered read for final handshake message)
         let request = parse_socks5_request(&mut buffered_stream).await?;
@@ -262,34 +244,19 @@ where
 
             match decision {
                 AclDecision::Block => {
-                    ctx.acl_stats.record_block(acl_user.as_ref());
-                    let rule = matched_rule.as_deref().unwrap_or("unknown rule");
-
-                    warn!(
-                        user = %acl_user.as_ref(),
-                        dest = %dest_string,
-                        port = request.port,
-                        rule,
-                        "ACL blocked connection"
-                    );
-
-                    let conn_info = ConnectionInfo {
-                        source_ip: client_addr.ip(),
-                        source_port: client_addr.port(),
-                        dest_ip: dest_string.clone(),
-                        dest_port: request.port,
-                        protocol: session_protocol,
+                    let block_ctx = AclBlockContext {
+                        user: &acl_user,
+                        dest_string: &dest_string,
+                        port: request.port,
+                        client_addr,
+                        session_protocol,
+                        matched_rule: matched_rule.clone(),
                     };
-                    ctx.session_manager
-                        .track_rejected_session(acl_user.as_ref(), conn_info, matched_rule.clone())
-                        .await;
-
-                    send_socks_response(
+                    handle_acl_block(
                         buffered_stream.get_mut(),
                         SocksProtocol::V5,
-                        ReplyCode::ConnectionNotAllowed,
-                        Address::IPv4([0, 0, 0, 0]),
-                        0,
+                        &ctx,
+                        block_ctx,
                     )
                     .await?;
 
@@ -500,30 +467,13 @@ where
             }
         }
 
-        if let Err(e) = ctx
-            .qos_engine
-            .check_and_inc_connection_arc(&acl_user, &ctx.connection_limits)
-        {
-            warn!(
-                user = %acl_user.as_ref(),
-                error = %e,
-                "Connection limit exceeded (SOCKS4)"
-            );
-            send_socks_response(
-                &mut client_stream,
-                SocksProtocol::V4,
-                ReplyCode::ConnectionNotAllowed,
-                Address::IPv4([0, 0, 0, 0]),
-                0,
-            )
-            .await?;
-            return Err(e);
-        }
-
-        let connection_guard = ConnectionGuard {
-            qos_engine: ctx.qos_engine.clone(),
-            user: Arc::clone(&acl_user),
-        };
+        let connection_guard = check_connection_limits(
+            &mut client_stream,
+            SocksProtocol::V4,
+            &ctx,
+            &acl_user,
+        )
+        .await?;
 
         let session_protocol = SessionProtocol::Tcp;
         let mut acl_rule_match: Option<String> = None;
@@ -543,34 +493,19 @@ where
 
             match decision {
                 AclDecision::Block => {
-                    ctx.acl_stats.record_block(acl_user.as_ref());
-                    let rule = matched_rule.as_deref().unwrap_or("unknown rule");
-
-                    warn!(
-                        user = %acl_user.as_ref(),
-                        dest = %dest_string,
-                        port = request.port,
-                        rule,
-                        "ACL blocked SOCKS4 connection"
-                    );
-
-                    let conn_info = ConnectionInfo {
-                        source_ip: client_addr.ip(),
-                        source_port: client_addr.port(),
-                        dest_ip: dest_string.clone(),
-                        dest_port: request.port,
-                        protocol: session_protocol,
+                    let block_ctx = AclBlockContext {
+                        user: &acl_user,
+                        dest_string: &dest_string,
+                        port: request.port,
+                        client_addr,
+                        session_protocol,
+                        matched_rule: matched_rule.clone(),
                     };
-                    ctx.session_manager
-                        .track_rejected_session(acl_user.as_ref(), conn_info, matched_rule.clone())
-                        .await;
-
-                    send_socks_response(
+                    handle_acl_block(
                         &mut client_stream,
                         SocksProtocol::V4,
-                        ReplyCode::ConnectionNotAllowed,
-                        Address::IPv4([0, 0, 0, 0]),
-                        0,
+                        &ctx,
+                        block_ctx,
                     )
                     .await?;
 
@@ -859,17 +794,15 @@ where
     info!("Connected to {}, proxying data", peer_display);
 
     // Proxy data between client and upstream
-    match proxy_data(
-        client_stream,
-        upstream_stream,
-        connect_ctx.session_manager.clone(),
+    let proxy_ctx = ProxyContext {
+        session_manager: connect_ctx.session_manager.clone(),
         session_id,
         cancel_token,
-        connect_ctx.traffic_config,
-        session_ctx.qos_engine.clone(),
-        Arc::clone(&session_ctx.user),
-    )
-    .await
+        update_config: connect_ctx.traffic_config,
+        qos_engine: session_ctx.qos_engine.clone(),
+        user: Arc::clone(&session_ctx.user),
+    };
+    match proxy_data(client_stream, upstream_stream, proxy_ctx).await
     {
         Ok(reusable_stream) => {
             if let Some(reuse) = reusable_stream {
@@ -1054,4 +987,95 @@ impl Drop for ConnectionGuard {
     fn drop(&mut self) {
         self.qos_engine.dec_user_connection_arc(&self.user);
     }
+}
+
+/// Context for handling ACL block responses (reduces code duplication)
+struct AclBlockContext<'a> {
+    user: &'a Arc<str>,
+    dest_string: &'a str,
+    port: u16,
+    client_addr: std::net::SocketAddr,
+    session_protocol: SessionProtocol,
+    matched_rule: Option<String>,
+}
+
+/// Check connection limits and send error response if exceeded
+/// Returns ConnectionGuard on success for RAII cleanup
+async fn check_connection_limits<S>(
+    stream: &mut S,
+    protocol: SocksProtocol,
+    ctx: &Arc<ClientHandlerContext>,
+    user: &Arc<str>,
+) -> Result<ConnectionGuard>
+where
+    S: IoStream,
+{
+    if let Err(e) = ctx
+        .qos_engine
+        .check_and_inc_connection_arc(user, &ctx.connection_limits)
+    {
+        warn!(
+            user = %user.as_ref(),
+            error = %e,
+            "Connection limit exceeded"
+        );
+        send_socks_response(
+            stream,
+            protocol,
+            ReplyCode::ConnectionNotAllowed,
+            Address::IPv4([0, 0, 0, 0]),
+            0,
+        )
+        .await?;
+        return Err(e);
+    }
+
+    Ok(ConnectionGuard {
+        qos_engine: ctx.qos_engine.clone(),
+        user: Arc::clone(user),
+    })
+}
+
+/// Handle ACL block response - extracted to reduce duplication between SOCKS4/5
+async fn handle_acl_block<S>(
+    stream: &mut S,
+    protocol: SocksProtocol,
+    ctx: &Arc<ClientHandlerContext>,
+    block_ctx: AclBlockContext<'_>,
+) -> Result<()>
+where
+    S: IoStream,
+{
+    ctx.acl_stats.record_block(block_ctx.user.as_ref());
+    let rule = block_ctx.matched_rule.as_deref().unwrap_or("unknown rule");
+
+    warn!(
+        user = %block_ctx.user.as_ref(),
+        dest = %block_ctx.dest_string,
+        port = block_ctx.port,
+        rule,
+        "ACL blocked connection"
+    );
+
+    let conn_info = ConnectionInfo {
+        source_ip: block_ctx.client_addr.ip(),
+        source_port: block_ctx.client_addr.port(),
+        dest_ip: block_ctx.dest_string.to_string(),
+        dest_port: block_ctx.port,
+        protocol: block_ctx.session_protocol,
+    };
+    ctx.session_manager
+        .track_rejected_session(block_ctx.user.as_ref(), conn_info, block_ctx.matched_rule)
+        .await;
+
+    send_socks_response(
+        stream,
+        protocol,
+        ReplyCode::ConnectionNotAllowed,
+        Address::IPv4([0, 0, 0, 0]),
+        0,
+    )
+    .await?;
+
+    Ok(())
 }

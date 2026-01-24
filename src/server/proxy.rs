@@ -83,22 +83,27 @@ pub struct UpstreamReuse {
     pub hint: ReuseHint,
 }
 
+/// Context for proxy data operations - bundles related parameters for cleaner API
+#[derive(Clone)]
+pub struct ProxyContext {
+    pub session_manager: Arc<SessionManager>,
+    pub session_id: Uuid,
+    pub cancel_token: CancellationToken,
+    pub update_config: TrafficUpdateConfig,
+    pub qos_engine: QosEngine,
+    pub user: Arc<str>,
+}
+
 /// Proxy data bidirectionally between client and upstream server while tracking traffic.
-#[allow(clippy::too_many_arguments)]
 #[instrument(
     level = "debug",
-    skip(client, upstream, session_manager, cancel_token, qos_engine, user),
-    fields(session = %session_id, user = %user)
+    skip(client, upstream, ctx),
+    fields(session = %ctx.session_id, user = %ctx.user)
 )]
 pub async fn proxy_data<S>(
     client: S,
     upstream: TcpStream,
-    session_manager: Arc<SessionManager>,
-    session_id: Uuid,
-    cancel_token: CancellationToken,
-    update_config: TrafficUpdateConfig,
-    qos_engine: QosEngine,
-    user: Arc<str>,
+    ctx: ProxyContext,
 ) -> Result<Option<UpstreamReuse>>
 where
     S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
@@ -109,23 +114,23 @@ where
     let upload_handle = tokio::spawn(proxy_upload(
         client_read,
         upstream_write,
-        session_manager.clone(),
-        session_id,
-        cancel_token.clone(),
-        update_config,
-        qos_engine.clone(),
-        Arc::clone(&user),
+        ctx.session_manager.clone(),
+        ctx.session_id,
+        ctx.cancel_token.clone(),
+        ctx.update_config,
+        ctx.qos_engine.clone(),
+        Arc::clone(&ctx.user),
     ));
 
     let download_handle = tokio::spawn(proxy_download(
         upstream_read,
         client_write,
-        session_manager,
-        session_id,
-        cancel_token,
-        update_config,
-        qos_engine,
-        user,
+        ctx.session_manager,
+        ctx.session_id,
+        ctx.cancel_token,
+        ctx.update_config,
+        ctx.qos_engine,
+        ctx.user,
     ));
 
     let (upload_result, download_result) = tokio::join!(upload_handle, download_handle);

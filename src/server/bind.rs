@@ -2,7 +2,7 @@ use crate::protocol::{Address, ReplyCode};
 use crate::qos::QosEngine;
 use crate::server::handler::IoStream;
 use crate::server::pool::{ConnectionPool, ReuseHint};
-use crate::server::proxy::{proxy_data, TrafficUpdateConfig};
+use crate::server::proxy::{proxy_data, ProxyContext, TrafficUpdateConfig};
 use crate::session::{ConnectionInfo, SessionManager, SessionProtocol, SessionStatus};
 use crate::utils::error::{Result, RustSocksError};
 use std::net::SocketAddr;
@@ -85,17 +85,15 @@ where
             send_bind_response(&mut client_stream, ReplyCode::Succeeded, peer_addr).await?;
 
             // Proxy data between client and incoming connection
-            match proxy_data(
-                client_stream,
-                incoming_stream,
-                session_manager.clone(),
+            let proxy_ctx = ProxyContext {
+                session_manager: session_manager.clone(),
                 session_id,
                 cancel_token,
-                TrafficUpdateConfig::default(),
-                bind_ctx.qos_engine.clone(),
-                Arc::clone(&bind_ctx.user),
-            )
-            .await
+                update_config: TrafficUpdateConfig::default(),
+                qos_engine: bind_ctx.qos_engine.clone(),
+                user: Arc::clone(&bind_ctx.user),
+            };
+            match proxy_data(client_stream, incoming_stream, proxy_ctx).await
             {
                 Ok(Some(reuse)) => {
                     bind_ctx
