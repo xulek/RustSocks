@@ -7,6 +7,7 @@ use crate::acl::persistence;
 use crate::acl::types::{AclRule, Action, Protocol};
 use crate::api::handlers::sessions::ApiState;
 use crate::api::types::*;
+use crate::utils::error::ApiError;
 use axum::{
     extract::{Path, State},
     http::StatusCode,
@@ -17,6 +18,79 @@ use tracing::{error, info};
 // ============================================================================
 // Helper Functions
 // ============================================================================
+
+/// Check that ACL is enabled, returning ApiError if not
+fn require_acl(state: &ApiState) -> Result<(), ApiError> {
+    if state.acl_engine.is_none() {
+        return Err(ApiError::service_unavailable("ACL is not enabled"));
+    }
+    Ok(())
+}
+
+/// Load current ACL config, converting errors to ApiError
+async fn load_config_or_err(state: &ApiState) -> Result<crate::acl::types::AclConfig, ApiError> {
+    load_current_config(state)
+        .await
+        .map_err(|e| ApiError::internal(format!("Failed to load config: {}", e)))
+}
+
+/// Save config and reload, converting errors to ApiError
+async fn save_config_or_err(
+    state: &ApiState,
+    config: crate::acl::types::AclConfig,
+) -> Result<(), ApiError> {
+    save_and_reload(state, config)
+        .await
+        .map_err(|e| ApiError::internal(format!("Failed to save config: {}", e)))
+}
+
+/// Create error response for RuleOperationResponse
+fn rule_error_response(
+    status: StatusCode,
+    message: impl Into<String>,
+) -> (StatusCode, Json<RuleOperationResponse>) {
+    (
+        status,
+        Json(RuleOperationResponse {
+            success: false,
+            message: message.into(),
+            rule: None,
+            old_rule: None,
+        }),
+    )
+}
+
+/// Create success response for RuleOperationResponse
+fn rule_success_response(
+    message: impl Into<String>,
+    rule: Option<AclRule>,
+    old_rule: Option<AclRule>,
+) -> (StatusCode, Json<RuleOperationResponse>) {
+    (
+        StatusCode::OK,
+        Json(RuleOperationResponse {
+            success: true,
+            message: message.into(),
+            rule,
+            old_rule,
+        }),
+    )
+}
+
+/// Create error response for DeleteGroupResponse
+fn delete_group_error_response(
+    status: StatusCode,
+    message: impl Into<String>,
+) -> (StatusCode, Json<DeleteGroupResponse>) {
+    (
+        status,
+        Json(DeleteGroupResponse {
+            success: false,
+            message: message.into(),
+            deleted_group: None,
+        }),
+    )
+}
 
 /// Convert API request to AclRule
 fn request_to_rule(req: &AddRuleRequest) -> Result<AclRule, String> {
@@ -168,75 +242,26 @@ pub async fn add_group_rule(
     Path(group_name): Path<String>,
     Json(request): Json<AddRuleRequest>,
 ) -> (StatusCode, Json<RuleOperationResponse>) {
-    // Check if ACL is enabled
-    if state.acl_engine.is_none() {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(RuleOperationResponse {
-                success: false,
-                message: "ACL is not enabled".to_string(),
-                rule: None,
-                old_rule: None,
-            }),
-        );
+    if let Err(e) = require_acl(&state) {
+        return rule_error_response(e.status_code(), e.to_string());
     }
 
-    // Convert request to AclRule
     let rule = match request_to_rule(&request) {
         Ok(r) => r,
-        Err(e) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(RuleOperationResponse {
-                    success: false,
-                    message: format!("Invalid rule: {}", e),
-                    rule: None,
-                    old_rule: None,
-                }),
-            );
-        }
+        Err(e) => return rule_error_response(StatusCode::BAD_REQUEST, format!("Invalid rule: {}", e)),
     };
 
-    // Load current config
-    let mut config = match load_current_config(&state).await {
+    let mut config = match load_config_or_err(&state).await {
         Ok(c) => c,
-        Err(e) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(RuleOperationResponse {
-                    success: false,
-                    message: format!("Failed to load config: {}", e),
-                    rule: None,
-                    old_rule: None,
-                }),
-            );
-        }
+        Err(e) => return rule_error_response(e.status_code(), e.to_string()),
     };
 
-    // Add rule
     if let Err(e) = crud::add_group_rule(&mut config, &group_name, rule.clone()) {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(RuleOperationResponse {
-                success: false,
-                message: e,
-                rule: None,
-                old_rule: None,
-            }),
-        );
+        return rule_error_response(StatusCode::BAD_REQUEST, e);
     }
 
-    // Save and reload
-    if let Err(e) = save_and_reload(&state, config).await {
-        return (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(RuleOperationResponse {
-                success: false,
-                message: format!("Failed to save config: {}", e),
-                rule: None,
-                old_rule: None,
-            }),
-        );
+    if let Err(e) = save_config_or_err(&state, config).await {
+        return rule_error_response(e.status_code(), e.to_string());
     }
 
     info!(
@@ -245,15 +270,7 @@ pub async fn add_group_rule(
         "Added rule to group via API"
     );
 
-    (
-        StatusCode::OK,
-        Json(RuleOperationResponse {
-            success: true,
-            message: format!("Rule added to group '{}'", group_name),
-            rule: Some(rule),
-            old_rule: None,
-        }),
-    )
+    rule_success_response(format!("Rule added to group '{}'", group_name), Some(rule), None)
 }
 
 /// PUT /api/acl/groups/{groupname}/rules - Update group rule
@@ -262,84 +279,32 @@ pub async fn update_group_rule(
     Path(group_name): Path<String>,
     Json(request): Json<UpdateRuleRequest>,
 ) -> (StatusCode, Json<RuleOperationResponse>) {
-    if state.acl_engine.is_none() {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(RuleOperationResponse {
-                success: false,
-                message: "ACL is not enabled".to_string(),
-                rule: None,
-                old_rule: None,
-            }),
-        );
+    if let Err(e) = require_acl(&state) {
+        return rule_error_response(e.status_code(), e.to_string());
     }
 
-    // Convert request to rule
     let new_rule = match request_to_rule(&request.update) {
         Ok(r) => r,
-        Err(e) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(RuleOperationResponse {
-                    success: false,
-                    message: format!("Invalid rule: {}", e),
-                    rule: None,
-                    old_rule: None,
-                }),
-            );
-        }
+        Err(e) => return rule_error_response(StatusCode::BAD_REQUEST, format!("Invalid rule: {}", e)),
     };
 
-    // Create identifier
     let identifier = RuleIdentifier {
         destinations: request.match_rule.destinations,
         ports: request.match_rule.ports,
     };
 
-    // Load config
-    let mut config = match load_current_config(&state).await {
+    let mut config = match load_config_or_err(&state).await {
         Ok(c) => c,
-        Err(e) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(RuleOperationResponse {
-                    success: false,
-                    message: format!("Failed to load config: {}", e),
-                    rule: None,
-                    old_rule: None,
-                }),
-            );
-        }
+        Err(e) => return rule_error_response(e.status_code(), e.to_string()),
     };
 
-    // Update rule
-    let old_rule =
-        match crud::update_group_rule(&mut config, &group_name, &identifier, new_rule.clone()) {
-            Ok(r) => r,
-            Err(e) => {
-                return (
-                    StatusCode::NOT_FOUND,
-                    Json(RuleOperationResponse {
-                        success: false,
-                        message: e,
-                        rule: None,
-                        old_rule: None,
-                    }),
-                );
-            }
-        };
+    let old_rule = match crud::update_group_rule(&mut config, &group_name, &identifier, new_rule.clone()) {
+        Ok(r) => r,
+        Err(e) => return rule_error_response(StatusCode::NOT_FOUND, e),
+    };
 
-    // Save and reload
-    if let Err(e) = save_and_reload(&state, config).await {
-        return (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(RuleOperationResponse {
-                success: false,
-                message: format!("Failed to save config: {}", e),
-                rule: None,
-                old_rule: None,
-            }),
-        );
+    if let Err(e) = save_config_or_err(&state, config).await {
+        return rule_error_response(e.status_code(), e.to_string());
     }
 
     info!(
@@ -349,14 +314,10 @@ pub async fn update_group_rule(
         "Updated rule in group via API"
     );
 
-    (
-        StatusCode::OK,
-        Json(RuleOperationResponse {
-            success: true,
-            message: format!("Rule updated in group '{}'", group_name),
-            rule: Some(new_rule),
-            old_rule: Some(old_rule),
-        }),
+    rule_success_response(
+        format!("Rule updated in group '{}'", group_name),
+        Some(new_rule),
+        Some(old_rule),
     )
 }
 
@@ -366,67 +327,27 @@ pub async fn delete_group_rule(
     Path(group_name): Path<String>,
     Json(request): Json<DeleteRuleRequest>,
 ) -> (StatusCode, Json<RuleOperationResponse>) {
-    if state.acl_engine.is_none() {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(RuleOperationResponse {
-                success: false,
-                message: "ACL is not enabled".to_string(),
-                rule: None,
-                old_rule: None,
-            }),
-        );
+    if let Err(e) = require_acl(&state) {
+        return rule_error_response(e.status_code(), e.to_string());
     }
 
-    // Create identifier
     let identifier = RuleIdentifier {
         destinations: request.destinations,
         ports: request.ports,
     };
 
-    // Load config
-    let mut config = match load_current_config(&state).await {
+    let mut config = match load_config_or_err(&state).await {
         Ok(c) => c,
-        Err(e) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(RuleOperationResponse {
-                    success: false,
-                    message: format!("Failed to load config: {}", e),
-                    rule: None,
-                    old_rule: None,
-                }),
-            );
-        }
+        Err(e) => return rule_error_response(e.status_code(), e.to_string()),
     };
 
-    // Delete rule
     let deleted_rule = match crud::delete_group_rule(&mut config, &group_name, &identifier) {
         Ok(r) => r,
-        Err(e) => {
-            return (
-                StatusCode::NOT_FOUND,
-                Json(RuleOperationResponse {
-                    success: false,
-                    message: e,
-                    rule: None,
-                    old_rule: None,
-                }),
-            );
-        }
+        Err(e) => return rule_error_response(StatusCode::NOT_FOUND, e),
     };
 
-    // Save and reload
-    if let Err(e) = save_and_reload(&state, config).await {
-        return (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(RuleOperationResponse {
-                success: false,
-                message: format!("Failed to save config: {}", e),
-                rule: None,
-                old_rule: None,
-            }),
-        );
+    if let Err(e) = save_config_or_err(&state, config).await {
+        return rule_error_response(e.status_code(), e.to_string());
     }
 
     info!(
@@ -435,14 +356,10 @@ pub async fn delete_group_rule(
         "Deleted rule from group via API"
     );
 
-    (
-        StatusCode::OK,
-        Json(RuleOperationResponse {
-            success: true,
-            message: format!("Rule deleted from group '{}'", group_name),
-            rule: Some(deleted_rule),
-            old_rule: None,
-        }),
+    rule_success_response(
+        format!("Rule deleted from group '{}'", group_name),
+        Some(deleted_rule),
+        None,
     )
 }
 
@@ -451,76 +368,34 @@ pub async fn create_group(
     State(state): State<ApiState>,
     Json(request): Json<CreateGroupRequest>,
 ) -> (StatusCode, Json<RuleOperationResponse>) {
-    if state.acl_engine.is_none() {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(RuleOperationResponse {
-                success: false,
-                message: "ACL is not enabled".to_string(),
-                rule: None,
-                old_rule: None,
-            }),
-        );
+    if let Err(e) = require_acl(&state) {
+        return rule_error_response(e.status_code(), e.to_string());
     }
 
-    let mut config = match load_current_config(&state).await {
+    let mut config = match load_config_or_err(&state).await {
         Ok(c) => c,
-        Err(e) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(RuleOperationResponse {
-                    success: false,
-                    message: format!("Failed to load config: {}", e),
-                    rule: None,
-                    old_rule: None,
-                }),
-            );
-        }
+        Err(e) => return rule_error_response(e.status_code(), e.to_string()),
     };
 
-    // Check if group already exists
     if config.groups.iter().any(|g| g.name == request.name) {
-        return (
+        return rule_error_response(
             StatusCode::BAD_REQUEST,
-            Json(RuleOperationResponse {
-                success: false,
-                message: format!("Group '{}' already exists", request.name),
-                rule: None,
-                old_rule: None,
-            }),
+            format!("Group '{}' already exists", request.name),
         );
     }
 
-    // Add empty group
     config.groups.push(crate::acl::types::GroupAcl {
         name: request.name.clone(),
         rules: vec![],
     });
 
-    // Save and reload
-    if let Err(e) = save_and_reload(&state, config).await {
-        return (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(RuleOperationResponse {
-                success: false,
-                message: format!("Failed to save config: {}", e),
-                rule: None,
-                old_rule: None,
-            }),
-        );
+    if let Err(e) = save_config_or_err(&state, config).await {
+        return rule_error_response(e.status_code(), e.to_string());
     }
 
     info!(group = request.name, "Created new group via API");
 
-    (
-        StatusCode::OK,
-        Json(RuleOperationResponse {
-            success: true,
-            message: format!("Group '{}' created", request.name),
-            rule: None,
-            old_rule: None,
-        }),
-    )
+    rule_success_response(format!("Group '{}' created", request.name), None, None)
 }
 
 /// DELETE /api/acl/groups/{groupname} - Delete entire group
@@ -528,56 +403,22 @@ pub async fn delete_group(
     State(state): State<ApiState>,
     Path(group_name): Path<String>,
 ) -> (StatusCode, Json<DeleteGroupResponse>) {
-    if state.acl_engine.is_none() {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(DeleteGroupResponse {
-                success: false,
-                message: "ACL is not enabled".to_string(),
-                deleted_group: None,
-            }),
-        );
+    if let Err(e) = require_acl(&state) {
+        return delete_group_error_response(e.status_code(), e.to_string());
     }
 
-    let mut config = match load_current_config(&state).await {
+    let mut config = match load_config_or_err(&state).await {
         Ok(c) => c,
-        Err(e) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(DeleteGroupResponse {
-                    success: false,
-                    message: format!("Failed to load config: {}", e),
-                    deleted_group: None,
-                }),
-            );
-        }
+        Err(e) => return delete_group_error_response(e.status_code(), e.to_string()),
     };
 
-    // Delete group
     let deleted_group = match crud::delete_group(&mut config, &group_name) {
         Ok(g) => g,
-        Err(e) => {
-            return (
-                StatusCode::NOT_FOUND,
-                Json(DeleteGroupResponse {
-                    success: false,
-                    message: e,
-                    deleted_group: None,
-                }),
-            );
-        }
+        Err(e) => return delete_group_error_response(StatusCode::NOT_FOUND, e),
     };
 
-    // Save and reload
-    if let Err(e) = save_and_reload(&state, config).await {
-        return (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(DeleteGroupResponse {
-                success: false,
-                message: format!("Failed to save config: {}", e),
-                deleted_group: None,
-            }),
-        );
+    if let Err(e) = save_config_or_err(&state, config).await {
+        return delete_group_error_response(e.status_code(), e.to_string());
     }
 
     info!(group = group_name, "Deleted group via API");
@@ -670,70 +511,26 @@ pub async fn add_user_rule(
     Path(username): Path<String>,
     Json(request): Json<AddRuleRequest>,
 ) -> (StatusCode, Json<RuleOperationResponse>) {
-    if state.acl_engine.is_none() {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(RuleOperationResponse {
-                success: false,
-                message: "ACL is not enabled".to_string(),
-                rule: None,
-                old_rule: None,
-            }),
-        );
+    if let Err(e) = require_acl(&state) {
+        return rule_error_response(e.status_code(), e.to_string());
     }
 
     let rule = match request_to_rule(&request) {
         Ok(r) => r,
-        Err(e) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(RuleOperationResponse {
-                    success: false,
-                    message: format!("Invalid rule: {}", e),
-                    rule: None,
-                    old_rule: None,
-                }),
-            );
-        }
+        Err(e) => return rule_error_response(StatusCode::BAD_REQUEST, format!("Invalid rule: {}", e)),
     };
 
-    let mut config = match load_current_config(&state).await {
+    let mut config = match load_config_or_err(&state).await {
         Ok(c) => c,
-        Err(e) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(RuleOperationResponse {
-                    success: false,
-                    message: format!("Failed to load config: {}", e),
-                    rule: None,
-                    old_rule: None,
-                }),
-            );
-        }
+        Err(e) => return rule_error_response(e.status_code(), e.to_string()),
     };
 
     if let Err(e) = crud::add_user_rule(&mut config, &username, rule.clone()) {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(RuleOperationResponse {
-                success: false,
-                message: e,
-                rule: None,
-                old_rule: None,
-            }),
-        );
+        return rule_error_response(StatusCode::BAD_REQUEST, e);
     }
 
-    if let Err(e) = save_and_reload(&state, config).await {
-        return (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(RuleOperationResponse {
-                success: false,
-                message: format!("Failed to save config: {}", e),
-                rule: None,
-                old_rule: None,
-            }),
-        );
+    if let Err(e) = save_config_or_err(&state, config).await {
+        return rule_error_response(e.status_code(), e.to_string());
     }
 
     info!(
@@ -742,15 +539,7 @@ pub async fn add_user_rule(
         "Added rule to user via API"
     );
 
-    (
-        StatusCode::OK,
-        Json(RuleOperationResponse {
-            success: true,
-            message: format!("Rule added to user '{}'", username),
-            rule: Some(rule),
-            old_rule: None,
-        }),
-    )
+    rule_success_response(format!("Rule added to user '{}'", username), Some(rule), None)
 }
 
 /// PUT /api/acl/users/{username}/rules - Update user rule
@@ -759,31 +548,13 @@ pub async fn update_user_rule(
     Path(username): Path<String>,
     Json(request): Json<UpdateRuleRequest>,
 ) -> (StatusCode, Json<RuleOperationResponse>) {
-    if state.acl_engine.is_none() {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(RuleOperationResponse {
-                success: false,
-                message: "ACL is not enabled".to_string(),
-                rule: None,
-                old_rule: None,
-            }),
-        );
+    if let Err(e) = require_acl(&state) {
+        return rule_error_response(e.status_code(), e.to_string());
     }
 
     let new_rule = match request_to_rule(&request.update) {
         Ok(r) => r,
-        Err(e) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(RuleOperationResponse {
-                    success: false,
-                    message: format!("Invalid rule: {}", e),
-                    rule: None,
-                    old_rule: None,
-                }),
-            );
-        }
+        Err(e) => return rule_error_response(StatusCode::BAD_REQUEST, format!("Invalid rule: {}", e)),
     };
 
     let identifier = RuleIdentifier {
@@ -791,47 +562,18 @@ pub async fn update_user_rule(
         ports: request.match_rule.ports,
     };
 
-    let mut config = match load_current_config(&state).await {
+    let mut config = match load_config_or_err(&state).await {
         Ok(c) => c,
-        Err(e) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(RuleOperationResponse {
-                    success: false,
-                    message: format!("Failed to load config: {}", e),
-                    rule: None,
-                    old_rule: None,
-                }),
-            );
-        }
+        Err(e) => return rule_error_response(e.status_code(), e.to_string()),
     };
 
-    let old_rule =
-        match crud::update_user_rule(&mut config, &username, &identifier, new_rule.clone()) {
-            Ok(r) => r,
-            Err(e) => {
-                return (
-                    StatusCode::NOT_FOUND,
-                    Json(RuleOperationResponse {
-                        success: false,
-                        message: e,
-                        rule: None,
-                        old_rule: None,
-                    }),
-                );
-            }
-        };
+    let old_rule = match crud::update_user_rule(&mut config, &username, &identifier, new_rule.clone()) {
+        Ok(r) => r,
+        Err(e) => return rule_error_response(StatusCode::NOT_FOUND, e),
+    };
 
-    if let Err(e) = save_and_reload(&state, config).await {
-        return (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(RuleOperationResponse {
-                success: false,
-                message: format!("Failed to save config: {}", e),
-                rule: None,
-                old_rule: None,
-            }),
-        );
+    if let Err(e) = save_config_or_err(&state, config).await {
+        return rule_error_response(e.status_code(), e.to_string());
     }
 
     info!(
@@ -841,14 +583,10 @@ pub async fn update_user_rule(
         "Updated rule for user via API"
     );
 
-    (
-        StatusCode::OK,
-        Json(RuleOperationResponse {
-            success: true,
-            message: format!("Rule updated for user '{}'", username),
-            rule: Some(new_rule),
-            old_rule: Some(old_rule),
-        }),
+    rule_success_response(
+        format!("Rule updated for user '{}'", username),
+        Some(new_rule),
+        Some(old_rule),
     )
 }
 
@@ -858,16 +596,8 @@ pub async fn delete_user_rule(
     Path(username): Path<String>,
     Json(request): Json<DeleteRuleRequest>,
 ) -> (StatusCode, Json<RuleOperationResponse>) {
-    if state.acl_engine.is_none() {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(RuleOperationResponse {
-                success: false,
-                message: "ACL is not enabled".to_string(),
-                rule: None,
-                old_rule: None,
-            }),
-        );
+    if let Err(e) = require_acl(&state) {
+        return rule_error_response(e.status_code(), e.to_string());
     }
 
     let identifier = RuleIdentifier {
@@ -875,46 +605,18 @@ pub async fn delete_user_rule(
         ports: request.ports,
     };
 
-    let mut config = match load_current_config(&state).await {
+    let mut config = match load_config_or_err(&state).await {
         Ok(c) => c,
-        Err(e) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(RuleOperationResponse {
-                    success: false,
-                    message: format!("Failed to load config: {}", e),
-                    rule: None,
-                    old_rule: None,
-                }),
-            );
-        }
+        Err(e) => return rule_error_response(e.status_code(), e.to_string()),
     };
 
     let deleted_rule = match crud::delete_user_rule(&mut config, &username, &identifier) {
         Ok(r) => r,
-        Err(e) => {
-            return (
-                StatusCode::NOT_FOUND,
-                Json(RuleOperationResponse {
-                    success: false,
-                    message: e,
-                    rule: None,
-                    old_rule: None,
-                }),
-            );
-        }
+        Err(e) => return rule_error_response(StatusCode::NOT_FOUND, e),
     };
 
-    if let Err(e) = save_and_reload(&state, config).await {
-        return (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(RuleOperationResponse {
-                success: false,
-                message: format!("Failed to save config: {}", e),
-                rule: None,
-                old_rule: None,
-            }),
-        );
+    if let Err(e) = save_config_or_err(&state, config).await {
+        return rule_error_response(e.status_code(), e.to_string());
     }
 
     info!(
@@ -923,14 +625,10 @@ pub async fn delete_user_rule(
         "Deleted rule from user via API"
     );
 
-    (
-        StatusCode::OK,
-        Json(RuleOperationResponse {
-            success: true,
-            message: format!("Rule deleted from user '{}'", username),
-            rule: Some(deleted_rule),
-            old_rule: None,
-        }),
+    rule_success_response(
+        format!("Rule deleted from user '{}'", username),
+        Some(deleted_rule),
+        None,
     )
 }
 
