@@ -1,5 +1,9 @@
 site_name: RustSocks Documentation
 site_description: High-performance SOCKS5 proxy with ACLs, sessions, metrics, and a modern web dashboard.
+site_url: https://xulek.github.io/RustSocks/
+repo_name: xulek/RustSocks
+repo_url: https://github.com/xulek/RustSocks
+edit_uri: ""
 
 nav:
   - Home: index.md

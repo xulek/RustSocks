@@ -13,6 +13,8 @@
 
 A modern, high-performance SOCKS5 proxy server written in Rust, featuring advanced Access Control Lists (ACL), real-time session tracking, Prometheus metrics, and an intuitive web dashboard. Built for administrators who need fine-grained control, security, and comprehensive monitoring.
 
+**Documentation:** https://xulek.github.io/RustSocks/
+
 ---
 
 ## Key Features
