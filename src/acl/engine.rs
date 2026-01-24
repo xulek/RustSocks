@@ -215,7 +215,14 @@ impl AclEngine {
     /// Rules are pre-sorted during compilation, so no sorting needed here
     /// Returns Vec<Arc<CompiledAclRule>> - cloning Arc is cheap (atomic counter increment)
     fn collect_rules(&self, config: &CompiledAclConfig, user: &str) -> Vec<Arc<CompiledAclRule>> {
-        let mut all_rules = Vec::new();
+        // Pre-allocate capacity to avoid reallocations
+        let estimated_capacity = if let Some(user_acl) = config.users.get(user) {
+            // User rules + estimated group rules (assume ~5 rules per group on average)
+            user_acl.rules.len() + user_acl.groups.len() * 5
+        } else {
+            0
+        };
+        let mut all_rules = Vec::with_capacity(estimated_capacity);
 
         // Get user's rules (already sorted during compilation)
         if let Some(user_acl) = config.users.get(user) {
@@ -264,7 +271,12 @@ impl AclEngine {
         user: &str,
         user_groups: &[String],
     ) -> Vec<Arc<CompiledAclRule>> {
-        let mut all_rules = Vec::new();
+        // Pre-allocate capacity to avoid reallocations
+        // Estimate: user rules + (LDAP groups that might match) * avg rules per group
+        // Conservative estimate: assume 20% of LDAP groups match ACL config
+        let user_rules_count = config.users.get(user).map_or(0, |u| u.rules.len());
+        let estimated_group_rules = (user_groups.len() / 5 + 1) * 5; // ~20% match rate * 5 rules avg
+        let mut all_rules = Vec::with_capacity(user_rules_count + estimated_group_rules);
 
         // Add per-user rules first (already sorted during compilation)
         if let Some(user_acl) = config.users.get(user) {
@@ -305,7 +317,8 @@ impl AclEngine {
         config: &CompiledAclConfig,
         user_groups: &[String],
     ) -> Vec<String> {
-        let mut matched = Vec::new();
+        // Pre-allocate with conservative estimate (assume ~20% match rate)
+        let mut matched = Vec::with_capacity(user_groups.len() / 5 + 1);
 
         // Use O(1) lowercase lookup instead of nested loop
         for ldap_group in user_groups {

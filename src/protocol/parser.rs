@@ -182,6 +182,8 @@ where
 }
 
 /// Send SOCKS5 response
+/// Optimized: Uses fixed-size stack buffer for IPv4/IPv6 (common case),
+/// avoiding SmallVec overhead. Single syscall for all cases.
 #[inline(always)]
 pub async fn send_socks5_response<S>(
     stream: &mut S,
@@ -192,23 +194,28 @@ pub async fn send_socks5_response<S>(
 where
     S: AsyncRead + AsyncWrite + Unpin + Send,
 {
-    // Write version, reply, reserved - use SmallVec for stack allocation (response < 256 bytes)
-    let mut buf = SmallVec::<[u8; 256]>::new();
-    buf.push(SOCKS_VERSION);
-    buf.push(reply as u8);
-    buf.push(0x00);
+    // Fixed-size buffer for IPv4 (10 bytes) and IPv6 (22 bytes) - the common cases
+    // Layout: version(1) + reply(1) + reserved(1) + atyp(1) + addr(4|16) + port(2)
+    let mut fixed_buf = [0u8; 22];
+    fixed_buf[0] = SOCKS_VERSION;
+    fixed_buf[1] = reply as u8;
+    fixed_buf[2] = 0x00; // reserved
 
-    // Write address type and address
     match &bind_addr {
         Address::IPv4(octets) => {
-            buf.push(0x01);
-            buf.extend_from_slice(octets);
+            fixed_buf[3] = 0x01;
+            fixed_buf[4..8].copy_from_slice(octets);
+            fixed_buf[8..10].copy_from_slice(&bind_port.to_be_bytes());
+            stream.write_all(&fixed_buf[..10]).await?;
         }
         Address::IPv6(octets) => {
-            buf.push(0x04);
-            buf.extend_from_slice(octets);
+            fixed_buf[3] = 0x04;
+            fixed_buf[4..20].copy_from_slice(octets);
+            fixed_buf[20..22].copy_from_slice(&bind_port.to_be_bytes());
+            stream.write_all(&fixed_buf[..22]).await?;
         }
         Address::Domain(domain) => {
+            // Domain names are rare in responses, use SmallVec for this case
             // RFC 1928: Domain name length is u8 (max 255 octets)
             if domain.len() > 255 {
                 return Err(RustSocksError::Protocol(format!(
@@ -216,16 +223,15 @@ where
                     domain.len()
                 )));
             }
-            buf.push(0x03);
+            let mut buf = SmallVec::<[u8; 264]>::new(); // 3 + 1 + 1 + 255 + 2 = 262 max
+            buf.extend_from_slice(&[SOCKS_VERSION, reply as u8, 0x00, 0x03]);
             buf.push(domain.len() as u8);
             buf.extend_from_slice(domain.as_bytes());
+            buf.extend_from_slice(&bind_port.to_be_bytes());
+            stream.write_all(&buf).await?;
         }
     }
 
-    // Write port (big-endian)
-    buf.extend_from_slice(&bind_port.to_be_bytes());
-
-    stream.write_all(&buf).await?;
     stream.flush().await?;
 
     debug!(
@@ -288,6 +294,8 @@ where
 }
 
 /// Send SOCKS4 response
+/// Optimized: Uses fixed-size stack buffer (8 bytes), single syscall
+#[inline(always)]
 pub async fn send_socks4_response<S>(
     stream: &mut S,
     reply: Socks4Reply,
@@ -297,11 +305,18 @@ pub async fn send_socks4_response<S>(
 where
     S: AsyncRead + AsyncWrite + Unpin + Send,
 {
-    let mut buf = Vec::with_capacity(8);
-    buf.push(0x00);
-    buf.push(reply as u8);
-    buf.extend_from_slice(&bind_port.to_be_bytes());
-    buf.extend_from_slice(&bind_addr);
+    // Fixed 8-byte response: null(1) + reply(1) + port(2) + addr(4)
+    let port_bytes = bind_port.to_be_bytes();
+    let buf = [
+        0x00,
+        reply as u8,
+        port_bytes[0],
+        port_bytes[1],
+        bind_addr[0],
+        bind_addr[1],
+        bind_addr[2],
+        bind_addr[3],
+    ];
 
     stream.write_all(&buf).await?;
     stream.flush().await?;

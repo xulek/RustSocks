@@ -1,12 +1,10 @@
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::sync::Mutex;
 use tokio::time::sleep;
 use tracing::trace;
 
 /// Thread-safe token bucket for rate limiting
-/// Uses atomic operations for lock-free token consumption
+/// Uses atomic operations for fully lock-free operation
 #[derive(Debug)]
 pub struct TokenBucket {
     /// Maximum capacity (burst size)
@@ -18,8 +16,11 @@ pub struct TokenBucket {
     /// Refill rate (tokens per second)
     refill_rate: u64,
 
-    /// Last refill timestamp (needs mutex due to Instant)
-    last_refill: Arc<Mutex<Instant>>,
+    /// Creation instant (immutable reference point for time calculations)
+    created_at: Instant,
+
+    /// Last refill timestamp as nanoseconds since created_at (atomic for lock-free access)
+    last_refill_nanos: AtomicU64,
 }
 
 impl TokenBucket {
@@ -33,7 +34,8 @@ impl TokenBucket {
             capacity,
             tokens: AtomicU64::new(capacity), // Start full
             refill_rate,
-            last_refill: Arc::new(Mutex::new(Instant::now())),
+            created_at: Instant::now(),
+            last_refill_nanos: AtomicU64::new(0), // 0 nanos since creation
         }
     }
 
@@ -95,22 +97,36 @@ impl TokenBucket {
         }
     }
 
-    /// Refill tokens based on elapsed time (synchronous)
+    /// Refill tokens based on elapsed time (fully lock-free)
     fn refill_sync(&self) {
-        // Note: This uses a mutex for the timestamp, but only briefly
-        // The actual token update is lock-free
-        if let Ok(mut last_refill) = self.last_refill.try_lock() {
-            let now = Instant::now();
-            let elapsed = now.duration_since(*last_refill);
+        let now_nanos = self.created_at.elapsed().as_nanos() as u64;
+        let last_nanos = self.last_refill_nanos.load(Ordering::Acquire);
 
-            if elapsed.as_millis() > 0 {
-                let tokens_to_add = (elapsed.as_secs_f64() * self.refill_rate as f64) as u64;
+        // Calculate elapsed time since last refill
+        let elapsed_nanos = now_nanos.saturating_sub(last_nanos);
 
-                if tokens_to_add > 0 {
-                    self.add_tokens(tokens_to_add);
-                    *last_refill = now;
-                }
-            }
+        // Only refill if at least 1ms has passed (avoid excessive small refills)
+        if elapsed_nanos < 1_000_000 {
+            return;
+        }
+
+        // Calculate tokens to add based on elapsed time
+        // tokens = elapsed_seconds * refill_rate
+        // Using integer math: tokens = (elapsed_nanos * refill_rate) / 1_000_000_000
+        let tokens_to_add = (elapsed_nanos as u128 * self.refill_rate as u128 / 1_000_000_000) as u64;
+
+        if tokens_to_add == 0 {
+            return;
+        }
+
+        // Try to atomically update last_refill_nanos
+        // If CAS fails, another thread already did the refill - that's fine
+        if self
+            .last_refill_nanos
+            .compare_exchange(last_nanos, now_nanos, Ordering::Release, Ordering::Acquire)
+            .is_ok()
+        {
+            self.add_tokens(tokens_to_add);
         }
     }
 
@@ -185,6 +201,9 @@ impl TokenBucket {
     #[cfg(test)]
     pub fn reset(&self) {
         self.tokens.store(self.capacity, Ordering::Release);
+        // Also reset the timestamp to current time
+        let now_nanos = self.created_at.elapsed().as_nanos() as u64;
+        self.last_refill_nanos.store(now_nanos, Ordering::Release);
     }
 }
 
