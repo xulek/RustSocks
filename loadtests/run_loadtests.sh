@@ -65,8 +65,69 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# Port helpers (used before the main checks later in the script)
+port_in_use() {
+    local port=$1
+    if command -v lsof &> /dev/null; then
+        lsof -Pi :${port} -sTCP:LISTEN -t >/dev/null 2>&1
+        return $?
+    fi
+    if command -v ss &> /dev/null; then
+        ss -tuln 2>/dev/null | grep -q ":${port} "
+        return $?
+    fi
+    if command -v netstat &> /dev/null; then
+        netstat -tuln 2>/dev/null | grep -q ":${port} "
+        return $?
+    fi
+    return 1
+}
+
+find_free_port() {
+    local port=$1
+    local attempts=0
+    while port_in_use ${port}; do
+        port=$((port + 1))
+        attempts=$((attempts + 1))
+        if [ ${attempts} -ge 100 ]; then
+            echo "${port}"
+            return
+        fi
+    done
+    echo "${port}"
+}
+
 # Create results directory
 mkdir -p "${RESULTS_DIR}"
+
+FULL_CONFIG_RUNTIME_PATH="${FULL_CONFIG_PATH}"
+
+if port_in_use ${PROXY_PORT}; then
+    ORIGINAL_PROXY_PORT=${PROXY_PORT}
+    PROXY_PORT=$(find_free_port $((PROXY_PORT + 1)))
+    PROXY_ADDR="127.0.0.1:${PROXY_PORT}"
+    echo -e "${YELLOW}⚠  Proxy port ${ORIGINAL_PROXY_PORT} is in use; using ${PROXY_PORT} instead${NC}"
+fi
+
+if port_in_use ${API_PORT}; then
+    ORIGINAL_API_PORT=${API_PORT}
+    API_PORT=$(find_free_port $((API_PORT + 1)))
+    API_ADDR="127.0.0.1:${API_PORT}"
+    echo -e "${YELLOW}⚠  API port ${ORIGINAL_API_PORT} is in use; using ${API_PORT} instead${NC}"
+fi
+
+if port_in_use ${ECHO_PORT}; then
+    ORIGINAL_ECHO_PORT=${ECHO_PORT}
+    ECHO_PORT=$(find_free_port $((ECHO_PORT + 1)))
+    ECHO_ADDR="127.0.0.1:${ECHO_PORT}"
+    echo -e "${YELLOW}⚠  Echo port ${ORIGINAL_ECHO_PORT} is in use; using ${ECHO_PORT} instead${NC}"
+fi
+
+if [ "${API_PORT}" != "9090" ] && [ -f "${FULL_CONFIG_PATH}" ]; then
+    FULL_CONFIG_RUNTIME_PATH="${RESULTS_DIR}/rustsocks_full_${TIMESTAMP}.toml"
+    cp "${FULL_CONFIG_PATH}" "${FULL_CONFIG_RUNTIME_PATH}"
+    sed -E -i "s/^stats_api_port[[:space:]]*=[[:space:]]*[0-9]+/stats_api_port = ${API_PORT}/" "${FULL_CONFIG_RUNTIME_PATH}"
+fi
 
 echo -e "${BLUE}╔═══════════════════════════════════════════════════════════════╗${NC}"
 echo -e "${BLUE}║         RustSocks Load Testing Suite                         ║${NC}"
@@ -122,7 +183,7 @@ fi
 # Build release binaries
 echo ""
 echo -e "${BLUE}🔨 Building release binaries...${NC}"
-cargo build --release --example loadtest --example echo_server
+cargo build --release --bin rustsocks --example loadtest --example echo_server
 echo -e "${GREEN}✓${NC} Build complete"
 
 # Duration for SOCKS tests (seconds)
@@ -357,6 +418,20 @@ start_proxy() {
     local config_path=${3:-${FULL_CONFIG_PATH}}
     local log_path="${RESULTS_DIR}/rustsocks_${label}_${TIMESTAMP}.log"
 
+    if check_port ${PROXY_PORT}; then
+        echo -e "${RED}❌ Port ${PROXY_PORT} is already in use.${NC}"
+        if command -v lsof &> /dev/null; then
+            lsof -Pi :${PROXY_PORT} -sTCP:LISTEN || true
+        elif command -v ss &> /dev/null; then
+            ss -tulpen | grep ":${PROXY_PORT} " || true
+        elif command -v netstat &> /dev/null; then
+            netstat -tulnp 2>/dev/null | grep ":${PROXY_PORT} " || true
+        fi
+        echo "   Stop the existing process or change PROXY_PORT before running load tests."
+        cleanup
+        exit 1
+    fi
+
     if [ "${profile}" = "minimal" ]; then
         echo ""
         echo -e "${BLUE}🚀 Starting RustSocks proxy (minimal profile)...${NC}"
@@ -370,6 +445,13 @@ start_proxy() {
         config_path="${FULL_CONFIG_PATH}"
     fi
 
+    if [ ! -x "./target/release/rustsocks" ]; then
+        echo -e "${RED}❌ RustSocks binary not found at ./target/release/rustsocks${NC}"
+        echo "   Run: cargo build --release --bin rustsocks"
+        cleanup
+        exit 1
+    fi
+
     ./target/release/rustsocks \
         --config "${config_path}" \
         --bind 127.0.0.1 \
@@ -380,6 +462,13 @@ start_proxy() {
 
     if ! wait_for_service "127.0.0.1" ${PROXY_PORT} 30; then
         echo -e "${RED}❌ Failed to start RustSocks proxy${NC}"
+        cleanup
+        exit 1
+    fi
+
+    sleep 1
+    if ! kill -0 ${PROXY_PID} 2>/dev/null; then
+        echo -e "${RED}❌ RustSocks proxy exited during startup. See ${log_path}.${NC}"
         cleanup
         exit 1
     fi
@@ -595,7 +684,7 @@ if [ "${SOCKS_REQUESTED}" = true ]; then
     run_minimal_scenarios
     stop_proxy
 
-    start_proxy "full" "full" "${FULL_CONFIG_PATH}"
+    start_proxy "full" "full" "${FULL_CONFIG_RUNTIME_PATH}"
     run_full_scenarios
 
     if [ "${API_REQUESTED}" = true ]; then
@@ -605,7 +694,7 @@ if [ "${SOCKS_REQUESTED}" = true ]; then
     stop_proxy
     stop_echo_server
 elif [ "${API_REQUESTED}" = true ]; then
-    start_proxy "full" "full"
+    start_proxy "full" "full" "${FULL_CONFIG_RUNTIME_PATH}"
     run_api_tests
     stop_proxy
 fi
