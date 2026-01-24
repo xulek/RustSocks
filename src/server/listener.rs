@@ -12,13 +12,10 @@ use crate::session::{start_metrics_collector, MetricsHistory, SessionManager};
 use crate::session::{BatchConfig, SessionStore};
 use crate::telemetry::TelemetryHistory;
 use crate::utils::error::{Result, RustSocksError};
-use rustls::pki_types::{CertificateDer, PrivateKeyDer};
+use rustls::pki_types::{pem::PemObject, CertificateDer, PrivateKeyDer};
 use rustls::RootCertStore;
-use rustls_pemfile::{certs, pkcs8_private_keys, rsa_private_keys};
 use std::ffi::OsString;
-use std::fs::File;
-use std::io::BufReader;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::net::TcpListener;
@@ -125,25 +122,30 @@ pub fn create_tls_acceptor(tls: &TlsSettings) -> Result<TlsAcceptor> {
 }
 
 fn load_certificates(path: &str) -> Result<Vec<CertificateDer<'static>>> {
-    let file = File::open(path).map_err(|e| {
-        RustSocksError::Config(format!(
-            "Failed to open TLS certificate file '{}': {}",
-            path, e
-        ))
-    })?;
-    let mut reader = BufReader::new(file);
-    let certs: std::result::Result<Vec<_>, _> = certs(&mut reader).collect();
+    let path = Path::new(path);
+    let certs: std::result::Result<Vec<_>, _> =
+        CertificateDer::pem_file_iter(path)
+            .map_err(|e| {
+                RustSocksError::Config(format!(
+                    "Failed to open TLS certificate file '{}': {}",
+                    path.display(),
+                    e
+                ))
+            })?
+            .collect();
+
     let certs = certs.map_err(|e| {
         RustSocksError::Config(format!(
             "Failed to parse certificates from '{}': {}",
-            path, e
+            path.display(),
+            e
         ))
     })?;
 
     if certs.is_empty() {
         return Err(RustSocksError::Config(format!(
             "TLS certificate file '{}' did not contain any certificates",
-            path
+            path.display()
         )));
     }
 
@@ -151,65 +153,41 @@ fn load_certificates(path: &str) -> Result<Vec<CertificateDer<'static>>> {
 }
 
 fn load_private_key(path: &str) -> Result<PrivateKeyDer<'static>> {
-    let file = File::open(path).map_err(|e| {
+    let path = Path::new(path);
+    PrivateKeyDer::from_pem_file(path).map_err(|e| {
         RustSocksError::Config(format!(
-            "Failed to open TLS private key file '{}': {}",
-            path, e
+            "Failed to load private key from '{}': {}",
+            path.display(),
+            e
         ))
-    })?;
-    let mut reader = BufReader::new(file);
-    let pkcs8_keys: std::result::Result<Vec<_>, _> = pkcs8_private_keys(&mut reader).collect();
-    let pkcs8_keys = pkcs8_keys.map_err(|e| {
-        RustSocksError::Config(format!(
-            "Failed to parse PKCS#8 private key from '{}': {}",
-            path, e
-        ))
-    })?;
-    if let Some(key) = pkcs8_keys.into_iter().next() {
-        return Ok(PrivateKeyDer::Pkcs8(key));
-    }
-
-    let file = File::open(path).map_err(|e| {
-        RustSocksError::Config(format!(
-            "Failed to reopen TLS private key file '{}': {}",
-            path, e
-        ))
-    })?;
-    let mut reader = BufReader::new(file);
-    let rsa_keys: std::result::Result<Vec<_>, _> = rsa_private_keys(&mut reader).collect();
-    let rsa_keys = rsa_keys.map_err(|e| {
-        RustSocksError::Config(format!(
-            "Failed to parse RSA private key from '{}': {}",
-            path, e
-        ))
-    })?;
-    if let Some(key) = rsa_keys.into_iter().next() {
-        return Ok(PrivateKeyDer::Pkcs1(key));
-    }
-
-    Err(RustSocksError::Config(format!(
-        "No supported private key found in '{}' (expected PKCS#8 or RSA)",
-        path
-    )))
+    })
 }
 
 fn build_client_root_store(path: &str) -> Result<RootCertStore> {
-    let file = File::open(path).map_err(|e| {
-        RustSocksError::Config(format!("Failed to open client CA file '{}': {}", path, e))
-    })?;
-    let mut reader = BufReader::new(file);
-    let certs: std::result::Result<Vec<_>, _> = certs(&mut reader).collect();
+    let path = Path::new(path);
+    let certs: std::result::Result<Vec<_>, _> =
+        CertificateDer::pem_file_iter(path)
+            .map_err(|e| {
+                RustSocksError::Config(format!(
+                    "Failed to open client CA file '{}': {}",
+                    path.display(),
+                    e
+                ))
+            })?
+            .collect();
+
     let certs = certs.map_err(|e| {
         RustSocksError::Config(format!(
             "Failed to parse client CA certificates from '{}': {}",
-            path, e
+            path.display(),
+            e
         ))
     })?;
 
     if certs.is_empty() {
         return Err(RustSocksError::Config(format!(
             "Client CA file '{}' did not contain any certificates",
-            path
+            path.display()
         )));
     }
 
@@ -218,7 +196,7 @@ fn build_client_root_store(path: &str) -> Result<RootCertStore> {
     if added == 0 {
         return Err(RustSocksError::Config(format!(
             "No valid client CA certificates could be loaded from '{}'",
-            path
+            path.display()
         )));
     }
 
