@@ -14,7 +14,7 @@
 8. [NSS Configuration](#nss-configuration)
 9. [PAM Configuration](#pam-configuration)
 10. [RustSocks Configuration](#rustsocks-configuration)
-11. [Testing & Verification](#testing--verification)
+11. [Testing & Verification](#testing-verification)
 12. [ACL Rules with AD Groups](#acl-rules-with-ad-groups)
 13. [Troubleshooting](#troubleshooting)
 14. [Production Deployment](#production-deployment)
@@ -899,7 +899,7 @@ anonymous_user = "anonymous"
 
 [sessions]
 enabled = true
-storage = "sqlite"  # Options: "memory", "sqlite", "mariadb"
+storage = "sqlite"  # Options: "memory", "sqlite", "mariadb", "mysql"
 database_url = "sqlite://data/sessions.db"
 batch_size = 100
 batch_interval_ms = 1000
@@ -910,6 +910,8 @@ stats_window_hours = 24
 stats_api_enabled = true
 stats_api_bind_address = "0.0.0.0"
 stats_api_port = 9090
+
+**Note**: Database-backed session storage requires building with the `database` feature (or `--all-features`).
 
 [server.pool]
 enabled = true
@@ -1890,8 +1892,8 @@ format = "json"
 
 [sessions]
 enabled = true
-# Use sqlite or MariaDB for persistence
-storage = "sqlite"  # Options: "memory", "sqlite", "mariadb"
+# Use sqlite, MariaDB, or MySQL for persistence
+storage = "sqlite"  # Options: "memory", "sqlite", "mariadb", "mysql"
 # All sessions logged to database
 ```
 

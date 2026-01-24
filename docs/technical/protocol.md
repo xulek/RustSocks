@@ -4,8 +4,6 @@ This document covers the detailed implementation of SOCKS5 protocol extensions: 
 
 ## UDP ASSOCIATE Command
 
-**Implementation Status**: ✅ Complete
-
 The UDP ASSOCIATE command enables UDP traffic relaying through the SOCKS5 proxy.
 
 ### How It Works

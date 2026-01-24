@@ -515,4 +515,4 @@ Planned features for future versions:
 
 ---
 
-**Need help?** Check [README.md](../../README.md) or open an issue on GitHub.
+**Need help?** Check [Project README](../references/project-readme.md) or open an issue on GitHub.

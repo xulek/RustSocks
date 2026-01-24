@@ -29,26 +29,9 @@ services:
       - rustsocks-logs:/var/log/rustsocks
 
     environment:
-      # Log level: trace, debug, info, warn, error
-      - RUST_LOG=info
-
-      # Server configuration
-      - RUSTSOCKS_BIND_ADDRESS=0.0.0.0
-      - RUSTSOCKS_BIND_PORT=1080
-      - RUSTSOCKS_MAX_CONNECTIONS=1000
-
-      # API configuration
-      - RUSTSOCKS_API_ENABLED=true
-      - RUSTSOCKS_API_BIND=0.0.0.0
-      - RUSTSOCKS_API_PORT=9090
-
-      # Dashboard configuration
-      - RUSTSOCKS_DASHBOARD_ENABLED=true
-      - RUSTSOCKS_SWAGGER_ENABLED=true
-
-      # Database configuration
+      # Entrypoint inputs
+      - RUSTSOCKS_CONFIG=/etc/rustsocks/rustsocks.toml
       - RUSTSOCKS_DB_PATH=/data/sessions.db
-
       # Set timezone (optional)
       - TZ=UTC
 
@@ -72,6 +55,18 @@ services:
     #     reservations:
     #       cpus: '0.5'
     #       memory: 128M
+
+    # Optional CLI overrides (config file still required)
+    # command:
+    #   - rustsocks
+    #   - --config
+    #   - /etc/rustsocks/rustsocks.toml
+    #   - --bind
+    #   - 0.0.0.0
+    #   - --port
+    #   - "1080"
+    #   - --log-level
+    #   - debug
 
     networks:
       - rustsocks-net

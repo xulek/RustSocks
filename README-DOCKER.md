@@ -98,28 +98,24 @@ Then run:
 docker-compose up -d
 ```
 
-### Environment Variables
+### Entrypoint Environment Variables
 
-Override configuration via environment variables:
+The Docker entrypoint reads only these environment variables:
 
 ```yaml
 # docker-compose.yml (or .env file)
 services:
   rustsocks:
     environment:
-      - RUST_LOG=debug
-      - RUSTSOCKS_BIND_PORT=1080
-      - RUSTSOCKS_API_PORT=9090
+      - RUSTSOCKS_CONFIG=/etc/rustsocks/rustsocks.toml
       - RUSTSOCKS_DB_PATH=/data/sessions.db
 ```
 
 Available variables:
-- `RUST_LOG` - Log level (trace, debug, info, warn, error)
 - `RUSTSOCKS_CONFIG` - Config file path (default: /etc/rustsocks/rustsocks.toml)
-- `RUSTSOCKS_BIND_ADDRESS` - SOCKS bind address (default: 0.0.0.0)
-- `RUSTSOCKS_BIND_PORT` - SOCKS port (default: 1080)
-- `RUSTSOCKS_API_PORT` - API/Dashboard port (default: 9090)
 - `RUSTSOCKS_DB_PATH` - Database path (default: /data/sessions.db)
+
+All runtime settings (bind address/port, dashboard, API, etc.) must be set in the TOML config or passed as CLI flags.
 
 ---
 
@@ -320,8 +316,8 @@ curl http://localhost:9090/rustsocks/api/pool/stats
 # Active sessions
 curl http://localhost:9090/rustsocks/api/sessions/active
 
-# ACL statistics
-curl http://localhost:9090/rustsocks/api/acl/stats
+# ACL groups
+curl http://localhost:9090/rustsocks/api/acl/groups
 ```
 
 ### Swagger API Documentation
@@ -812,7 +808,7 @@ A: Yes, but database must be on shared storage (NFS, EFS, etc.) or use separate 
 
 **Q: Is the dashboard secure?**
 
-A: Dashboard has no built-in authentication. Deploy behind VPN, use reverse proxy with auth, or restrict to localhost.
+A: The dashboard supports optional Basic Authentication via `[sessions.dashboard_auth]`. For production, still restrict access (VPN, reverse proxy auth, or localhost bind) and use HTTPS.
 
 **Q: How do I backup everything?**
 
@@ -828,7 +824,7 @@ A: Yes, set `dashboard_enabled = false` in rustsocks.toml.
 
 **Q: What's the performance impact of session tracking?**
 
-A: Very minimal (~1ms overhead). Database writes are batched for efficiency.
+A: Minimal in most deployments; database writes are batched for efficiency. Measure in your environment.
 
 ---
 

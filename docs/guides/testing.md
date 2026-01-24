@@ -4,12 +4,6 @@ This document covers the testing strategy, test organization, and guidelines for
 
 ## Overview
 
-**Total Tests**: 357 (106 unit + 251 integration/E2E)
-
-> Counts are derived from annotated tests in the repository. Running `cargo test -- --list`
-> currently requires network access for the `utoipa-swagger-ui` build script (it downloads the Swagger UI bundle),
-> so offline environments will fail before executing the suite unless those assets are vendored locally.
-
 RustSocks has comprehensive test coverage across:
 - Unit tests (in module files)
 - Integration tests (`tests/` directory)
@@ -46,33 +40,33 @@ cargo test --test acl_integration
 ```
 
 Tests include:
-- `acl_integration.rs` - ACL enforcement (4 tests)
-- `acl_api.rs` - ACL API endpoints (10 tests)
-- `acl_unit.rs` - ACL matchers/rules (60 tests)
-- `bind_command.rs` - BIND command (4 tests)
-- `connection_pool.rs` - Pool basics (3 tests)
-- `pool_edge_cases.rs` - Pool edge cases (15 tests)
-- `pool_socks_integration.rs` - Pool with SOCKS5 (4 tests)
-- `pool_concurrency.rs` - Stress tests (3 tests, ignored by default)
-- `pool_system_verification.rs` - Pool platform checks (2 tests)
-- `e2e_tests.rs` - Complete flows (10 tests)
-- `ipv6_domain.rs` - IPv6/domain support (1 test)
-- `ldap_groups.rs` - LDAP groups (7 tests)
-- `pam_integration.rs` - PAM auth (18 tests, several ignored pending PAM setup)
-- `session_tracking.rs` - Session lifecycle (1 test)
-- `session_manager_edge_cases.rs` - Session manager robustness (18 tests)
-- `resolver_edge_cases.rs` - DNS resolver coverage (20 tests)
-- `protocol_edge_cases.rs` - Protocol parsing (19 tests)
-- `qos_unit.rs` - QoS algorithms (34 tests)
-- `qos_integration.rs` - QoS integration (2 tests)
-- `udp_associate.rs` - UDP relay coverage (3 tests)
-- `tls_support.rs` - TLS/mTLS (2 tests)
+- `acl_integration.rs` - ACL enforcement
+- `acl_api.rs` - ACL API endpoints
+- `acl_unit.rs` - ACL matchers/rules
+- `bind_command.rs` - BIND command
+- `connection_pool.rs` - Pool basics
+- `pool_edge_cases.rs` - Pool edge cases
+- `pool_socks_integration.rs` - Pool with SOCKS5
+- `pool_concurrency.rs` - Stress tests
+- `pool_system_verification.rs` - Pool platform checks
+- `e2e_tests.rs` - Complete flows
+- `ipv6_domain.rs` - IPv6/domain support
+- `ldap_groups.rs` - LDAP groups
+- `pam_integration.rs` - PAM auth
+- `session_tracking.rs` - Session lifecycle
+- `session_manager_edge_cases.rs` - Session manager robustness
+- `resolver_edge_cases.rs` - DNS resolver coverage
+- `protocol_edge_cases.rs` - Protocol parsing
+- `qos_unit.rs` - QoS algorithms
+- `qos_integration.rs` - QoS integration
+- `udp_associate.rs` - UDP relay coverage
+- `tls_support.rs` - TLS/mTLS
 
 ### E2E Tests
 
 Location: `tests/e2e_tests.rs`
 
-Complete end-to-end flows:
+Complete end-to-end flows (refer to `tests/e2e_tests.rs` for the current list):
 1. `e2e_basic_connect` - Basic SOCKS5 CONNECT
 2. `e2e_auth_noauth` - NoAuth flow
 3. `e2e_auth_userpass` - Username/password auth
@@ -153,32 +147,28 @@ cargo test --release --test pool_concurrency -- --ignored --nocapture
 
 ### By Component
 
-| Component | Tests Defined | Notes |
-|-----------|---------------|-------|
-| ACL (engine + API) | 74 | `acl_unit.rs`, `acl_integration.rs`, `acl_api.rs` |
-| Authentication / LDAP | 25 | `pam_integration.rs`, `ldap_groups.rs` (several ignored without PAM/SSSD) |
-| QoS / Rate Limiting | 36 | `qos_unit.rs`, `qos_integration.rs` |
-| Connection Pool | 27 | `connection_pool.rs`, `pool_edge_cases.rs`, `pool_socks_integration.rs`, `pool_system_verification.rs`, `pool_concurrency.rs` |
-| Protocol & Transport | 31 | `protocol_edge_cases.rs`, `bind_command.rs`, `udp_associate.rs`, `tls_support.rs`, `ipv6_domain.rs` |
-| Resolver & Session Mgmt | 39 | `resolver_edge_cases.rs`, `session_manager_edge_cases.rs`, `session_tracking.rs` |
-| API / Monitoring | 21 | `api_endpoints.rs`, `e2e_tests.rs` (API-focused flows) |
-| Misc / System | 24 | Remaining integration helpers, QoS metrics hooks, etc. |
-| Inline unit tests (`src/**`) | 106 | Spread across modules for config, ACL, session, QoS, etc. |
+**Note**: Counts vary over time. Run `cargo test -- --list` to see current totals.
+
+| Component | Representative tests |
+|-----------|----------------------|
+| ACL (engine + API) | `acl_unit.rs`, `acl_integration.rs`, `acl_api.rs` |
+| Authentication / LDAP | `pam_integration.rs`, `ldap_groups.rs` (several ignored without PAM/SSSD) |
+| QoS / Rate Limiting | `qos_unit.rs`, `qos_integration.rs` |
+| Connection Pool | `connection_pool.rs`, `pool_edge_cases.rs`, `pool_socks_integration.rs`, `pool_system_verification.rs`, `pool_concurrency.rs` |
+| Protocol & Transport | `protocol_edge_cases.rs`, `bind_command.rs`, `udp_associate.rs`, `tls_support.rs`, `ipv6_domain.rs` |
+| Resolver & Session Mgmt | `resolver_edge_cases.rs`, `session_manager_edge_cases.rs`, `session_tracking.rs` |
+| API / Monitoring | `api_endpoints.rs`, `e2e_tests.rs` (API-focused flows) |
+| Misc / System | Remaining integration helpers, QoS metrics hooks, etc. |
+| Inline unit tests (`src/**`) | Spread across modules for config, ACL, session, QoS, etc. |
 
 ### By Type
 
-- **Unit tests (inline)**: 106 tests spread across `src/**`
-- **Integration + system tests**: 251 tests under `tests/**` (includes 10 comprehensive E2E flows)
+- **Unit tests (inline)**: `src/**`
+- **Integration + system tests**: `tests/**`
 
 ### Coverage
 
-- ACL Engine: >90% statement coverage (validated in prior CI runs)
-- Authentication: >85% (PAM-specific tests skipped unless PAM services configured)
-- Session Manager & Resolver: >85%
-- API Endpoints: >85%
-- QoS/Rate Limiting: >90%
-- Protocol Implementation & UDP/TLS flows: >85%
-- Connection Pool: near-complete logical coverage including stress scenarios
+Coverage varies by feature set and environment. Use your preferred coverage tooling in CI to track current numbers.
 
 ## Test Guidelines
 
@@ -340,7 +330,7 @@ cargo test --all-features tls_support
 
 ## Load Testing
 
-See [Load Testing Manual](../../loadtests/MANUAL.md) for comprehensive load testing.
+See [Load Testing Manual](../references/loadtests-manual.md) for comprehensive load testing.
 
 ### Quick Load Tests
 
@@ -537,7 +527,7 @@ heaptrack_gui heaptrack.rustsocks.<pid>.gz
 
 ## Related Documentation
 
-- [Load Testing Manual](../../loadtests/MANUAL.md)
+- [Load Testing Manual](../references/loadtests-manual.md)
 - [Architecture Overview](../technical/architecture.md)
 - [Connection Pool](../technical/connection-pool.md)
 - [Session Management](../technical/session-management.md)

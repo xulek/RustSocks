@@ -1,0 +1,74 @@
+site_name: RustSocks Documentation
+site_description: High-performance SOCKS5 proxy with ACLs, sessions, metrics, and a modern web dashboard.
+
+nav:
+  - Home: index.md
+  - Getting Started:
+      - Quick Start: usage/quick-start.md
+      - Docker Deployment: usage/docker.md
+  - UI & Dashboard:
+      - Overview: ui/overview.md
+      - Authentication: guides/dashboard-authentication.md
+  - Configuration:
+      - rustsocks.toml: config/rustsocks.md
+      - acl.toml: config/acl.md
+  - Usage & Examples:
+      - Common Scenarios: usage/examples.md
+  - Guides:
+      - Web Dashboard: guides/web-dashboard.md
+      - Base Path Deployment: guides/building-with-base-path.md
+      - LDAP Groups: guides/ldap-groups.md
+      - Active Directory: guides/active-directory.md
+      - Testing: guides/testing.md
+  - References:
+      - Project README: references/project-readme.md
+      - Developer Guide: references/claude.md
+      - Dashboard README: references/dashboard-readme.md
+      - Load Testing Manual: references/loadtests-manual.md
+  - Technical:
+      - Architecture: technical/architecture.md
+      - ACL Engine: technical/acl-engine.md
+      - Connection Pool: technical/connection-pool.md
+      - Protocol & TLS: technical/protocol.md
+      - PAM Authentication: technical/pam-authentication.md
+      - Session Management: technical/session-management.md
+
+theme:
+  name: material
+  language: en
+  palette:
+    - scheme: default
+      primary: blue grey
+      accent: cyan
+  font:
+    text: IBM Plex Sans
+    code: IBM Plex Mono
+  features:
+    - navigation.instant
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - toc.follow
+    - search.highlight
+    - content.code.copy
+
+extra_css:
+  - assets/stylesheets/extra.css
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.highlight
+
+plugins:
+  - search

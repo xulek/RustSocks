@@ -5,6 +5,7 @@
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 ![Status](https://img.shields.io/badge/status-Production%20Ready-brightgreen.svg)
 ![Coverage](https://img.shields.io/github/actions/workflow/status/xulek/RustSocks/coverage.yml?branch=master&label=coverage)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/xulek/RustSocks)
 
 <div align="center">
   <img src="docs/assets/rustsocks.png" alt="RustSocks Logo" width="300">
@@ -38,7 +39,7 @@ A modern, high-performance SOCKS5 proxy server written in Rust, featuring advanc
 
 - **📊 Comprehensive Session Management**
   - Real-time active session tracking
-  - SQLite persistence with automatic cleanup
+  - SQLite persistence with automatic cleanup (requires `database` feature)
   - Traffic statistics (bytes sent/received, duration)
   - Batch writer for high-performance database operations
 
@@ -136,6 +137,8 @@ stats_api_bind_address = "127.0.0.1"
 stats_api_port = 9090
 ```
 
+**Note**: Database-backed session storage (`sqlite`, `mariadb`, `mysql`) requires building with the `database` feature (or `--all-features`).
+
 You can also protect the dashboard UI with optional Basic Authentication. Define the `[sessions.dashboard_auth]` block, enable it, and add one or more `[[sessions.dashboard_auth.users]]` entries to declare usernames and passwords.
 
 ```toml
@@ -162,7 +165,7 @@ bind_port = 1080
 max_connections = 1000
 
 [auth]
-socks_method = "none"  # Options: "none", "userpass", "pam.address", "pam.username"
+socks_method = "none"  # Options: "none", "userpass", "pam.address", "pam.username", "gssapi"
 
 [acl]
 enabled = true
@@ -199,10 +202,24 @@ connect_timeout_ms = 5000      # Timeout for establishing new connections
 # QoS & Rate Limiting (optional, disabled by default)
 [qos]
 enabled = true                 # Enable QoS and bandwidth limiting
-default_rate_limit_mbps = 100  # Default bandwidth limit per user (Mbps)
-default_conn_limit = 10        # Default simultaneous connections per user
-enable_traffic_shaping = true  # Enable HTB algorithm for fair bandwidth sharing
+algorithm = "htb"
+
+[qos.htb]
+global_bandwidth_bytes_per_sec = 125000000
+guaranteed_bandwidth_bytes_per_sec = 131072
+max_bandwidth_bytes_per_sec = 12500000
+burst_size_bytes = 1048576
+refill_interval_ms = 50
+fair_sharing_enabled = true
+rebalance_interval_ms = 100
+idle_timeout_secs = 5
+
+[qos.connection_limits]
+max_connections_per_user = 20
+max_connections_global = 10000
 ```
+
+**Note**: Database-backed session storage (`sqlite`, `mariadb`, `mysql`) requires building with the `database` feature (or `--all-features`). GSSAPI requires the `gssapi` feature and is supported on Unix systems.
 
 ### Testing Connection
 
@@ -280,7 +297,7 @@ base_path = "/rustsocks"  # URLs will be /rustsocks, /rustsocks/api/, etc.
 ```
 
 ```bash
-# 2. Rebuild dashboard (it auto-detects base_path)
+# 2. Build dashboard (only if not built yet)
 cd dashboard
 npm run build
 ```
@@ -337,9 +354,7 @@ connect_timeout_ms = 5000      # 5 second timeout for new connections
 
 **Performance Impact:**
 
-- **With pooling disabled**: 3,000 ops/sec
-- **With pooling enabled**: 7,000 ops/sec (2.3x improvement)
-- **Memory overhead**: ~50KB per pooled connection
+Performance impact depends on destination reuse and latency. Measure with your workload and monitor `/api/pool/stats`.
 
 ### QoS & Rate Limiting
 
@@ -358,28 +373,21 @@ Update `config/rustsocks.toml`:
 ```toml
 [qos]
 enabled = true                         # Enable QoS and rate limiting
-default_rate_limit_mbps = 100          # Default 100 Mbps per user
-default_conn_limit = 10                # Default 10 simultaneous connections per user
-enable_traffic_shaping = true          # Use HTB algorithm for fair sharing
-```
+algorithm = "htb"
 
-**Per-User Configuration in `config/acl.toml`:**
+[qos.htb]
+global_bandwidth_bytes_per_sec = 125000000
+guaranteed_bandwidth_bytes_per_sec = 131072
+max_bandwidth_bytes_per_sec = 12500000
+burst_size_bytes = 1048576
+refill_interval_ms = 50
+fair_sharing_enabled = true
+rebalance_interval_ms = 100
+idle_timeout_secs = 5
 
-```toml
-[[users]]
-username = "alice"
-rate_limit_mbps = 50                   # Override: 50 Mbps for alice
-connection_limit = 5                   # Override: 5 simultaneous connections
-
-[[users]]
-username = "bob"
-rate_limit_mbps = 200                  # Override: 200 Mbps for bob
-connection_limit = 20                  # Override: 20 simultaneous connections
-
-[[groups]]
-name = "developers"
-rate_limit_mbps = 150
-connection_limit = 15
+[qos.connection_limits]
+max_connections_per_user = 20
+max_connections_global = 10000
 ```
 
 **Configuration Options:**
@@ -387,9 +395,9 @@ connection_limit = 15
 | Option | Default | Description |
 |--------|---------|-------------|
 | `enabled` | false | Enable/disable QoS |
-| `default_rate_limit_mbps` | 100 | Bandwidth limit (Mbps) |
-| `default_conn_limit` | 10 | Maximum simultaneous connections |
-| `enable_traffic_shaping` | true | Use HTB for fair bandwidth distribution |
+| `algorithm` | htb | QoS algorithm |
+| `qos.htb.*` | see config | HTB bandwidth and fairness tuning |
+| `qos.connection_limits.*` | see config | Per-user and global connection limits |
 
 **How It Works:**
 
@@ -397,16 +405,11 @@ connection_limit = 15
 2. **Rate Limiting**: Users can only send/receive data at configured Mbps
 3. **Connection Limits**: Rejects new connections if user exceeds limit
 4. **Fair Sharing**: HTB algorithm ensures no user starves others
-5. **Per-Group Limits**: Groups inherit limits applied to all members
+5. **Connection Limits**: Enforces per-user and global caps
 
 **Monitoring QoS:**
 
-View current QoS status via API:
-```bash
-curl http://127.0.0.1:9090/api/qos/status
-```
-
-QoS metrics in dashboard under "Statistics" tab.
+QoS metrics are exported via Prometheus when metrics are enabled (see `/metrics`).
 
 ---
 
@@ -428,7 +431,7 @@ RustSocks implements a layered architecture combining security, performance, and
 
 - **Protocol Module** (`src/protocol/`) - SOCKS5 parsing and serialization
 - **ACL Engine** (`src/acl/`) - Rule evaluation with hot-reload
-- **Session Manager** (`src/session/`) - Active tracking + SQLite persistence
+- **Session Manager** (`src/session/`) - Active tracking + optional database persistence
 - **Connection Pool** (`src/server/pool.rs`) - Upstream connection reuse
 - **REST API** (`src/api/`) - Management endpoints and metrics
 - **QoS** (`src/qos/`) - Rate limiting and bandwidth management
@@ -592,14 +595,9 @@ Full API documentation: **http://127.0.0.1:9090/swagger-ui/**
 
 ## Performance & Testing
 
-### Benchmarks (v0.9.0)
+### Benchmarks
 
-- **Throughput:** 7,000+ ops/sec (concurrent connections)
-- **Latency:** <5ms average (p99 <50ms)
-- **Memory:** 231 MB @ 200k+ connections
-- **CPU:** Scales linearly with concurrency
-- **ACL Evaluation:** 1.92ms average
-- **Database Writes:** 12,279 sessions/second
+Benchmark results vary by hardware and configuration. For current numbers, run the benchmarks in `benches/` and the load tests in `loadtests/`.
 
 ### Running Tests
 
@@ -620,7 +618,7 @@ cargo test -- --nocapture
 cargo test --release -- --ignored --nocapture
 ```
 
-**Test Coverage:** 273 passing tests, 14 ignored (performance) ✅
+**Test Coverage:** See the Testing Guide for current counts and instructions. ✅
 
 ---
 
@@ -631,7 +629,7 @@ cargo test --release -- --ignored --nocapture
 - Rust 1.70+
 - Node.js 18+ (dashboard)
 - libpam0g-dev (Linux, for PAM)
-- SQLite (for persistence)
+- SQLite/MySQL/MariaDB (for persistence; requires the `database` feature)
 
 ### Build Commands
 
@@ -777,12 +775,3 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 - Built with [Tokio](https://tokio.rs/) async runtime
 - Powered by Rust 🦀
-
----
-
-**Status:** 🟢 Production Ready
-**Version:** 0.9.0
-**Tests:** 357 defined (unit + integration; see Testing Guide for breakdown)
-**Code Quality:** Zero clippy warnings ✅
-**Performance:** All targets exceeded ✅
-**Last Updated:** 2025-11-02

@@ -1,7 +1,5 @@
 # Web Dashboard Guide
 
-**Implementation Status**: ✅ Complete
-
 RustSocks includes a modern web-based admin dashboard built with React for real-time monitoring and management.
 
 ## Overview
@@ -345,7 +343,7 @@ Dashboard uses REST API endpoints:
 GET /api/sessions/active          # List active sessions
 GET /api/sessions/history         # List completed sessions
 GET /api/sessions/stats           # Aggregated statistics
-GET /api/sessions/:id             # Get session details
+GET /api/sessions/{id}            # Get session details
 ```
 
 ### ACL Endpoints
@@ -353,13 +351,14 @@ GET /api/sessions/:id             # Get session details
 ```
 GET /api/acl/groups               # List ACL groups
 GET /api/acl/users                # List users with rules
-GET /api/acl/stats                # ACL statistics
+GET /api/acl/global               # Global ACL policy
+POST /api/acl/test                # Test a rule decision
 ```
 
 ### Health Endpoint
 
 ```
-GET /api/health                   # Server health check
+GET /health                       # Server health check
 ```
 
 ### Metrics Endpoint
@@ -399,7 +398,7 @@ ls -la dist/
 - CORS issues in development
 
 **Solutions**:
-- Verify API server is running: `curl http://127.0.0.1:9090/api/health`
+- Verify API server is running: `curl http://127.0.0.1:9090/health`
 - Check config: `stats_api_enabled = true`
 - Development: Vite proxy should handle CORS
 
@@ -410,11 +409,10 @@ ls -la dist/
 **Causes**:
 - Mismatched base_path in config and nginx
 - Trailing slash issues
-- Dashboard not rebuilt after config change
 
 **Solutions**:
 - Ensure `base_path` in config matches nginx location
-- Rebuild dashboard: `cd dashboard && npm run build`
+- Ensure `dashboard/dist/` exists; build it if missing: `cd dashboard && npm run build`
 - Check both config and nginx trailing slashes
 
 ### Styles not loading

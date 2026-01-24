@@ -852,14 +852,14 @@ impl Config {
             "memory" | "sqlite" | "mariadb" | "mysql"
         ) {
             return Err(RustSocksError::Config(format!(
-                "Invalid session storage: {}. Supported: memory, sqlite, mariadb",
+                "Invalid session storage: {}. Supported: memory, sqlite, mariadb, mysql",
                 self.sessions.storage
             )));
         }
 
         if self.sessions.enabled && db_backed_storage && self.sessions.database_url.is_none() {
             return Err(RustSocksError::Config(
-                "sessions.database_url is required when session tracking uses sqlite or MariaDB storage"
+                "sessions.database_url is required when session tracking uses sqlite, MariaDB, or MySQL storage"
                     .to_string(),
             ));
         }
@@ -1017,9 +1017,16 @@ require_client_auth = false
 # alpn_protocols = ["socks"]
 # min_protocol_version = "TLS13"
 
+[server.pool]
+enabled = false
+max_idle_per_dest = 4
+max_total_idle = 100
+idle_timeout_secs = 90
+connect_timeout_ms = 5000
+
 [auth]
 client_method = "none"       # Options: "none", "pam.address"
-socks_method = "none"        # Options: "none", "userpass", "pam.address", "pam.username"
+socks_method = "none"        # Options: "none", "userpass", "pam.address", "pam.username", "gssapi"
 
 # For userpass authentication, add users:
 # [[auth.users]]
@@ -1039,6 +1046,12 @@ default_ruser = "rhostusr"
 verbose = false
 verify_service = false
 
+[auth.gssapi]
+service_name = "socks"
+# keytab_path = "/etc/krb5.keytab"
+protection_level = "integrity"
+verbose = false
+
 [logging]
 level = "info"  # Options: "trace", "debug", "info", "warn", "error"
 format = "pretty"  # Options: "pretty", "json"
@@ -1051,8 +1064,9 @@ anonymous_user = "anonymous"
 
 [sessions]
 enabled = false
-storage = "memory"  # Options: "memory", "sqlite"
+storage = "memory"  # Options: "memory", "sqlite", "mariadb", "mysql"
 # database_url = "sqlite://var/lib/rustsocks/sessions.db"
+# database_url = "mysql://user:pass@host:3306/rustsocks_sessions"
 batch_size = 100
 batch_interval_ms = 1000
 retention_days = 90
@@ -1066,6 +1080,7 @@ stats_api_port = 9090
 # api_token = "change-me"
 swagger_enabled = true
 dashboard_enabled = false
+base_path = "/"
 
 [sessions.dashboard_auth]
 enabled = false
@@ -1074,14 +1089,17 @@ enabled = false
 # username = "admin"
 # password = "strong-secret"
 
-base_path = "/"
-
 [metrics]
 enabled = true              # Enable metrics collection
 storage = "memory"          # Options: "memory", "sqlite" (uses sessions.database_url)
 retention_hours = 24        # Keep metrics for 24 hours
 cleanup_interval_hours = 6  # Cleanup old metrics every 6 hours
 collection_interval_secs = 5  # Collect metrics every 5 seconds
+
+[telemetry]
+enabled = true
+max_events = 256
+retention_hours = 6
 
 [qos]
 enabled = false  # Enable QoS (Quality of Service) / Rate Limiting

@@ -1,0 +1,54 @@
+:root {
+  --rs-hero-bg: linear-gradient(135deg, #0f172a 0%, #0b4f6c 45%, #0ea5a4 100%);
+  --rs-hero-text: #f8fafc;
+  --rs-hero-muted: rgba(248, 250, 252, 0.75);
+  --rs-card-bg: rgba(2, 6, 23, 0.04);
+}
+
+.md-header {
+  box-shadow: 0 6px 20px rgba(2, 6, 23, 0.16);
+}
+
+.rs-hero {
+  background: var(--rs-hero-bg);
+  color: var(--rs-hero-text);
+  border-radius: 18px;
+  padding: 2.2rem 2.4rem;
+  margin: 1.2rem 0 2rem 0;
+  box-shadow: 0 18px 50px rgba(15, 23, 42, 0.3);
+}
+
+.rs-hero p {
+  color: var(--rs-hero-muted);
+  margin: 0.35rem 0 0 0;
+}
+
+.rs-grid {
+  display: grid;
+  gap: 1.2rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  margin: 1.5rem 0;
+}
+
+.rs-card {
+  background: var(--rs-card-bg);
+  border-radius: 16px;
+  padding: 1rem 1.1rem;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+.rs-card h3 {
+  margin-top: 0;
+  margin-bottom: 0.35rem;
+}
+
+.rs-tag {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.15rem 0.6rem;
+  font-size: 0.75rem;
+  background: rgba(14, 165, 164, 0.15);
+  color: #0f766e;
+  font-weight: 600;
+}

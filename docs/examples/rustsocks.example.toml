@@ -13,9 +13,16 @@ require_client_auth = false
 # alpn_protocols = ["socks"]
 # min_protocol_version = "TLS13"
 
+[server.pool]
+enabled = false
+max_idle_per_dest = 4
+max_total_idle = 100
+idle_timeout_secs = 90
+connect_timeout_ms = 5000
+
 [auth]
 client_method = "none"  # Options: "none", "pam.address"
-socks_method = "none"   # Options: "none", "userpass", "pam.address", "pam.username"
+socks_method = "none"   # Options: "none", "userpass", "pam.address", "pam.username", "gssapi"
 
 # For userpass authentication, add users:
  [[auth.users]]
@@ -30,6 +37,12 @@ default_ruser = "rhostusr"
 verbose = false
 verify_service = false
 
+[auth.gssapi]
+service_name = "socks"
+# keytab_path = "/etc/krb5.keytab"
+protection_level = "integrity"
+verbose = false
+
 [logging]
 level = "info"  # Options: "trace", "debug", "info", "warn", "error"
 format = "pretty"  # Options: "pretty", "json"
@@ -42,7 +55,7 @@ anonymous_user = "anonymous"
 
 [sessions]
 enabled = true
-storage = "sqlite"  # Options: "memory", "sqlite", "mariadb"
+storage = "sqlite"  # Options: "memory", "sqlite", "mariadb", "mysql"
 # For MariaDB/MySQL use something like:
 # database_url = "mysql://user:pass@host:3306/rustsocks_sessions"
 database_url = "sqlite://sessions.db"
@@ -69,6 +82,18 @@ enabled = false             # Enable Basic Auth for the dashboard
 # [[sessions.dashboard_auth.users]]
 # username = "admin"
 # password = "strong-secret"
+
+[metrics]
+enabled = true              # Enable metrics collection
+storage = "sqlite"          # Options: "memory", "sqlite" (uses sessions.database_url)
+retention_hours = 24        # Keep metrics for 24 hours
+cleanup_interval_hours = 6  # Cleanup old metrics every 6 hours
+collection_interval_secs = 5  # Collect metrics every 5 seconds
+
+[telemetry]
+enabled = true
+max_events = 256
+retention_hours = 6
 
 [qos]
 enabled = true  # Enable QoS (Quality of Service) / Rate Limiting

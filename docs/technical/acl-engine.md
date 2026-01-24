@@ -392,21 +392,15 @@ curl http://127.0.0.1:9090/api/acl/users/alice
 curl http://127.0.0.1:9090/api/acl/groups/developers
 
 # Reload ACL config
-curl -X POST http://127.0.0.1:9090/api/acl/reload
+curl -X POST http://127.0.0.1:9090/api/admin/reload-acl
 ```
 
 ## Performance Characteristics
 
 **Evaluation Performance:**
-- Simple ACL (1 user, 5 rules): ~1-2 microseconds
-- Complex ACL (100 users, 50 rules each): ~5-10 microseconds
-- CIDR matching: ~100 nanoseconds
-- Wildcard domain matching: ~200 nanoseconds
-
-**Typical latency targets:**
-- ACL evaluation: <5ms (usually <1ms)
-- Hot reload: <100ms
-- No blocking during rule evaluation (RwLock read)
+- Depends on rule count, matchers, and destination mix
+- Typically fast enough to stay well below network latency
+- Hot reload does not block rule evaluation (read-locked config)
 
 ## Configuration Best Practices
 
@@ -436,29 +430,15 @@ curl -X POST http://127.0.0.1:9090/api/acl/reload
    watch = true  # Enable hot reload
    ```
 
-## Monitoring & Statistics
+## Monitoring & Observability
 
-The ACL engine tracks statistics per user:
+ACL configuration and decisions can be inspected via the API:
 
 ```bash
-# Get ACL statistics
-curl http://127.0.0.1:9090/api/acl/stats
-
-# Example response
-{
-  "total_allow_rules": 45,
-  "total_block_rules": 12,
-  "total_users": 10,
-  "total_groups": 3,
-  "per_user": [
-    {
-      "username": "alice",
-      "allow_count": 10,
-      "block_count": 2,
-      "group_count": 2
-    }
-  ]
-}
+GET /api/acl/groups   # Groups and their rules
+GET /api/acl/users    # Users and their rules
+GET /api/acl/global   # Default policy
+POST /api/acl/test    # Evaluate a rule decision
 ```
 
 ## Summary
@@ -474,9 +454,3 @@ The RustSocks ACL engine provides:
 ✅ **Production-ready** - comprehensive validation
 
 The implementation leverages Rust's type system for safety and Tokio for async operations, making it both fast and maintainable.
-
----
-
-**Last Updated:** 2025-11-02
-**Version:** 1.0
-**Status:** ✅ Production Ready

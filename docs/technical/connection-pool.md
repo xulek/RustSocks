@@ -1,7 +1,5 @@
 # Connection Pool & Optimization
 
-**Implementation Status**: ✅ Complete (Sprint 4.1)
-
 RustSocks includes an efficient connection pool for upstream TCP connections, reducing connection establishment overhead and improving performance.
 
 ## Overview
@@ -22,7 +20,7 @@ The connection pool reuses TCP connections to frequently accessed destinations, 
 - ✅ Per-destination and global connection limits
 - ✅ Configurable idle timeout and connect timeout
 - ✅ Background cleanup of expired connections
-- ✅ Thread-safe implementation using Arc<Mutex>
+- ✅ Thread-safe implementation using DashMap and atomic counters
 - ✅ Optional (disabled by default for backward compatibility)
 - ✅ Zero-copy connection reuse
 - ✅ Automatic eviction when limits are reached
@@ -49,7 +47,7 @@ connect_timeout_ms = 5000    # Connection timeout
 ## Benefits
 
 - **Reduced Latency**: Reusing connections eliminates TCP handshake overhead
-  - Typical savings: 1-10ms per connection (depending on network latency)
+  - Savings depend on network latency and destination reuse
 - **Lower CPU Usage**: Fewer connection establishments reduce CPU overhead
 - **Better Resource Utilization**: Controlled connection limits prevent resource exhaustion
 - **Improved Throughput**: Faster connection reuse for frequent destinations
@@ -57,7 +55,7 @@ connect_timeout_ms = 5000    # Connection timeout
 ## Implementation Details
 
 ### Location
-`src/server/pool.rs` (445 lines)
+`src/server/pool.rs`
 
 ### Key Structures
 
@@ -65,7 +63,10 @@ connect_timeout_ms = 5000    # Connection timeout
 // Main pool manager
 pub struct ConnectionPool {
     config: PoolConfig,
-    connections: Arc<Mutex<HashMap<String, VecDeque<PooledConnection>>>>,
+    pools: Arc<DashMap<SocketAddr, Vec<PooledConnection>>>,
+    destination_metrics: Arc<DashMap<SocketAddr, DestinationMetrics>>,
+    metrics: Arc<PoolMetrics>,
+    active_counts: Arc<DashMap<SocketAddr, AtomicUsize>>,
 }
 
 // Wrapper with metadata
@@ -77,18 +78,26 @@ struct PooledConnection {
 
 // Configuration parameters
 pub struct PoolConfig {
+    pub enabled: bool,
     pub max_idle_per_dest: usize,
     pub max_total_idle: usize,
-    pub idle_timeout: Duration,
-    pub connect_timeout: Duration,
+    pub idle_timeout_secs: u64,
+    pub connect_timeout_ms: u64,
 }
 
 // Pool statistics API
 pub struct PoolStats {
     pub total_idle: usize,
     pub destinations: usize,
-    pub reused_connections: u64,
-    pub new_connections: u64,
+    pub total_created: u64,
+    pub total_reused: u64,
+    pub pool_hits: u64,
+    pub pool_misses: u64,
+    pub dropped_full: u64,
+    pub expired: u64,
+    pub evicted: u64,
+    pub connections_in_use: u64,
+    pub pending_creates: u64,
 }
 ```
 
@@ -98,10 +107,9 @@ The connection pool is integrated into the handler via `ConnectHandlerContext`:
 
 ```rust
 // In handler.rs
-let stream = if let Some(pool) = &context.pool {
-    pool.get_or_connect(&dest_addr, dest_port).await?
-} else {
-    TcpStream::connect((dest_addr, dest_port)).await?
+match connect_ctx.connection_pool.get(target).await {
+    Ok(stream) => stream,
+    Err(e) => return Err(e.into()),
 };
 ```
 
@@ -118,7 +126,7 @@ let stream = if let Some(pool) = &context.pool {
 
 ### Test Suite Overview
 
-**Total Tests**: 28 (7 unit tests + 21 integration tests)
+**Note**: Test counts change over time. Use `cargo test -- --list` for current totals.
 
 ```bash
 # Run all pool tests
@@ -127,16 +135,16 @@ cargo test --all-features pool
 # Run pool unit tests
 cargo test --all-features --lib pool
 
-# Run pool integration tests (3 basic tests)
+# Run pool integration tests
 cargo test --all-features --test connection_pool
 
-# Run pool edge case tests (14 comprehensive tests)
+# Run pool edge case tests
 cargo test --all-features --test pool_edge_cases
 
-# Run pool SOCKS integration tests (4 tests)
+# Run pool SOCKS integration tests
 cargo test --all-features --test pool_socks_integration
 
-# Run concurrency stress tests (3 tests, ignored by default)
+# Run concurrency stress tests
 cargo test --all-features --test pool_concurrency -- --ignored --nocapture
 ```
 
@@ -158,49 +166,23 @@ cargo test --all-features --test pool_concurrency -- --ignored --nocapture
   - Stats reflection
 - **Stress tests** (`pool_concurrency.rs`):
   - 200-500 concurrent operations
-  - Mutex contention benchmarks
+  - Contention benchmarks
 
 ## Performance Under Load
 
-### Stress Test Results
+Performance depends on your destination mix, idle timeouts, and reuse rate. For current results, run the load tests in `loadtests/` and observe the pool metrics and telemetry.
 
-**Configuration**: 200-500 concurrent operations
+### What to Measure
 
-- ✅ **100% success rate** - Zero failures under load
-- ✅ **Throughput scales** - 3,000 ops/sec (1 thread) → 7,000 ops/sec (200 threads)
-- ✅ **Sub-millisecond latency** - Average 742µs per operation
-- ✅ **No mutex contention** - Performance improves with concurrency
-- ✅ **Production ready** - Handles hundreds of concurrent connections efficiently
+- Reuse rate (`total_reused` vs `total_created`)
+- Pool hits vs misses
+- Evictions and expirations
+- Connection latency under load
+- Telemetry warnings for pool pressure
 
-### Why Arc<Mutex<HashMap>> Performs Well
+### Why DashMap + Atomics
 
-The `Arc<Mutex<HashMap>>` implementation provides excellent performance because:
-
-1. **Short Critical Sections**:
-   - Lock is held only for HashMap lookup/insert (microseconds)
-   - Most time spent in I/O (connect), not holding locks
-
-2. **Lock-Free Fast Paths**:
-   - Disabled pool: No locking at all
-   - Empty pool: Quick check and release
-
-3. **Async Yielding**:
-   - Tokio yields during I/O operations
-   - Other tasks can acquire lock while waiting
-
-4. **Contention Avoidance**:
-   - Connections distributed across destinations
-   - Reduces hot-spot contention on single destination
-
-### Performance Metrics
-
-| Metric | Value | Notes |
-|--------|-------|-------|
-| Throughput (1 thread) | 3,000 ops/sec | Single-threaded baseline |
-| Throughput (200 threads) | 7,000 ops/sec | Excellent scaling |
-| Average latency | 742µs | Including pool lookup |
-| Mutex contention | None observed | Lock-free for disabled/empty pool |
-| Memory overhead | ~200 bytes/conn | Minimal per-connection overhead |
+The pool uses per-destination sharding (`DashMap`) and atomic counters to avoid a global lock on hot paths while keeping statistics cheap to update.
 
 ## Best Practices
 
@@ -246,18 +228,19 @@ Consider disabling when:
 
 ### Monitoring
 
-Use the pool statistics API to monitor performance:
+Use the pool statistics API to monitor performance (requires `sessions.stats_api_enabled = true`):
 
-```rust
-let stats = pool.get_stats();
-println!("Pool: {} idle, {} destinations",
-    stats.total_idle, stats.destinations);
-println!("Reused: {}, New: {}",
-    stats.reused_connections, stats.new_connections);
+```bash
+curl http://127.0.0.1:9090/api/pool/stats
 ```
 
+Key fields in the response:
+- `total_idle`, `destinations`, `connections_in_use`
+- `total_created`, `total_reused`, `pool_hits`, `pool_misses`
+- `dropped_full`, `evicted`, `expired`, `pending_creates`
+
 Key metrics to watch:
-- **Reuse rate**: `reused / (reused + new)` should be >50% for benefit
+- **Reuse rate**: `total_reused / total_created` should be high for benefit
 - **Pool utilization**: `total_idle / max_total_idle` indicates capacity usage
 - **Per-destination distribution**: Check if limits are hit frequently
 
@@ -269,7 +252,7 @@ limit forces an eviction. Pair that feed with the stats API for quick diagnostic
 
 ### Problem: Low reuse rate
 
-**Symptoms**: `new_connections` >> `reused_connections`
+**Symptoms**: `total_created` >> `total_reused`
 
 **Causes**:
 - Destinations too varied (many unique destinations)
@@ -308,7 +291,7 @@ limit forces an eviction. Pair that feed with the stats API for quick diagnostic
 - Monitor pool size with statistics API
 - Verify cleanup task is running
 
-### Problem: Mutex contention
+### Problem: Contention under heavy load
 
 **Symptoms**: High CPU usage, poor throughput scaling
 
@@ -326,4 +309,4 @@ limit forces an eviction. Pair that feed with the stats API for quick diagnostic
 - [Architecture Overview](architecture.md)
 - [Session Management](session-management.md)
 - [Testing Guide](../guides/testing.md)
-- [Load Testing](../../loadtests/MANUAL.md)
+- [Load Testing](../references/loadtests-manual.md)

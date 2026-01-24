@@ -270,13 +270,13 @@ This causes **TOO_MANY_REDIRECTS** because:
 
 ## 📝 Examples
 
-### Example 1: Rebuild after changing base_path
+### Example 1: Update base_path
 
 ```bash
 # 1. Change config
 sed -i 's|base_path = "/"|base_path = "/rustsocks"|' config/rustsocks.toml
 
-# 2. Rebuild frontend (REQUIRED!)
+# 2. Rebuild frontend (only if the dashboard assets are missing or you changed frontend code)
 cd dashboard
 npm run build
 
@@ -288,20 +288,18 @@ cargo build --release
 ./target/release/rustsocks --config config/rustsocks.toml
 ```
 
-**⚠️ IMPORTANT:** Changing `base_path` requires **frontend rebuild**!
+**Note:** Changing `base_path` does not require a rebuild. The dashboard detects the base path at runtime.
 
 ### Example 2: Test different base paths
 
 ```bash
 # Test 1: Root path
 echo 'base_path = "/"' >> config/test.toml
-cd dashboard && npm run build && cd ..
 cargo run -- --config config/test.toml
 # Check: http://127.0.0.1:9090/
 
 # Test 2: Subpath
 echo 'base_path = "/myproxy"' >> config/test.toml
-cd dashboard && npm run build && cd ..
 cargo run -- --config config/test.toml
 # Check: http://127.0.0.1:9090/myproxy
 ```
@@ -331,8 +329,14 @@ COPY --from=rust-builder /build/target/release/rustsocks .
 COPY --from=dashboard-builder /build/dashboard/dist ./dashboard/dist
 COPY config/ ./config/
 
-ENV BASE_PATH=/socks
 CMD ["./rustsocks", "--config", "config/rustsocks.toml"]
+```
+
+Make sure `config/rustsocks.toml` contains:
+
+```toml
+[sessions]
+base_path = "/socks"
 ```
 
 ---
@@ -341,14 +345,15 @@ CMD ["./rustsocks", "--config", "config/rustsocks.toml"]
 
 ### Problem: Dashboard shows "Cannot GET /rustsocks"
 
-**Cause:** Frontend was not rebuilt after changing `base_path`
+**Cause:** Base path mismatch between config and reverse proxy, or the dashboard build is missing.
 
 **Solution:**
-```bash
-cd dashboard
-rm -rf dist/
-npm run build
-```
+- Ensure `sessions.base_path` matches your deployment path.
+- Verify `dashboard/dist/` exists; build it if missing:
+  ```bash
+  cd dashboard
+  npm run build
+  ```
 
 ### Problem: Assets (CSS/JS) not loading (404)
 
@@ -460,9 +465,9 @@ base_path = "/"  # ✅ Backend at root
 
 ## 📚 Additional Resources
 
-- [CLAUDE.md](../../CLAUDE.md) - Developer guide
-- [README.md](../../README.md) - Project overview
-- [dashboard/README.md](../../dashboard/README.md) - Dashboard documentation
+- [Developer Guide](../references/claude.md) - Developer guide
+- [Project README](../references/project-readme.md) - Project overview
+- [Dashboard README](../references/dashboard-readme.md) - Dashboard documentation
 - [API Documentation](http://127.0.0.1:9090/swagger-ui/) - Swagger UI (when running)
 
 ---

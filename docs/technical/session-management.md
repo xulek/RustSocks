@@ -254,6 +254,8 @@ the dashboard to show a small “Operational Telemetry” feed for rapid trouble
 
 **Feature Flag**: `metrics`
 
+**Note**: The `/metrics` endpoint is served by the stats API server, so `sessions.stats_api_enabled` must be `true`.
+
 ### Available Metrics
 
 ```
@@ -311,7 +313,7 @@ rate(rustsocks_sessions_rejected_total[5m]) / rate(rustsocks_sessions_total[5m])
 ```toml
 [sessions]
 enabled = true
-storage = "sqlite"  # or "memory" / "mariadb"
+storage = "sqlite"  # or "memory" / "mariadb" / "mysql"
 
 # Database settings
 database_url = "sqlite://data/sessions.db"
