@@ -68,6 +68,7 @@ impl QosEngine {
         }
     }
 
+
     /// Check connection limit and increment if allowed
     pub fn check_and_inc_connection(&self, user: &str, limits: &ConnectionLimits) -> Result<usize> {
         match self {

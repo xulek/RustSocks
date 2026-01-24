@@ -257,6 +257,7 @@ where
     let mut pending_bytes = 0u64;
     let mut pending_packets = 0u64;
     let packet_interval = update_config.packet_interval().get();
+    let qos_enabled = qos_engine.is_enabled();
     let mut cancelled = false;
     let mut client_closed = false;
 
@@ -302,15 +303,17 @@ where
             }
         };
 
-        qos_engine
-            .allocate_bandwidth_arc(&user, bytes_read as u64)
-            .await?;
-        if bytes_read > 0 {
-            QosMetrics::record_allocation(
-                user.as_ref(),
-                TrafficDirection::Upload.metric_label(),
-                bytes_read as u64,
-            );
+        if qos_enabled {
+            qos_engine
+                .allocate_bandwidth_arc(&user, bytes_read as u64)
+                .await?;
+            if bytes_read > 0 {
+                QosMetrics::record_allocation(
+                    user.as_ref(),
+                    TrafficDirection::Upload.metric_label(),
+                    bytes_read as u64,
+                );
+            }
         }
 
         if let Err(e) = upstream_write.write_all(&buffer[..bytes_read]).await {
@@ -401,6 +404,7 @@ where
     let mut pending_bytes = 0u64;
     let mut pending_packets = 0u64;
     let packet_interval = update_config.packet_interval().get();
+    let qos_enabled = qos_engine.is_enabled();
     let mut cancelled = false;
     let mut remote_closed = false;
 
@@ -446,15 +450,17 @@ where
             }
         };
 
-        qos_engine
-            .allocate_bandwidth_arc(&user, bytes_read as u64)
-            .await?;
-        if bytes_read > 0 {
-            QosMetrics::record_allocation(
-                user.as_ref(),
-                TrafficDirection::Download.metric_label(),
-                bytes_read as u64,
-            );
+        if qos_enabled {
+            qos_engine
+                .allocate_bandwidth_arc(&user, bytes_read as u64)
+                .await?;
+            if bytes_read > 0 {
+                QosMetrics::record_allocation(
+                    user.as_ref(),
+                    TrafficDirection::Download.metric_label(),
+                    bytes_read as u64,
+                );
+            }
         }
 
         if let Err(e) = writer.write_all(&buffer[..bytes_read]).await {

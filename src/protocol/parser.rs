@@ -71,14 +71,14 @@ where
     let username_len = stream.read_u8().await? as usize;
     let mut username_buf = SmallVec::<[u8; 64]>::from_elem(0, username_len);
     stream.read_exact(&mut username_buf).await?;
-    let username = String::from_utf8(username_buf.to_vec())
+    let username = String::from_utf8(username_buf.into_vec())
         .map_err(|_| RustSocksError::Protocol("Invalid username encoding".to_string()))?;
 
     // Read password - use SmallVec for stack allocation (most passwords < 64 bytes)
     let password_len = stream.read_u8().await? as usize;
     let mut password_buf = SmallVec::<[u8; 64]>::from_elem(0, password_len);
     stream.read_exact(&mut password_buf).await?;
-    let password = String::from_utf8(password_buf.to_vec())
+    let password = String::from_utf8(password_buf.into_vec())
         .map_err(|_| RustSocksError::Protocol("Invalid password encoding".to_string()))?;
 
     trace!("Parsed userpass auth for user: {}", username);
@@ -149,7 +149,7 @@ where
             let domain_len = stream.read_u8().await? as usize;
             let mut domain_buf = SmallVec::<[u8; 128]>::from_elem(0, domain_len);
             stream.read_exact(&mut domain_buf).await?;
-            let domain = String::from_utf8(domain_buf.to_vec())
+            let domain = String::from_utf8(domain_buf.into_vec())
                 .map_err(|_| RustSocksError::Protocol("Invalid domain encoding".to_string()))?;
             Address::Domain(domain)
         }
@@ -170,7 +170,7 @@ where
     debug!(
         "Parsed SOCKS5 request: command={:?}, address={}, port={}",
         command,
-        address.to_string(),
+        address,
         port
     );
 
@@ -237,7 +237,7 @@ where
     debug!(
         "Sent SOCKS5 response: reply={:?}, bind_addr={}, bind_port={}",
         reply,
-        bind_addr.to_string(),
+        bind_addr,
         bind_port
     );
 
@@ -280,7 +280,7 @@ where
     debug!(
         "Parsed SOCKS4 request: command={:?}, address={}, port={}, user_id={:?}",
         command,
-        address.to_string(),
+        address,
         port,
         user_id
     );
@@ -351,7 +351,7 @@ where
         bytes.push(byte);
     }
 
-    String::from_utf8(bytes.to_vec())
+    String::from_utf8(bytes.into_vec())
         .map_err(|_| RustSocksError::Protocol("Invalid string encoding".to_string()))
 }
 
