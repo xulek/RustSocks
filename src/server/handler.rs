@@ -14,28 +14,9 @@ use std::net::IpAddr;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, BufReader};
-use tokio::net::TcpStream;
 use tokio::sync::broadcast;
 use tokio::time::timeout;
 use tracing::{debug, info, instrument, warn};
-
-/// Optimize TCP socket for low-latency proxying
-/// - Disables Nagle's algorithm (TCP_NODELAY) for lower latency
-/// - Increases send/recv buffers for better throughput
-fn optimize_tcp_socket(stream: &TcpStream) -> Result<()> {
-    // Disable Nagle's algorithm - improves latency for small packets
-    // This is the single most impactful TCP optimization for proxy workloads
-    stream.set_nodelay(true)?;
-
-    // Increase TCP buffer sizes for better throughput (especially on high-latency links)
-    // These are hints; OS may adjust based on available memory
-    let sock_ref = socket2::SockRef::from(stream);
-    // 256 KB buffers provide good balance between memory usage and throughput
-    let _ = sock_ref.set_recv_buffer_size(262144); // 256 KB
-    let _ = sock_ref.set_send_buffer_size(262144); // 256 KB
-
-    Ok(())
-}
 
 fn handshake_timeout_error() -> RustSocksError {
     RustSocksError::Io(std::io::Error::new(
@@ -209,11 +190,10 @@ where
         // Step 3: SOCKS5 request (buffered read for final handshake message)
         let request = parse_socks5_request(&mut buffered_stream).await?;
 
-        let dest_string = request.address.to_string();
         info!(
             user = %acl_user.as_ref(),
             "SOCKS5 request: command={:?}, dest={}:{}",
-            request.command, dest_string, request.port
+            request.command, request.address, request.port
         );
 
         let session_protocol = match request.command {
@@ -244,6 +224,7 @@ where
 
             match decision {
                 AclDecision::Block => {
+                    let dest_string = request.address.to_string();
                     let block_ctx = AclBlockContext {
                         user: &acl_user,
                         dest_string: &dest_string,
@@ -270,14 +251,14 @@ where
                     match matched_rule.as_deref() {
                         Some(rule) => debug!(
                             user = %acl_user.as_ref(),
-                            dest = %dest_string,
+                            dest = %request.address,
                             port = request.port,
                             rule,
                             "ACL allowed connection"
                         ),
                         None => debug!(
                             user = %acl_user.as_ref(),
-                            dest = %dest_string,
+                            dest = %request.address,
                             port = request.port,
                             "ACL allowed connection (default policy)"
                         ),
@@ -698,10 +679,6 @@ where
         debug!("Attempting upstream connection to {}", target);
         match connect_ctx.connection_pool.get(target).await {
             Ok(stream) => {
-                // Optimize TCP socket for low latency and high throughput
-                if let Err(e) = optimize_tcp_socket(&stream) {
-                    warn!("Failed to optimize upstream TCP socket: {}", e);
-                }
                 upstream_stream_opt = Some((stream, target));
                 break;
             }
@@ -730,31 +707,6 @@ where
             })));
         }
     };
-
-    let peer_display = upstream_stream
-        .peer_addr()
-        .map(|addr| addr.to_string())
-        .unwrap_or_else(|_| format!("{}:{}", dest_host, dest_port));
-
-    // Session tracking
-    let connection_info = ConnectionInfo {
-        source_ip: session_ctx.client_addr.ip(),
-        source_port: session_ctx.client_addr.port(),
-        dest_ip: dest_host.clone(),
-        dest_port,
-        protocol: session_ctx.protocol,
-    };
-
-    let (session_id, cancel_token) = connect_ctx
-        .session_manager
-        .new_session_with_control(
-            session_ctx.user.as_ref(),
-            connection_info,
-            session_ctx.acl_decision.clone(),
-            session_ctx.acl_rule.clone(),
-            None,
-        )
-        .await;
 
     // Get local address for response
     let local_addr = upstream_stream.local_addr()?;
@@ -791,7 +743,33 @@ where
     )
     .await?;
 
-    info!("Connected to {}, proxying data", peer_display);
+    // Session tracking (after response to minimize handshake latency)
+    let connection_info = ConnectionInfo {
+        source_ip: session_ctx.client_addr.ip(),
+        source_port: session_ctx.client_addr.port(),
+        dest_ip: dest_host.clone(),
+        dest_port,
+        protocol: session_ctx.protocol,
+    };
+
+    let (session_id, cancel_token) = connect_ctx
+        .session_manager
+        .new_session_with_control(
+            session_ctx.user.as_ref(),
+            connection_info,
+            session_ctx.acl_decision.clone(),
+            session_ctx.acl_rule.clone(),
+            None,
+        )
+        .await;
+
+    if tracing::enabled!(tracing::Level::INFO) {
+        let peer_display = upstream_stream
+            .peer_addr()
+            .map(|addr| addr.to_string())
+            .unwrap_or_else(|_| format!("{}:{}", dest_host, dest_port));
+        info!("Connected to {}, proxying data", peer_display);
+    }
 
     // Proxy data between client and upstream
     let proxy_ctx = ProxyContext {

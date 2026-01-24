@@ -1,6 +1,7 @@
 pub mod bind;
 pub mod handler;
 pub mod listener;
+pub(crate) mod net;
 pub mod pool;
 pub mod proxy;
 pub mod resolver;

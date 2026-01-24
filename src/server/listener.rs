@@ -5,6 +5,7 @@ use crate::auth::AuthManager;
 use crate::config::{Config, TlsSettings};
 use crate::qos::QosEngine;
 use crate::server::handler::{handle_client, ClientHandlerContext};
+use crate::server::net::tune_tcp_stream;
 use crate::server::pool::ConnectionPool;
 use crate::server::proxy::TrafficUpdateConfig;
 use crate::session::{start_metrics_collector, MetricsHistory, SessionManager};
@@ -554,14 +555,7 @@ impl SocksServer {
                     };
 
                     // Optimize client TCP socket for low latency and throughput
-                    if let Err(e) = stream.set_nodelay(true) {
-                        warn!("Failed to set TCP_NODELAY on client socket: {}", e);
-                    }
-
-                    // Increase buffer sizes for better throughput
-                    let sock_ref = socket2::SockRef::from(&stream);
-                    let _ = sock_ref.set_recv_buffer_size(262144); // 256 KB
-                    let _ = sock_ref.set_send_buffer_size(262144); // 256 KB
+                    tune_tcp_stream(&stream);
 
                     let ctx = handler_ctx.clone();
                     let tls_acceptor = tls_acceptor.clone();

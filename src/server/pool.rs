@@ -10,6 +10,7 @@ use tokio::net::TcpStream;
 use tokio::time::timeout;
 use tracing::{debug, trace};
 
+use crate::server::net::tune_tcp_stream;
 use crate::telemetry::{TelemetryHistory, TelemetrySeverity};
 
 /// Configuration for connection pool
@@ -629,7 +630,10 @@ impl ConnectionPool {
         let connect_timeout = Duration::from_millis(self.config.connect_timeout_ms);
 
         match timeout(connect_timeout, TcpStream::connect(addr)).await {
-            Ok(Ok(stream)) => Ok(stream),
+            Ok(Ok(stream)) => {
+                tune_tcp_stream(&stream);
+                Ok(stream)
+            }
             Ok(Err(e)) => Err(e),
             Err(_) => Err(std::io::Error::new(
                 std::io::ErrorKind::TimedOut,

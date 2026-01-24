@@ -24,10 +24,12 @@ pub async fn resolve_address(address: &Address, port: u16) -> Result<Vec<SocketA
     };
 
     // Prefer IPv6, then IPv4, while preserving order inside each category.
-    targets.sort_by_key(|addr| match addr.ip() {
-        IpAddr::V6(_) => 0,
-        IpAddr::V4(_) => 1,
-    });
+    if targets.len() > 1 {
+        targets.sort_by_key(|addr| match addr.ip() {
+            IpAddr::V6(_) => 0,
+            IpAddr::V4(_) => 1,
+        });
+    }
 
     if targets.is_empty() {
         return Err(RustSocksError::Io(std::io::Error::new(
