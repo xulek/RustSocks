@@ -38,7 +38,10 @@ use crate::api::handlers::{
         get_session_stats, get_user_sessions, terminate_session,
     },
     smtp::{get_smtp_config, get_smtp_modes, test_smtp, update_smtp_config},
-    telemetry::get_telemetry_events,
+    telemetry::{
+        acknowledge_alert, get_alert_thresholds, get_telemetry_alerts, get_telemetry_errors,
+        get_telemetry_events, get_telemetry_metrics, update_alert_thresholds,
+    },
     test_tcp_connectivity,
 };
 use crate::api::types::ApiConfig;
@@ -1390,6 +1393,18 @@ pub async fn start_api_server(
         .route("/api/sessions/{id}/terminate", post(terminate_session))
         .route("/api/users/{user}/sessions", get(get_user_sessions))
         .route("/api/telemetry/events", get(get_telemetry_events))
+        .route("/api/telemetry/metrics", get(get_telemetry_metrics))
+        .route("/api/telemetry/errors", get(get_telemetry_errors))
+        .route("/api/telemetry/alerts", get(get_telemetry_alerts))
+        .route("/api/telemetry/alerts/config", get(get_alert_thresholds))
+        .route(
+            "/api/telemetry/alerts/config",
+            axum::routing::put(update_alert_thresholds),
+        )
+        .route(
+            "/api/telemetry/alerts/{id}/acknowledge",
+            post(acknowledge_alert),
+        )
         .route("/api/metrics/history", get(get_metrics_history))
         // Diagnostics endpoints
         .route("/api/diagnostics/connectivity", post(test_tcp_connectivity))

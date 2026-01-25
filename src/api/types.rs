@@ -613,3 +613,192 @@ pub struct SmtpModeOption {
 pub struct SmtpModesResponse {
     pub modes: Vec<SmtpModeOption>,
 }
+
+// ============================================================================
+// Telemetry API Types
+// ============================================================================
+
+/// Aggregated metrics response for Metrics tab
+#[derive(Debug, Serialize, Deserialize)]
+pub struct TelemetryMetricsResponse {
+    pub timestamp: String,
+    pub period_minutes: u32,
+
+    // Connection metrics
+    pub connections: ConnectionMetrics,
+
+    // Latency metrics
+    pub latency: LatencyMetrics,
+
+    // Throughput metrics
+    pub throughput: ThroughputMetrics,
+
+    // Pool metrics
+    pub pool: PoolMetrics,
+
+    // System resources (optional - may not be available)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub system: Option<SystemMetrics>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ConnectionMetrics {
+    pub total: u64,
+    pub active: u64,
+    pub failed: u64,
+    pub success_rate: f64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct LatencyMetrics {
+    pub avg_ms: f64,
+    pub p50_ms: f64,
+    pub p95_ms: f64,
+    pub p99_ms: f64,
+    pub max_ms: f64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ThroughputMetrics {
+    pub bytes_sent: u64,
+    pub bytes_received: u64,
+    pub bytes_per_second: f64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PoolMetrics {
+    pub hits: u64,
+    pub misses: u64,
+    pub hit_rate: f64,
+    pub idle_connections: u64,
+    pub in_use_connections: u64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SystemMetrics {
+    pub memory_usage_bytes: u64,
+    pub memory_usage_percent: f64,
+    pub cpu_usage_percent: f64,
+    pub open_file_descriptors: Option<u64>,
+}
+
+/// Error breakdown for Errors tab
+#[derive(Debug, Serialize, Deserialize)]
+pub struct TelemetryErrorsResponse {
+    pub total_errors: u64,
+    pub error_rate: f64,
+    pub by_type: Vec<ErrorTypeBreakdown>,
+    pub by_destination: Vec<ErrorDestinationBreakdown>,
+    pub recent_errors: Vec<RecentError>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ErrorTypeBreakdown {
+    pub error_type: String,
+    pub count: u64,
+    pub percentage: f64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ErrorDestinationBreakdown {
+    pub destination: String,
+    pub error_count: u64,
+    pub last_error: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct RecentError {
+    pub timestamp: String,
+    pub error_type: String,
+    pub message: String,
+    pub destination: Option<String>,
+    pub details: Option<serde_json::Value>,
+}
+
+/// Alert configuration and status for Alerts tab
+#[derive(Debug, Serialize, Deserialize)]
+pub struct TelemetryAlertsResponse {
+    pub active_alerts: Vec<ActiveAlert>,
+    pub alert_history: Vec<AlertHistoryItem>,
+    pub thresholds: Vec<AlertThreshold>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ActiveAlert {
+    pub id: i64,
+    pub metric_name: String,
+    pub display_name: String,
+    pub severity: String,
+    pub current_value: f64,
+    pub threshold_value: f64,
+    pub message: String,
+    pub triggered_at: String,
+    pub duration_seconds: u64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AlertHistoryItem {
+    pub id: i64,
+    pub metric_name: String,
+    pub severity: String,
+    pub current_value: f64,
+    pub threshold_value: f64,
+    pub message: String,
+    pub triggered_at: String,
+    pub resolved_at: Option<String>,
+    pub acknowledged: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct AlertThreshold {
+    pub metric_name: String,
+    pub display_name: String,
+    pub category: String,
+    pub warning_threshold: Option<f64>,
+    pub error_threshold: Option<f64>,
+    pub comparison: String,
+    pub enabled: bool,
+    pub unit: Option<String>,
+    pub description: Option<String>,
+}
+
+/// Request to update alert thresholds
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UpdateThresholdsRequest {
+    pub thresholds: Vec<ThresholdUpdate>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ThresholdUpdate {
+    pub metric_name: String,
+    pub warning_threshold: Option<f64>,
+    pub error_threshold: Option<f64>,
+    pub enabled: bool,
+}
+
+/// Response for threshold update
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UpdateThresholdsResponse {
+    pub success: bool,
+    pub message: String,
+    pub updated_count: usize,
+}
+
+/// Request to acknowledge an alert
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AcknowledgeAlertRequest {
+    pub acknowledged_by: Option<String>,
+}
+
+/// Query parameters for telemetry endpoints
+#[derive(Debug, Clone, Deserialize)]
+pub struct TelemetryQueryParams {
+    #[serde(default = "default_telemetry_minutes")]
+    pub minutes: u32,
+    #[serde(default)]
+    pub limit: Option<usize>,
+}
+
+fn default_telemetry_minutes() -> u32 {
+    60
+}
