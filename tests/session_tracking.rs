@@ -45,7 +45,7 @@ async fn proxy_updates_session_traffic_on_shutdown_flush() {
     };
 
     let (session_id, cancel_token) = session_manager
-        .new_session_with_control("integration-user", connection_info, "allow", None, None)
+        .new_session_with_control("integration-user", connection_info, "allow", None, None, None)
         .await;
 
     let proxy_ctx = ProxyContext {

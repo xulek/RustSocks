@@ -45,7 +45,7 @@ async fn bandwidth_throttling_enforced_by_proxy() {
     };
 
     let (session_id, cancel_token) = session_manager
-        .new_session_with_control("throttle-user", connection_info, "allow", None, None)
+        .new_session_with_control("throttle-user", connection_info, "allow", None, None, None)
         .await;
 
     let qos_config = QosConfig {
