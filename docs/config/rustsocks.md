@@ -150,7 +150,7 @@ Used only when `socks_method = "userpass"`.
 | --- | --- | --- | --- |
 | `enabled` | bool | `false` | Enable dashboard Basic Auth. |
 | `users` | array | `[]` | Users list (same fields as `auth.users`). |
-| `altcha_enabled` | bool | `false` | Enable Altcha proof-of-work challenge. |
+| `altcha_enabled` | bool | `true` | Enable Altcha proof-of-work challenge. |
 | `altcha_challenge_url` | string | none | External Altcha endpoint (optional). |
 | `cookie_secure` | bool | `false` | Set cookies as Secure (HTTPS). |
 | `session_secret` | string | auto | Random secret generated at startup if not set. |

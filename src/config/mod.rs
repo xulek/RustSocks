@@ -372,7 +372,7 @@ fn default_dashboard_auth_enabled() -> bool {
 }
 
 fn default_altcha_enabled() -> bool {
-    false
+    true
 }
 
 fn default_dashboard_cookie_secure() -> bool {

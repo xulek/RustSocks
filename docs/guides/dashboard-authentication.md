@@ -24,7 +24,7 @@ dashboard_enabled = true
 
 [sessions.dashboard_auth]
 enabled = true
-altcha_enabled = false
+altcha_enabled = true
 session_secret = "your-super-secret-random-string-here"
 session_duration_hours = 24
 

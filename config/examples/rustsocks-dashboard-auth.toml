@@ -37,8 +37,8 @@ enabled = true
 # 3. Server verifies the solution
 #
 # Enable Altcha on login page
-# Default: false (simple username/password login)
-altcha_enabled = false
+# Default: true
+altcha_enabled = true
 
 # External Altcha challenge URL (optional)
 # Leave commented to use built-in self-hosted endpoint
