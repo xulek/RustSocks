@@ -1,12 +1,13 @@
 use serde::{Deserialize, Serialize};
 
 /// SMTP connection modes
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum SmtpMode {
     PlainNoauth,
     PlainAuth,
     StarttlsNoauth,
+    #[default]
     StarttlsAuth,
     StarttlsRequired,
     SmtpsNoauth,
@@ -53,12 +54,6 @@ impl SmtpMode {
             SmtpMode::SmtpsNoauth => "SMTPS/SSL (no auth)",
             SmtpMode::SmtpsAuth => "SMTPS/SSL with auth",
         }
-    }
-}
-
-impl Default for SmtpMode {
-    fn default() -> Self {
-        SmtpMode::StarttlsAuth
     }
 }
 
@@ -151,7 +146,7 @@ impl Default for SmtpConfig {
 }
 
 pub fn parse_recipients(raw: &str) -> Vec<String> {
-    raw.split(|ch| ch == ',' || ch == '\n')
+    raw.split([',', '\n'])
         .map(|value| value.trim())
         .filter(|value| !value.is_empty())
         .map(|value| value.to_string())

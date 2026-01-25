@@ -288,43 +288,42 @@ pub async fn resource_monitor_loop(
             }
         }
 
-        if config.notify_connection_pressure {
-            if effective_limit > 0
-                && connection_percent >= config.notify_connection_percent_threshold as f32
+        if config.notify_connection_pressure
+            && effective_limit > 0
+            && connection_percent >= config.notify_connection_percent_threshold as f32
+        {
+            let subject = "RustSocks connection pressure alert".to_string();
+            let limit_label = match fd_limit {
+                Some(limit) => format!(
+                    "min(server.max_connections={}, fd_limit={})",
+                    max_connections, limit
+                ),
+                None => format!("server.max_connections={}", max_connections),
+            };
+            let body = format!(
+                "Active connections are approaching the configured limit.\n\nActive sessions: {}\nConfigured limit: {}\nUtilization: {:.1}% (threshold {}%)\n",
+                active_sessions,
+                limit_label,
+                connection_percent,
+                config.notify_connection_percent_threshold
+            );
+            match send_notification(
+                &config,
+                NotificationKind::ConnectionPressure,
+                &subject,
+                &body,
+            )
+            .await
             {
-                let subject = "RustSocks connection pressure alert".to_string();
-                let limit_label = match fd_limit {
-                    Some(limit) => format!(
-                        "min(server.max_connections={}, fd_limit={})",
-                        max_connections, limit
-                    ),
-                    None => format!("server.max_connections={}", max_connections),
-                };
-                let body = format!(
-                    "Active connections are approaching the configured limit.\n\nActive sessions: {}\nConfigured limit: {}\nUtilization: {:.1}% (threshold {}%)\n",
-                    active_sessions,
-                    limit_label,
-                    connection_percent,
-                    config.notify_connection_percent_threshold
-                );
-                match send_notification(
-                    &config,
-                    NotificationKind::ConnectionPressure,
-                    &subject,
-                    &body,
-                )
-                .await
-                {
-                    Ok(NotificationDecision::Sent { recipients }) => {
-                        info!(
-                            "Connection pressure notification sent to {} recipient(s)",
-                            recipients
-                        );
-                    }
-                    Ok(NotificationDecision::Skipped(_)) => {}
-                    Err(err) => {
-                        warn!("Failed to send connection pressure notification: {}", err);
-                    }
+                Ok(NotificationDecision::Sent { recipients }) => {
+                    info!(
+                        "Connection pressure notification sent to {} recipient(s)",
+                        recipients
+                    );
+                }
+                Ok(NotificationDecision::Skipped(_)) => {}
+                Err(err) => {
+                    warn!("Failed to send connection pressure notification: {}", err);
                 }
             }
         }

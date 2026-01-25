@@ -125,7 +125,7 @@ impl SessionManager {
         acl_decision: impl Into<String>,
         acl_rule_matched: Option<String>,
     ) -> Uuid {
-        self.new_session_with_control(user, connection, acl_decision, acl_rule_matched, None)
+        self.new_session_with_control(user, connection, acl_decision, acl_rule_matched, None, None)
             .await
             .0
     }
@@ -138,9 +138,11 @@ impl SessionManager {
         acl_decision: impl Into<String>,
         acl_rule_matched: Option<String>,
         udp_shutdown: Option<broadcast::Sender<()>>,
+        connect_latency_ms: Option<u64>,
     ) -> (Uuid, CancellationToken) {
         let mut session =
             Session::new(user.to_string(), connection, acl_decision, acl_rule_matched);
+        session.connect_latency_ms = connect_latency_ms;
         session.status = SessionStatus::Active;
 
         let session_id = session.session_id;
@@ -831,7 +833,7 @@ mod tests {
         let engine = Arc::new(AclEngine::new(initial_config).expect("engine"));
 
         let (_session_id, _token) = manager
-            .new_session_with_control("alice", conn.clone(), "allow", None, None)
+            .new_session_with_control("alice", conn.clone(), "allow", None, None, None)
             .await;
 
         assert_eq!(manager.active_session_count(), 1);

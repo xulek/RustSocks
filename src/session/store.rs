@@ -1180,6 +1180,7 @@ impl SessionRow {
             start_time,
             end_time,
             duration_secs: sanitize_duration(self.duration_secs),
+            connect_latency_ms: None,
             source_ip,
             source_port: self.source_port as u16,
             dest_ip: self.dest_ip.into(),

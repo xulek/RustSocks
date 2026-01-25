@@ -129,7 +129,7 @@ function MetricsTab({ minutes }) {
       </div>
 
       {/* Latency Metrics */}
-      <h4 style={{ marginBottom: 12, marginTop: 24, color: 'var(--text-secondary)' }}>Latency</h4>
+      <h4 style={{ marginBottom: 12, marginTop: 24, color: 'var(--text-secondary)' }}>Connect Latency</h4>
       <div className="metrics-grid">
         <div className="metric-card">
           <div className="metric-label">Average</div>

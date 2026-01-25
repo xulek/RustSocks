@@ -13,7 +13,7 @@ use crate::smtp::SmtpRepository;
 
 /// GET /api/smtp/modes - Get available SMTP modes
 pub async fn get_smtp_modes() -> (StatusCode, Json<SmtpModesResponse>) {
-    let modes = vec![
+    let modes = [
         SmtpMode::PlainNoauth,
         SmtpMode::PlainAuth,
         SmtpMode::StarttlsNoauth,

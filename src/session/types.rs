@@ -98,6 +98,8 @@ pub struct Session {
     pub start_time: DateTime<Utc>,
     pub end_time: Option<DateTime<Utc>>,
     pub duration_secs: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub connect_latency_ms: Option<u64>,
 
     // Network
     pub source_ip: IpAddr,
@@ -182,6 +184,7 @@ impl Session {
             start_time: Utc::now(),
             end_time: None,
             duration_secs: None,
+            connect_latency_ms: None,
             source_ip: connection.source_ip,
             source_port: connection.source_port,
             dest_ip: Arc::from(connection.dest_ip),

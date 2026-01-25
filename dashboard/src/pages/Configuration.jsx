@@ -411,6 +411,16 @@ function Configuration() {
                 description="Session storage engine and dashboard/statistics settings."
               >
                 <div className="form-group">
+                  <label>Sessions enabled</label>
+                  <select
+                    value={runtimeConfig.sessions.enabled ? 'true' : 'false'}
+                    onChange={(e) => updateField('sessions', 'enabled', e.target.value === 'true')}
+                  >
+                    <option value="true">Yes</option>
+                    <option value="false">No</option>
+                  </select>
+                </div>
+                <div className="form-group">
                   <label>Storage</label>
                   <select
                     value={runtimeConfig.sessions.storage}
@@ -418,11 +428,13 @@ function Configuration() {
                   >
                     <option value="memory">memory</option>
                     <option value="sqlite">sqlite</option>
+                    <option value="mariadb">mariadb</option>
+                    <option value="mysql">mysql</option>
                   </select>
                 </div>
-                {runtimeConfig.sessions.storage === 'sqlite' && (
+                {['sqlite', 'mariadb', 'mysql'].includes(runtimeConfig.sessions.storage) && (
                   <div className="form-group">
-                    <label>SQLite URL</label>
+                    <label>Database URL</label>
                     <input
                       type="text"
                       value={runtimeConfig.sessions.database_url || ''}

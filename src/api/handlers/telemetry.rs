@@ -110,15 +110,15 @@ pub async fn get_telemetry_metrics(
     let total_bytes_sent: u64 = all_sessions.iter().map(|s| s.bytes_sent).sum();
     let total_bytes_received: u64 = all_sessions.iter().map(|s| s.bytes_received).sum();
 
-    // Calculate latency from session durations (approximation)
-    let durations: Vec<f64> = all_sessions
+    // Calculate connect latency from session setup times (DNS + TCP connect)
+    let latencies: Vec<f64> = all_sessions
         .iter()
-        .filter_map(|s| s.duration_secs)
-        .map(|d| d as f64 * 1000.0) // Convert to ms
+        .filter_map(|s| s.connect_latency_ms)
+        .map(|latency| latency as f64)
         .collect();
 
-    let latency = if !durations.is_empty() {
-        let mut sorted = durations.clone();
+    let latency = if !latencies.is_empty() {
+        let mut sorted = latencies.clone();
         sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
 
         let avg = sorted.iter().sum::<f64>() / sorted.len() as f64;
@@ -520,36 +520,36 @@ fn get_default_thresholds() -> Vec<AlertThreshold> {
         // Performance thresholds
         AlertThreshold {
             metric_name: "avg_latency_ms".to_string(),
-            display_name: "Average Latency".to_string(),
+            display_name: "Average Connect Latency".to_string(),
             category: "performance".to_string(),
             warning_threshold: Some(100.0),
             error_threshold: Some(500.0),
             comparison: "gt".to_string(),
             enabled: true,
             unit: Some("ms".to_string()),
-            description: Some("Average connection latency".to_string()),
+            description: Some("Average connect latency (DNS + TCP setup)".to_string()),
         },
         AlertThreshold {
             metric_name: "p95_latency_ms".to_string(),
-            display_name: "P95 Latency".to_string(),
+            display_name: "P95 Connect Latency".to_string(),
             category: "performance".to_string(),
             warning_threshold: Some(200.0),
             error_threshold: Some(1000.0),
             comparison: "gt".to_string(),
             enabled: true,
             unit: Some("ms".to_string()),
-            description: Some("95th percentile latency".to_string()),
+            description: Some("95th percentile connect latency".to_string()),
         },
         AlertThreshold {
             metric_name: "p99_latency_ms".to_string(),
-            display_name: "P99 Latency".to_string(),
+            display_name: "P99 Connect Latency".to_string(),
             category: "performance".to_string(),
             warning_threshold: Some(500.0),
             error_threshold: Some(2000.0),
             comparison: "gt".to_string(),
             enabled: true,
             unit: Some("ms".to_string()),
-            description: Some("99th percentile latency".to_string()),
+            description: Some("99th percentile connect latency".to_string()),
         },
         // Error thresholds
         AlertThreshold {

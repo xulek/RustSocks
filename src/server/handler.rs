@@ -12,7 +12,7 @@ use crate::utils::error::{Result, RustSocksError};
 use std::io::ErrorKind;
 use std::net::IpAddr;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, BufReader};
 use tokio::sync::broadcast;
 use tokio::time::timeout;
@@ -632,6 +632,8 @@ where
         Address::Domain(domain) => domain.clone(),
     };
 
+    let connect_started = Instant::now();
+
     let mut candidates = match resolve_address(dest_addr, dest_port).await {
         Ok(list) => list,
         Err(e) => {
@@ -708,6 +710,8 @@ where
         }
     };
 
+    let connect_latency_ms = connect_started.elapsed().as_millis() as u64;
+
     // Get local address for response
     let local_addr = upstream_stream.local_addr()?;
     let bind_addr = match local_addr {
@@ -760,6 +764,7 @@ where
             session_ctx.acl_decision.clone(),
             session_ctx.acl_rule.clone(),
             None,
+            Some(connect_latency_ms),
         )
         .await;
 
@@ -871,6 +876,7 @@ where
             session_ctx.acl_decision.clone(),
             session_ctx.acl_rule.clone(),
             Some(shutdown_tx.clone()),
+            None,
         )
         .await;
 
