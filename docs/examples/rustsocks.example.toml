@@ -71,7 +71,7 @@ stats_api_bind_address = "127.0.0.1"
 stats_api_port = 9090
 #
 # Optional API token; when set, /api/* requires token or dashboard session
-# api_token = "change-me"
+# api_token = "change-me" # Required for SMTP password encryption
 swagger_enabled = true      # Enable Swagger UI at /swagger-ui/
 dashboard_enabled = true    # Enable Web Dashboard at /
 # Base URL path prefix ("/" or e.g. "/rustsocks")

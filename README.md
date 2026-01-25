@@ -70,6 +70,7 @@ A modern, high-performance SOCKS5 proxy server written in Rust, featuring advanc
   - User management
   - Statistics & analytics
   - System resources overview
+  - SMTP configuration with test emails
   - Built with React + Vite
 
 - **🔌 REST API & Swagger**
@@ -192,6 +193,7 @@ swagger_enabled = true
 stats_api_bind_address = "127.0.0.1"
 stats_api_port = 9090
 base_path = "/"                # Change to "/rustsocks" for subdirectory deployment
+api_token = "change-me"        # Required for SMTP password encryption
 
 # Connection Pooling (optional, disabled by default)
 [server.pool]

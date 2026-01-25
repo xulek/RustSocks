@@ -9,7 +9,8 @@ import {
   FileText,
   Stethoscope,
   SignalHigh,
-  LogOut
+  LogOut,
+  Mail
 } from 'lucide-react'
 
 import { AuthProvider, useAuth } from './contexts/AuthContext'
@@ -21,6 +22,7 @@ import Statistics from './pages/Statistics'
 import Configuration from './pages/Configuration'
 import Diagnostics from './pages/Diagnostics'
 import Telemetry from './pages/Telemetry'
+import SmtpConfig from './pages/SmtpConfig'
 import Login from './pages/Login'
 import { ROUTER_BASENAME } from './lib/basePath'
 
@@ -97,6 +99,10 @@ function DashboardLayout() {
             <Settings />
             <span>Configuration</span>
           </NavLink>
+          <NavLink to="/smtp" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+            <Mail />
+            <span>SMTP</span>
+          </NavLink>
         </nav>
 
         <div className="sidebar-footer">
@@ -117,6 +123,7 @@ function DashboardLayout() {
           <Route path="/diagnostics" element={<Diagnostics />} />
           <Route path="/telemetry" element={<Telemetry />} />
           <Route path="/config" element={<Configuration />} />
+          <Route path="/smtp" element={<SmtpConfig />} />
         </Routes>
       </main>
     </div>

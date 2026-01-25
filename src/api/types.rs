@@ -530,3 +530,62 @@ pub struct SystemResourcesResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub load_average_1m: Option<f64>,
 }
+
+// ============================================================================
+// SMTP Configuration API Types
+// ============================================================================
+
+/// Response for GET /api/smtp/config
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SmtpConfigResponse {
+    pub enabled: bool,
+    pub mode: String,
+    pub host: String,
+    pub port: u16,
+    pub from_address: String,
+    pub from_name: Option<String>,
+    pub username: Option<String>,
+    pub has_password: bool,
+}
+
+/// Request for PUT /api/smtp/config
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SmtpConfigUpdateRequest {
+    pub enabled: bool,
+    pub mode: String,
+    pub host: String,
+    pub port: u16,
+    pub from_address: String,
+    pub from_name: Option<String>,
+    pub username: Option<String>,
+    pub password: Option<String>,
+}
+
+/// Request for POST /api/smtp/test
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SmtpTestRequest {
+    pub recipient: String,
+}
+
+/// Response for POST /api/smtp/test
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SmtpTestResponse {
+    pub success: bool,
+    pub message: String,
+    pub error: Option<String>,
+}
+
+/// Available SMTP modes for UI dropdown
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SmtpModeOption {
+    pub value: String,
+    pub label: String,
+    pub default_port: u16,
+    pub requires_auth: bool,
+}
+
+/// Response for GET /api/smtp/modes
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SmtpModesResponse {
+    pub modes: Vec<SmtpModeOption>,
+}

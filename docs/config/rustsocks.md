@@ -137,7 +137,7 @@ Used only when `socks_method = "userpass"`.
 | `stats_api_enabled` | bool | `false` | Enable API + dashboard server. |
 | `stats_api_bind_address` | string | `127.0.0.1` | API bind address. |
 | `stats_api_port` | integer | `9090` | API port. |
-| `api_token` | string | none | Optional token for `/api/*`. |
+| `api_token` | string | none | Optional token for `/api/*`; also required to encrypt SMTP passwords stored in the database. |
 | `swagger_enabled` | bool | `true` | Enable Swagger UI at `/swagger-ui/`. |
 | `dashboard_enabled` | bool | `false` | Serve dashboard UI. |
 | `base_path` | string | `/` | URL prefix for all routes. |

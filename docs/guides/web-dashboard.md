@@ -10,6 +10,7 @@ The web dashboard provides:
 - User and group management
 - Statistics and analytics
 - Server health monitoring
+- SMTP configuration for email notifications
 - Operational telemetry feed for pool pressure and upstream errors
 - Inline editing of `config/rustsocks.toml` with automatic restart
 - API documentation (Swagger UI)
@@ -130,6 +131,14 @@ Open browser to: `http://127.0.0.1:9090/`
 - Link to Swagger API documentation
 - Runtime config editor: Forms are split into modules (Server, Sessions, Pool, Metrics, Telemetry). Every change is validated exactly like process startup, writes `config/rustsocks.toml` atomically, and can optionally trigger a controlled restart without logging into the host. When the server runs without a configuration file, this section becomes read-only.
 
+### SMTP Page
+
+**Email configuration**:
+- Connection mode presets with default ports
+- Sender address and display name
+- Optional authentication credentials (encrypted at rest)
+- Test email delivery from the UI
+
 ## Development
 
 ### Setup
@@ -172,6 +181,7 @@ dashboard/
 │   │   ├── Configuration.jsx
 │   │   ├── Telemetry.jsx
 │   │   ├── Diagnostics.jsx
+│   │   ├── SmtpConfig.jsx
 │   │   └── Login.jsx
 │   ├── App.jsx             # Main app component
 │   ├── App.css             # Global styles

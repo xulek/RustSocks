@@ -37,6 +37,7 @@ use crate::api::handlers::{
         get_active_sessions, get_metrics_history, get_session_detail, get_session_history,
         get_session_stats, get_user_sessions, terminate_session,
     },
+    smtp::{get_smtp_config, get_smtp_modes, test_smtp, update_smtp_config},
     telemetry::get_telemetry_events,
     test_tcp_connectivity,
 };
@@ -1430,7 +1431,12 @@ pub async fn start_api_server(
             "/api/acl/global",
             axum::routing::put(update_global_settings),
         )
-        .route("/api/acl/search", post(search_rules));
+        .route("/api/acl/search", post(search_rules))
+        // SMTP Configuration endpoints
+        .route("/api/smtp/modes", get(get_smtp_modes))
+        .route("/api/smtp/config", get(get_smtp_config))
+        .route("/api/smtp/config", put(update_smtp_config))
+        .route("/api/smtp/test", post(test_smtp));
 
     // Conditionally serve dashboard static files
     if config.dashboard_enabled {

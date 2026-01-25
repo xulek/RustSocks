@@ -55,6 +55,8 @@ hmac = "0.12"           # HMAC for Altcha signatures
 rand = "0.8"            # CSPRNG for session secrets/tokens
 argon2 = "0.5"          # Password hashing (dashboard + userpass)
 subtle = "2.6"          # Constant-time comparisons
+lettre = { version = "0.11", default-features = false, features = ["tokio1", "tokio1-rustls-tls", "ring", "builder", "smtp-transport"] }  # SMTP email notifications (using ring crypto backend)
+aes-gcm = "0.10"        # AES-GCM encryption for SMTP passwords
 
 # Database (SQLite for session history)
 sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "sqlite", "mysql", "any", "chrono", "uuid", "macros", "migrate"], optional = true }

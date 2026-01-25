@@ -10,6 +10,7 @@ pub mod protocol;
 pub mod qos;
 pub mod server;
 pub mod session;
+pub mod smtp;
 pub mod telemetry;
 pub mod utils;
 

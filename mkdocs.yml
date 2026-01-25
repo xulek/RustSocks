@@ -13,6 +13,7 @@ nav:
   - UI & Dashboard:
       - Overview: ui/overview.md
       - Authentication: guides/dashboard-authentication.md
+      - SMTP Configuration: guides/smtp-configuration.md
   - Configuration:
       - rustsocks.toml: config/rustsocks.md
       - acl.toml: config/acl.md
