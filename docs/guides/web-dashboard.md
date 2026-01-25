@@ -137,6 +137,8 @@ Open browser to: `http://127.0.0.1:9090/`
 - Connection mode presets with default ports
 - Sender address and display name
 - Optional authentication credentials (encrypted at rest)
+- Notification recipients and per-category alert switches
+- Cooldown and alert threshold tuning for resources and connection pressure
 - Test email delivery from the UI
 
 ## Development

@@ -78,9 +78,7 @@ impl SessionStore {
             .await?;
 
         // Apply migrations shipped in the `migrations/` directory.
-        if let Err(e) = sqlx::migrate!("./migrations").run(&pool).await {
-            return Err(sqlx::Error::Migrate(Box::new(e)));
-        }
+        Self::apply_migrations(&pool, &flavor).await?;
 
         if flavor.is_sqlite() {
             Self::configure_journal_mode(&pool).await?;
@@ -143,6 +141,102 @@ impl SessionStore {
 
         let url_lower = url.to_ascii_lowercase();
         url_lower.contains(":memory:") || url_lower.contains("mode=memory")
+    }
+
+    async fn apply_migrations(
+        pool: &AnyPool,
+        flavor: &DatabaseFlavor,
+    ) -> Result<(), sqlx::Error> {
+        let migrator = sqlx::migrate!("./migrations");
+
+        match migrator.run(pool).await {
+            Ok(()) => Ok(()),
+            Err(sqlx::migrate::MigrateError::VersionMismatch(version)) => {
+                if Self::repair_migration_checksum(pool, flavor, &migrator, version).await? {
+                    migrator
+                        .run(pool)
+                        .await
+                        .map_err(|e| sqlx::Error::Migrate(Box::new(e)))
+                } else {
+                    Err(sqlx::Error::Migrate(Box::new(
+                        sqlx::migrate::MigrateError::VersionMismatch(version),
+                    )))
+                }
+            }
+            Err(other) => Err(sqlx::Error::Migrate(Box::new(other))),
+        }
+    }
+
+    async fn repair_migration_checksum(
+        pool: &AnyPool,
+        flavor: &DatabaseFlavor,
+        migrator: &sqlx::migrate::Migrator,
+        version: i64,
+    ) -> Result<bool, sqlx::Error> {
+        if !flavor.is_sqlite() {
+            return Ok(false);
+        }
+
+        let required = match version {
+            9 => &[
+                "notify_recipients",
+                "notify_critical",
+                "notify_security",
+                "notify_config_changes",
+                "notify_service_status",
+            ][..],
+            10 => &[
+                "notify_cooldown_seconds",
+                "notify_cpu_threshold",
+                "notify_ram_threshold",
+                "notify_disk_threshold",
+                "notify_connection_percent_threshold",
+                "notify_resource_pressure",
+                "notify_connection_pressure",
+            ][..],
+            _ => return Ok(false),
+        };
+
+        let Some(migration) = migrator.iter().find(|m| m.version == version) else {
+            return Ok(false);
+        };
+
+        if !Self::smtp_columns_present(pool, required).await? {
+            return Ok(false);
+        }
+
+        let updated = sqlx::query("UPDATE _sqlx_migrations SET checksum = ? WHERE version = ?")
+            .bind(migration.checksum.as_ref())
+            .bind(version)
+            .execute(pool)
+            .await?;
+
+        if updated.rows_affected() == 0 {
+            return Ok(false);
+        }
+
+        warn!(
+            version,
+            "Repaired SQLx migration checksum after detecting a modified migration"
+        );
+        Ok(true)
+    }
+
+    async fn smtp_columns_present(
+        pool: &AnyPool,
+        required: &[&str],
+    ) -> Result<bool, sqlx::Error> {
+        let columns: Vec<String> =
+            sqlx::query_scalar::<Any, String>("SELECT name FROM pragma_table_info('smtp_config')")
+                .fetch_all(pool)
+                .await?;
+
+        let columns: HashSet<String> = columns
+            .into_iter()
+            .map(|column| column.to_ascii_lowercase())
+            .collect();
+
+        Ok(required.iter().all(|name| columns.contains(*name)))
     }
 
     /// Mark all active sessions as closed (called on server startup to clean up stale sessions).

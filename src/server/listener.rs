@@ -11,6 +11,10 @@ use crate::server::proxy::TrafficUpdateConfig;
 use crate::session::{start_metrics_collector, MetricsHistory, SessionManager};
 #[cfg(feature = "database")]
 use crate::session::{BatchConfig, SessionStore};
+#[cfg(feature = "database")]
+use crate::smtp::notifications::{
+    notify_with_pool, resource_monitor_loop, NotificationDecision, NotificationKind,
+};
 use crate::telemetry::TelemetryHistory;
 use crate::utils::error::{Result, RustSocksError};
 use rustls::pki_types::{pem::PemObject, CertificateDer, PrivateKeyDer};
@@ -534,6 +538,54 @@ impl SocksServer {
             connection_pool: self.connection_pool.clone(),
             handshake_timeout: Duration::from_millis(self.config.server.handshake_timeout_ms),
         });
+
+        #[cfg(feature = "database")]
+        if let Some(store) = self.session_manager.session_store() {
+            let pool = store.pool().clone();
+            let api_token = self.config.sessions.api_token.clone();
+            let subject = "RustSocks service status: started".to_string();
+            let body = format!(
+                "RustSocks has started and is listening on {}.\n\nClient auth: {}\nSOCKS auth: {}\nACL enabled: {}\n",
+                bind_addr,
+                self.config.auth.client_method,
+                self.config.auth.socks_method,
+                if self.acl_engine.is_some() { "yes" } else { "no" }
+            );
+            tokio::spawn(async move {
+                match notify_with_pool(
+                    &pool,
+                    api_token,
+                    NotificationKind::ServiceStatus,
+                    subject,
+                    body,
+                )
+                .await
+                {
+                    Ok(NotificationDecision::Sent { recipients }) => {
+                        info!("Service status notification sent to {} recipient(s)", recipients);
+                    }
+                    Ok(NotificationDecision::Skipped(_)) => {}
+                    Err(err) => {
+                        warn!("Failed to send service status notification: {}", err);
+                    }
+                }
+            });
+        }
+
+        #[cfg(feature = "database")]
+        if let Some(store) = self.session_manager.session_store() {
+            let pool = store.pool().clone();
+            let api_token = self.config.sessions.api_token.clone();
+            let session_manager = self.session_manager.clone();
+            let max_connections = self.config.server.max_connections;
+            tokio::spawn(resource_monitor_loop(
+                pool,
+                api_token,
+                session_manager,
+                max_connections,
+                30,
+            ));
+        }
 
         let tls_acceptor = self.tls_acceptor.clone();
 

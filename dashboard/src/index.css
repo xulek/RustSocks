@@ -284,7 +284,8 @@ tr:hover {
 }
 
 input,
-select {
+select,
+textarea {
   width: 100%;
   padding: 10px 12px;
   border-radius: 8px;
@@ -293,7 +294,8 @@ select {
   color: var(--text-primary);
 }
 
-input::placeholder {
+input::placeholder,
+textarea::placeholder {
   color: var(--text-secondary);
 }
 
@@ -356,6 +358,147 @@ select {
 
 .form-section + .form-section {
   margin-top: 18px;
+}
+
+.notification-section {
+  border: 1px solid rgba(59, 130, 246, 0.4);
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.12), rgba(15, 23, 42, 0.55));
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.35);
+}
+
+.notification-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.notification-title {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.notification-title svg {
+  color: var(--primary);
+  margin-top: 2px;
+}
+
+.notification-status {
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+.notification-status.on {
+  background: rgba(16, 185, 129, 0.16);
+  color: var(--success);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+}
+
+.notification-status.off {
+  background: rgba(148, 163, 184, 0.16);
+  color: var(--text-secondary);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+}
+
+.notification-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+}
+
+.notification-card {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  background: rgba(15, 23, 42, 0.6);
+}
+
+.notification-card-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.notification-card-header svg {
+  color: var(--primary);
+  margin-top: 2px;
+}
+
+.notification-card-header h5 {
+  margin-bottom: 4px;
+}
+
+.notification-card-header p {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.notification-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-top: 6px;
+}
+
+.notification-pill {
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(59, 130, 246, 0.15);
+  border: 1px solid rgba(59, 130, 246, 0.35);
+  color: var(--text-primary);
+  font-size: 12px;
+}
+
+.notification-warning {
+  margin-top: 6px;
+  color: var(--warning);
+}
+
+.toggle-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.toggle-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background: rgba(30, 41, 59, 0.4);
+  cursor: pointer;
+}
+
+.toggle-row input {
+  margin-top: 4px;
+  width: 18px;
+  height: 18px;
+}
+
+.toggle-row strong {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.toggle-row .subtle-text {
+  font-size: 12px;
+}
+
+.threshold-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
 }
 
 .form-section-header {

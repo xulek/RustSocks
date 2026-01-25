@@ -546,6 +546,18 @@ pub struct SmtpConfigResponse {
     pub from_name: Option<String>,
     pub username: Option<String>,
     pub has_password: bool,
+    pub notify_recipients: Vec<String>,
+    pub notify_critical: bool,
+    pub notify_security: bool,
+    pub notify_config_changes: bool,
+    pub notify_service_status: bool,
+    pub notify_resource_pressure: bool,
+    pub notify_connection_pressure: bool,
+    pub notify_cooldown_seconds: u64,
+    pub notify_cpu_threshold: u8,
+    pub notify_ram_threshold: u8,
+    pub notify_disk_threshold: u8,
+    pub notify_connection_percent_threshold: u8,
 }
 
 /// Request for PUT /api/smtp/config
@@ -559,6 +571,18 @@ pub struct SmtpConfigUpdateRequest {
     pub from_name: Option<String>,
     pub username: Option<String>,
     pub password: Option<String>,
+    pub notify_recipients: Vec<String>,
+    pub notify_critical: bool,
+    pub notify_security: bool,
+    pub notify_config_changes: bool,
+    pub notify_service_status: bool,
+    pub notify_resource_pressure: bool,
+    pub notify_connection_pressure: bool,
+    pub notify_cooldown_seconds: u64,
+    pub notify_cpu_threshold: u8,
+    pub notify_ram_threshold: u8,
+    pub notify_disk_threshold: u8,
+    pub notify_connection_percent_threshold: u8,
 }
 
 /// Request for POST /api/smtp/test

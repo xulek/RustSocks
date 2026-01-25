@@ -108,6 +108,18 @@ pub struct SmtpConfig {
     pub password: Option<String>,
     #[serde(skip_deserializing)]
     pub has_password: bool,
+    pub notify_recipients: Vec<String>,
+    pub notify_critical: bool,
+    pub notify_security: bool,
+    pub notify_config_changes: bool,
+    pub notify_service_status: bool,
+    pub notify_resource_pressure: bool,
+    pub notify_connection_pressure: bool,
+    pub notify_cooldown_seconds: u64,
+    pub notify_cpu_threshold: u8,
+    pub notify_ram_threshold: u8,
+    pub notify_disk_threshold: u8,
+    pub notify_connection_percent_threshold: u8,
 }
 
 impl Default for SmtpConfig {
@@ -122,8 +134,32 @@ impl Default for SmtpConfig {
             username: None,
             password: None,
             has_password: false,
+            notify_recipients: Vec::new(),
+            notify_critical: false,
+            notify_security: false,
+            notify_config_changes: false,
+            notify_service_status: false,
+            notify_resource_pressure: false,
+            notify_connection_pressure: false,
+            notify_cooldown_seconds: 3600,
+            notify_cpu_threshold: 85,
+            notify_ram_threshold: 85,
+            notify_disk_threshold: 90,
+            notify_connection_percent_threshold: 85,
         }
     }
+}
+
+pub fn parse_recipients(raw: &str) -> Vec<String> {
+    raw.split(|ch| ch == ',' || ch == '\n')
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty())
+        .map(|value| value.to_string())
+        .collect()
+}
+
+pub fn format_recipients(recipients: &[String]) -> String {
+    recipients.join(", ")
 }
 
 #[cfg(test)]
@@ -144,5 +180,18 @@ mod tests {
         assert!(mode.requires_auth());
         assert!(mode.uses_tls());
         assert!(!mode.uses_starttls());
+    }
+
+    #[test]
+    fn recipients_parse_and_format() {
+        let raw = "alpha@example.com, beta@example.com\n\ngamma@example.com , ";
+        let parsed = parse_recipients(raw);
+        assert_eq!(parsed.len(), 3);
+        assert_eq!(parsed[0], "alpha@example.com");
+        assert_eq!(parsed[1], "beta@example.com");
+        assert_eq!(parsed[2], "gamma@example.com");
+
+        let formatted = format_recipients(&parsed);
+        assert_eq!(formatted, "alpha@example.com, beta@example.com, gamma@example.com");
     }
 }

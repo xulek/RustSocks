@@ -1284,11 +1284,29 @@ pub async fn start_api_server(
         base_path.as_str()
     };
 
-    let auth_state = Arc::new(AuthState::new(
-        config.dashboard_auth.clone(),
-        base_path.clone(),
-        config.token.clone(),
-    ));
+    #[cfg(feature = "database")]
+    let session_store = session_manager.session_store();
+
+    let auth_state = {
+        #[cfg(feature = "database")]
+        {
+            let smtp_pool = session_store.as_ref().map(|store| store.pool().clone());
+            Arc::new(AuthState::new(
+                config.dashboard_auth.clone(),
+                base_path.clone(),
+                config.token.clone(),
+                smtp_pool,
+            ))
+        }
+        #[cfg(not(feature = "database"))]
+        {
+            Arc::new(AuthState::new(
+                config.dashboard_auth.clone(),
+                base_path.clone(),
+                config.token.clone(),
+            ))
+        }
+    };
 
     info!(
         "Mounting API router at base path '{}'",
@@ -1298,9 +1316,6 @@ pub async fn start_api_server(
             base_prefix
         }
     );
-
-    #[cfg(feature = "database")]
-    let session_store = session_manager.session_store();
 
     let state = ApiState {
         session_manager,
@@ -1773,7 +1788,21 @@ mod tests {
             enabled,
             ..DashboardAuthSettings::default()
         };
-        Arc::new(AuthState::new(settings, base_path.to_string(), api_token))
+        {
+            #[cfg(feature = "database")]
+            {
+                Arc::new(AuthState::new(
+                    settings,
+                    base_path.to_string(),
+                    api_token,
+                    None,
+                ))
+            }
+            #[cfg(not(feature = "database"))]
+            {
+                Arc::new(AuthState::new(settings, base_path.to_string(), api_token))
+            }
+        }
     }
 
     fn build_api_router(auth_state: Arc<AuthState>) -> Router {

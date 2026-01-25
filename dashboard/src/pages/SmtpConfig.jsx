@@ -1,5 +1,18 @@
 import React, { useEffect, useState } from 'react'
-import { Mail, Save, Send, AlertCircle, CheckCircle } from 'lucide-react'
+import {
+  Mail,
+  Save,
+  Send,
+  AlertCircle,
+  CheckCircle,
+  BellRing,
+  ShieldAlert,
+  Settings2,
+  Activity,
+  Cpu,
+  HardDrive,
+  Gauge
+} from 'lucide-react'
 import { getApiUrl } from '../lib/basePath'
 
 const DEFAULT_MODES = [
@@ -32,7 +45,19 @@ function SmtpConfig() {
     from_name: '',
     username: '',
     password: '',
-    has_password: false
+    has_password: false,
+    notify_recipients: '',
+    notify_critical: false,
+    notify_security: false,
+    notify_config_changes: false,
+    notify_service_status: false,
+    notify_resource_pressure: false,
+    notify_connection_pressure: false,
+    notify_cooldown_minutes: 60,
+    notify_cpu_threshold: 85,
+    notify_ram_threshold: 85,
+    notify_disk_threshold: 90,
+    notify_connection_percent_threshold: 85
   })
 
   useEffect(() => {
@@ -59,9 +84,25 @@ function SmtpConfig() {
       }
 
       const data = await configResponse.json()
+      const recipients = Array.isArray(data.notify_recipients) ? data.notify_recipients.join(', ') : ''
+      const cooldownSeconds =
+        typeof data.notify_cooldown_seconds === 'number' ? data.notify_cooldown_seconds : 3600
+      const cooldownMinutes = Math.max(0, Math.round(cooldownSeconds / 60))
       setConfig({
         ...data,
-        password: ''
+        password: '',
+        notify_recipients: recipients,
+        notify_critical: data.notify_critical ?? false,
+        notify_security: data.notify_security ?? false,
+        notify_config_changes: data.notify_config_changes ?? false,
+        notify_service_status: data.notify_service_status ?? false,
+        notify_resource_pressure: data.notify_resource_pressure ?? false,
+        notify_connection_pressure: data.notify_connection_pressure ?? false,
+        notify_cooldown_minutes: cooldownMinutes,
+        notify_cpu_threshold: data.notify_cpu_threshold ?? 85,
+        notify_ram_threshold: data.notify_ram_threshold ?? 85,
+        notify_disk_threshold: data.notify_disk_threshold ?? 90,
+        notify_connection_percent_threshold: data.notify_connection_percent_threshold ?? 85
       })
       setError(null)
     } catch (err) {
@@ -84,6 +125,11 @@ function SmtpConfig() {
     setSaving(true)
     setSaveStatus(null)
     try {
+      const notifyRecipients = config.notify_recipients
+        .split(/[\n,]/)
+        .map((value) => value.trim())
+        .filter((value) => value.length > 0)
+      const cooldownMinutes = Number(config.notify_cooldown_minutes) || 0
       const payload = {
         enabled: config.enabled,
         mode: config.mode,
@@ -92,7 +138,19 @@ function SmtpConfig() {
         from_address: config.from_address,
         from_name: config.from_name || null,
         username: config.username || null,
-        password: config.password || null
+        password: config.password || null,
+        notify_recipients: notifyRecipients,
+        notify_critical: config.notify_critical,
+        notify_security: config.notify_security,
+        notify_config_changes: config.notify_config_changes,
+        notify_service_status: config.notify_service_status,
+        notify_resource_pressure: config.notify_resource_pressure,
+        notify_connection_pressure: config.notify_connection_pressure,
+        notify_cooldown_seconds: Math.max(0, Math.round(cooldownMinutes * 60)),
+        notify_cpu_threshold: Number(config.notify_cpu_threshold) || 0,
+        notify_ram_threshold: Number(config.notify_ram_threshold) || 0,
+        notify_disk_threshold: Number(config.notify_disk_threshold) || 0,
+        notify_connection_percent_threshold: Number(config.notify_connection_percent_threshold) || 0
       }
 
       const response = await fetch(getApiUrl('/api/smtp/config'), {
@@ -146,6 +204,18 @@ function SmtpConfig() {
 
   const currentMode = modes.find((m) => m.value === config.mode)
   const requiresAuth = currentMode?.requires_auth || false
+  const notifyRecipientsList = config.notify_recipients
+    .split(/[\n,]/)
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0)
+  const notificationsEnabled =
+    config.notify_critical ||
+    config.notify_security ||
+    config.notify_config_changes ||
+    config.notify_service_status ||
+    config.notify_resource_pressure ||
+    config.notify_connection_pressure
+  const recipientsMissing = notificationsEnabled && notifyRecipientsList.length === 0
   const isConfigReady = (() => {
     if (!config.enabled) return false
     if (!config.host?.trim()) return false
@@ -275,6 +345,259 @@ function SmtpConfig() {
                   </div>
                 </>
               )}
+            </div>
+          </div>
+
+          <div className="form-section notification-section">
+            <div className="notification-header">
+              <div className="notification-title">
+                <BellRing size={20} />
+                <div>
+                  <h4>Notification Settings</h4>
+                  <div className="form-section-description">
+                    Control delivery targets, alert types, and throttling for SMTP notifications.
+                  </div>
+                </div>
+              </div>
+              <span className={`notification-status ${notificationsEnabled ? 'on' : 'off'}`}>
+                {notificationsEnabled ? 'Alerts enabled' : 'Alerts disabled'}
+              </span>
+            </div>
+
+            <div className="notification-grid">
+              <div className="notification-card">
+                <div className="notification-card-header">
+                  <Settings2 size={18} />
+                  <div>
+                    <h5>Recipients</h5>
+                    <p>Who should receive alert emails.</p>
+                  </div>
+                </div>
+                <div className="form-group">
+                  <label>Notification Recipients</label>
+                  <textarea
+                    rows="3"
+                    placeholder="admin@example.com, oncall@example.com"
+                    value={config.notify_recipients}
+                    onChange={(e) => setConfig((prev) => ({ ...prev, notify_recipients: e.target.value }))}
+                  />
+                  <div className="notification-meta">
+                    <span className="subtle-text">Separate addresses with commas or new lines.</span>
+                    <span className="notification-pill">
+                      {notifyRecipientsList.length} recipient{notifyRecipientsList.length === 1 ? '' : 's'}
+                    </span>
+                  </div>
+                  {recipientsMissing && (
+                    <span className="subtle-text notification-warning">
+                      Add at least one recipient to enable notifications.
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <div className="notification-card">
+                <div className="notification-card-header">
+                  <ShieldAlert size={18} />
+                  <div>
+                    <h5>Alert Types</h5>
+                    <p>Select the events that should trigger email alerts.</p>
+                  </div>
+                </div>
+                <div className="toggle-list">
+                  <label className="toggle-row">
+                    <input
+                      type="checkbox"
+                      checked={config.notify_critical}
+                      onChange={(e) =>
+                        setConfig((prev) => ({ ...prev, notify_critical: e.target.checked }))
+                      }
+                    />
+                    <span>
+                      <strong>Critical failures</strong>
+                      <span className="subtle-text">Blocked starts and config errors.</span>
+                    </span>
+                  </label>
+
+                  <label className="toggle-row">
+                    <input
+                      type="checkbox"
+                      checked={config.notify_security}
+                      onChange={(e) =>
+                        setConfig((prev) => ({ ...prev, notify_security: e.target.checked }))
+                      }
+                    />
+                    <span>
+                      <strong>Security incidents</strong>
+                      <span className="subtle-text">Failed dashboard logins.</span>
+                    </span>
+                  </label>
+
+                  <label className="toggle-row">
+                    <input
+                      type="checkbox"
+                      checked={config.notify_config_changes}
+                      onChange={(e) =>
+                        setConfig((prev) => ({ ...prev, notify_config_changes: e.target.checked }))
+                      }
+                    />
+                    <span>
+                      <strong>Config changes</strong>
+                      <span className="subtle-text">High-impact updates via dashboard.</span>
+                    </span>
+                  </label>
+
+                  <label className="toggle-row">
+                    <input
+                      type="checkbox"
+                      checked={config.notify_service_status}
+                      onChange={(e) =>
+                        setConfig((prev) => ({ ...prev, notify_service_status: e.target.checked }))
+                      }
+                    />
+                    <span>
+                      <strong>Service status</strong>
+                      <span className="subtle-text">Start/restart notifications.</span>
+                    </span>
+                  </label>
+
+                  <label className="toggle-row">
+                    <input
+                      type="checkbox"
+                      checked={config.notify_resource_pressure}
+                      onChange={(e) =>
+                        setConfig((prev) => ({
+                          ...prev,
+                          notify_resource_pressure: e.target.checked
+                        }))
+                      }
+                    />
+                    <span>
+                      <strong>Resource pressure</strong>
+                      <span className="subtle-text">CPU/RAM/Disk above thresholds.</span>
+                    </span>
+                  </label>
+
+                  <label className="toggle-row">
+                    <input
+                      type="checkbox"
+                      checked={config.notify_connection_pressure}
+                      onChange={(e) =>
+                        setConfig((prev) => ({
+                          ...prev,
+                          notify_connection_pressure: e.target.checked
+                        }))
+                      }
+                    />
+                    <span>
+                      <strong>Connection pressure</strong>
+                      <span className="subtle-text">Approaching connection limits.</span>
+                    </span>
+                  </label>
+                </div>
+              </div>
+
+              <div className="notification-card">
+                <div className="notification-card-header">
+                  <Activity size={18} />
+                  <div>
+                    <h5>Thresholds & Cooldown</h5>
+                    <p>Throttle alerts and set resource trigger levels.</p>
+                  </div>
+                </div>
+                <div className="threshold-grid">
+                  <div className="form-group">
+                    <label>Cooldown (minutes)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={config.notify_cooldown_minutes}
+                      onChange={(e) =>
+                        setConfig((prev) => ({
+                          ...prev,
+                          notify_cooldown_minutes: Number(e.target.value) || 0
+                        }))
+                      }
+                    />
+                    <span className="subtle-text">Minimum time between emails per category.</span>
+                  </div>
+
+                  <div className="form-group">
+                    <label>
+                      <Cpu size={14} style={{ marginRight: '6px' }} />
+                      CPU Alert (%)
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="100"
+                      value={config.notify_cpu_threshold}
+                      onChange={(e) =>
+                        setConfig((prev) => ({
+                          ...prev,
+                          notify_cpu_threshold: Number(e.target.value) || 0
+                        }))
+                      }
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label>
+                      <Gauge size={14} style={{ marginRight: '6px' }} />
+                      RAM Alert (%)
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="100"
+                      value={config.notify_ram_threshold}
+                      onChange={(e) =>
+                        setConfig((prev) => ({
+                          ...prev,
+                          notify_ram_threshold: Number(e.target.value) || 0
+                        }))
+                      }
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label>
+                      <HardDrive size={14} style={{ marginRight: '6px' }} />
+                      Disk Alert (%)
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="100"
+                      value={config.notify_disk_threshold}
+                      onChange={(e) =>
+                        setConfig((prev) => ({
+                          ...prev,
+                          notify_disk_threshold: Number(e.target.value) || 0
+                        }))
+                      }
+                    />
+                  </div>
+
+                  <div className="form-group" style={{ gridColumn: 'span 2' }}>
+                    <label>Connection Limit Alert (%)</label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="100"
+                      value={config.notify_connection_percent_threshold}
+                      onChange={(e) =>
+                        setConfig((prev) => ({
+                          ...prev,
+                          notify_connection_percent_threshold: Number(e.target.value) || 0
+                        }))
+                      }
+                    />
+                    <span className="subtle-text">
+                      Uses the lower of server max connections and the Linux FD soft limit.
+                    </span>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 

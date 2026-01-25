@@ -25,8 +25,34 @@ api_token = "change-me" # Required for SMTP password encryption
 1. Open the dashboard and navigate to **SMTP**.
 2. Choose a connection mode and fill in host, port, and sender details.
 3. If the mode requires auth, enter the username and password (leave blank to keep the existing password).
-4. Save the configuration.
-5. Use **Test Connection** to send a test email.
+4. Configure notification recipients and toggle which alerts should be delivered.
+5. Save the configuration.
+6. Use **Test Connection** to send a test email.
+
+## Notification Settings
+
+The SMTP page includes per-category switches and a recipient list used for operational alerts:
+
+- **Critical failures** (blocked startup or configuration errors)
+- **Security incidents** (failed dashboard logins)
+- **Configuration changes** (high-impact updates via the dashboard)
+- **Service status** (start/restart notifications)
+- **Resource pressure** (CPU/RAM/disk usage above thresholds)
+- **Connection pressure** (active sessions approaching the configured limit)
+
+Enter one or more recipient addresses separated by commas or new lines. Notifications are only sent when SMTP is enabled and at least one recipient is configured.
+
+### Cooldown and Thresholds
+
+To avoid flooding inboxes, alerts share a configurable cooldown (in seconds) applied per category. Resource and connection alerts use adjustable thresholds (percentage values).
+
+Defaults:
+- Cooldown: 60 minutes (3600s)
+- CPU/RAM: 85%
+- Disk: 90%
+- Connection utilization: 85% of the effective limit (min of `server.max_connections` and the Linux file descriptor soft limit when available)
+
+Resource checks run periodically (every ~30 seconds) and respect the cooldown per category. The dashboard presents cooldown in minutes and converts to seconds internally.
 
 ## API Endpoints
 

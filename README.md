@@ -70,7 +70,7 @@ A modern, high-performance SOCKS5 proxy server written in Rust, featuring advanc
   - User management
   - Statistics & analytics
   - System resources overview
-  - SMTP configuration with test emails
+  - SMTP configuration with notification switches, cooldowns, and test emails
   - Built with React + Vite
 
 - **🔌 REST API & Swagger**

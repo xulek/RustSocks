@@ -1,6 +1,8 @@
 use crate::api::handlers::sessions::ApiState;
 use crate::api::types::{AclTestRequest, AclTestResponse, HealthResponse};
 use crate::config::Config;
+#[cfg(feature = "database")]
+use crate::smtp::notifications::{notify_with_pool, NotificationDecision, NotificationKind};
 use axum::{extract::State, http::StatusCode, Json};
 use serde::{Deserialize, Serialize};
 use std::ffi::OsString;
@@ -9,6 +11,26 @@ use std::sync::Arc;
 use tokio::fs;
 use tokio::time::{sleep, Duration};
 use tracing::{info, warn};
+
+#[cfg(feature = "database")]
+fn spawn_notification(state: &ApiState, kind: NotificationKind, subject: String, body: String) {
+    let Some(store) = state.session_store.as_ref() else {
+        return;
+    };
+    let pool = store.pool().clone();
+    let api_token = state.config_snapshot.sessions.api_token.clone();
+    tokio::spawn(async move {
+        match notify_with_pool(&pool, api_token, kind, subject, body).await {
+            Ok(NotificationDecision::Sent { recipients }) => {
+                info!("Notification sent to {} recipient(s)", recipients);
+            }
+            Ok(NotificationDecision::Skipped(_)) => {}
+            Err(err) => {
+                warn!("Failed to send notification: {}", err);
+            }
+        }
+    });
+}
 
 /// GET /health - Health check endpoint
 pub async fn health_check(State(state): State<ApiState>) -> (StatusCode, Json<HealthResponse>) {
@@ -168,11 +190,22 @@ pub async fn update_config_file(
     let new_config = match Config::from_toml_str(&payload.content) {
         Ok(cfg) => cfg,
         Err(e) => {
+            let message = format!("Invalid configuration: {}", e);
+            #[cfg(feature = "database")]
+            spawn_notification(
+                &state,
+                NotificationKind::Critical,
+                "RustSocks critical alert: configuration update failed".to_string(),
+                format!(
+                    "A configuration update was rejected due to validation errors.\n\nError: {}",
+                    message
+                ),
+            );
             return (
                 StatusCode::BAD_REQUEST,
                 Json(ConfigUpdateResponse {
                     success: false,
-                    message: format!("Invalid configuration: {}", e),
+                    message,
                     restarting: false,
                 }),
             );
@@ -180,11 +213,22 @@ pub async fn update_config_file(
     };
 
     if let Err(e) = new_config.write_to_file(&path) {
+        let message = format!("Failed to write configuration: {}", e);
+        #[cfg(feature = "database")]
+        spawn_notification(
+            &state,
+            NotificationKind::Critical,
+            "RustSocks critical alert: configuration update failed".to_string(),
+            format!(
+                "A configuration update failed while writing to disk.\n\nError: {}",
+                message
+            ),
+        );
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(ConfigUpdateResponse {
                 success: false,
-                message: format!("Failed to write configuration: {}", e),
+                message,
                 restarting: false,
             }),
         );
@@ -194,6 +238,17 @@ pub async fn update_config_file(
         path = %path.display(),
         restart = payload.restart,
         "Configuration updated via API"
+    );
+    #[cfg(feature = "database")]
+    spawn_notification(
+        &state,
+        NotificationKind::ConfigChange,
+        "RustSocks configuration updated".to_string(),
+        format!(
+            "The server configuration was updated via the dashboard API.\n\nPath: {}\nRestart scheduled: {}",
+            path.display(),
+            if payload.restart { "yes" } else { "no" }
+        ),
     );
 
     if payload.restart {

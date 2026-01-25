@@ -19,6 +19,10 @@ type HmacSha256 = Hmac<Sha256>;
 
 use crate::auth::verify_password;
 use crate::config::DashboardAuthSettings;
+#[cfg(feature = "database")]
+use crate::smtp::notifications::{notify_with_pool, NotificationDecision, NotificationKind};
+#[cfg(feature = "database")]
+use sqlx::{Any, Pool};
 
 const SESSION_COOKIE_NAME: &str = "rustsocks_session";
 
@@ -28,6 +32,8 @@ pub struct AuthState {
     pub sessions: Arc<DashMap<String, Session>>,
     pub base_path: String,
     pub api_token: Option<String>,
+    #[cfg(feature = "database")]
+    pub smtp_pool: Option<Pool<Any>>,
 }
 
 #[derive(Clone, Debug)]
@@ -38,6 +44,7 @@ pub struct Session {
 }
 
 impl AuthState {
+    #[cfg(not(feature = "database"))]
     pub fn new(
         settings: DashboardAuthSettings,
         base_path: String,
@@ -48,6 +55,22 @@ impl AuthState {
             sessions: Arc::new(DashMap::new()),
             base_path,
             api_token,
+        }
+    }
+
+    #[cfg(feature = "database")]
+    pub fn new(
+        settings: DashboardAuthSettings,
+        base_path: String,
+        api_token: Option<String>,
+        smtp_pool: Option<Pool<Any>>,
+    ) -> Self {
+        Self {
+            settings,
+            sessions: Arc::new(DashMap::new()),
+            base_path,
+            api_token,
+            smtp_pool,
         }
     }
 
@@ -186,6 +209,12 @@ pub async fn login_handler(
     // Verify credentials
     if !auth_state.verify_credentials(&req.username, &req.password) {
         warn!("Failed login attempt for user: {}", req.username);
+        #[cfg(feature = "database")]
+        spawn_security_notification(
+            &auth_state,
+            &req.username,
+            "Invalid username or password",
+        );
         return (
             StatusCode::UNAUTHORIZED,
             Json(LoginResponse {
@@ -208,6 +237,12 @@ pub async fn login_handler(
                         "Altcha verification failed for user {}: {}",
                         req.username, err_msg
                     );
+                    #[cfg(feature = "database")]
+                    spawn_security_notification(
+                        &auth_state,
+                        &req.username,
+                        &format!("Altcha verification failed: {}", err_msg),
+                    );
                     return (
                         StatusCode::UNAUTHORIZED,
                         Json(LoginResponse {
@@ -223,6 +258,12 @@ pub async fn login_handler(
                 warn!(
                     "Altcha required but not provided for user: {}",
                     req.username
+                );
+                #[cfg(feature = "database")]
+                spawn_security_notification(
+                    &auth_state,
+                    &req.username,
+                    "Altcha required but not provided",
                 );
                 return (
                     StatusCode::UNAUTHORIZED,
@@ -272,6 +313,40 @@ pub async fn login_handler(
     *response.status_mut() = StatusCode::OK;
 
     response
+}
+
+#[cfg(feature = "database")]
+fn spawn_security_notification(auth_state: &AuthState, username: &str, reason: &str) {
+    let Some(pool) = auth_state.smtp_pool.as_ref() else {
+        return;
+    };
+    let subject = "RustSocks security alert: failed login attempt".to_string();
+    let body = format!(
+        "A failed dashboard login attempt was detected.\n\nUsername: {}\nReason: {}\n",
+        username, reason
+    );
+    let pool = pool.clone();
+    let api_token = auth_state.api_token.clone();
+
+    tokio::spawn(async move {
+        match notify_with_pool(
+            &pool,
+            api_token,
+            NotificationKind::Security,
+            subject,
+            body,
+        )
+        .await
+        {
+            Ok(NotificationDecision::Sent { recipients }) => {
+                info!("Security notification sent to {} recipient(s)", recipients);
+            }
+            Ok(NotificationDecision::Skipped(_)) => {}
+            Err(err) => {
+                warn!("Failed to send security notification: {}", err);
+            }
+        }
+    });
 }
 
 fn verify_altcha(payload_str: &str, secret_key: &str) -> Result<(), String> {
@@ -506,10 +581,28 @@ mod tests {
     #[test]
     fn cookie_path_uses_base_path_or_root() {
         let settings = DashboardAuthSettings::default();
-        let state = AuthState::new(settings.clone(), "/rustsocks".to_string(), None);
+        let state = {
+            #[cfg(feature = "database")]
+            {
+                AuthState::new(settings.clone(), "/rustsocks".to_string(), None, None)
+            }
+            #[cfg(not(feature = "database"))]
+            {
+                AuthState::new(settings.clone(), "/rustsocks".to_string(), None)
+            }
+        };
         assert_eq!(state.cookie_path(), "/rustsocks");
 
-        let root_state = AuthState::new(settings, "".to_string(), None);
+        let root_state = {
+            #[cfg(feature = "database")]
+            {
+                AuthState::new(settings, "".to_string(), None, None)
+            }
+            #[cfg(not(feature = "database"))]
+            {
+                AuthState::new(settings, "".to_string(), None)
+            }
+        };
         assert_eq!(root_state.cookie_path(), "/");
     }
 

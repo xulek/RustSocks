@@ -76,6 +76,18 @@ pub async fn get_smtp_config(
                     from_name: config.from_name,
                     username: config.username,
                     has_password: config.has_password,
+                    notify_recipients: config.notify_recipients,
+                    notify_critical: config.notify_critical,
+                    notify_security: config.notify_security,
+                    notify_config_changes: config.notify_config_changes,
+                    notify_service_status: config.notify_service_status,
+                    notify_resource_pressure: config.notify_resource_pressure,
+                    notify_connection_pressure: config.notify_connection_pressure,
+                    notify_cooldown_seconds: config.notify_cooldown_seconds,
+                    notify_cpu_threshold: config.notify_cpu_threshold,
+                    notify_ram_threshold: config.notify_ram_threshold,
+                    notify_disk_threshold: config.notify_disk_threshold,
+                    notify_connection_percent_threshold: config.notify_connection_percent_threshold,
                 };
                 (StatusCode::OK, Json(serde_json::to_value(response).unwrap()))
             }
@@ -140,6 +152,18 @@ pub async fn update_smtp_config(
             username: request.username,
             password: None,
             has_password: false,
+            notify_recipients: request.notify_recipients,
+            notify_critical: request.notify_critical,
+            notify_security: request.notify_security,
+            notify_config_changes: request.notify_config_changes,
+            notify_service_status: request.notify_service_status,
+            notify_resource_pressure: request.notify_resource_pressure,
+            notify_connection_pressure: request.notify_connection_pressure,
+            notify_cooldown_seconds: request.notify_cooldown_seconds,
+            notify_cpu_threshold: request.notify_cpu_threshold,
+            notify_ram_threshold: request.notify_ram_threshold,
+            notify_disk_threshold: request.notify_disk_threshold,
+            notify_connection_percent_threshold: request.notify_connection_percent_threshold,
         };
 
         match repo
