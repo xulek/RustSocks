@@ -16,8 +16,8 @@ services:
       - "9090:9090"
 
     volumes:
-      # Configuration directory
-      - ./docker/configs:/etc/rustsocks:ro
+      # Configuration directory (rw for UI config editing)
+      - ./docker/configs:/etc/rustsocks:rw
 
       # PAM configuration (read-only)
       - ./docker/configs/pam.d:/etc/pam.d:ro
