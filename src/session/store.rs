@@ -328,7 +328,10 @@ impl SessionStore {
             "bytes_received" => "bytes_received",
             "duration_seconds" | "duration_secs" => "duration_secs",
             "start_time" => "start_time",
-            _ => "start_time", // default fallback
+            other => {
+                tracing::warn!(column = %other, "Invalid sort column requested, falling back to start_time");
+                "start_time"
+            }
         };
 
         let sort_dir = filter.sort_dir.as_deref().unwrap_or("desc");
@@ -1182,9 +1185,11 @@ impl SessionRow {
             duration_secs: sanitize_duration(self.duration_secs),
             connect_latency_ms: None,
             source_ip,
-            source_port: self.source_port as u16,
+            source_port: u16::try_from(self.source_port)
+                .map_err(|_| decode_error("source_port", format!("out of range: {}", self.source_port)))?,
             dest_ip: self.dest_ip.into(),
-            dest_port: self.dest_port as u16,
+            dest_port: u16::try_from(self.dest_port)
+                .map_err(|_| decode_error("dest_port", format!("out of range: {}", self.dest_port)))?,
             protocol,
             bytes_sent: self.bytes_sent as u64,
             bytes_received: self.bytes_received as u64,

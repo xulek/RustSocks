@@ -376,7 +376,7 @@ impl HtbQos {
 
         // Apply new rates
         for (user, bucket, new_rate) in allocations {
-            bucket.max_bucket.set_refill_rate(new_rate).await;
+            bucket.max_bucket.set_refill_rate(new_rate);
             bucket.current_demand.store(new_rate, Ordering::Relaxed);
 
             trace!(

@@ -186,11 +186,6 @@ impl SessionManager {
         self.batch_writer.get().cloned()
     }
 
-    #[cfg(feature = "database")]
-    fn clone_batch_writer_handle(handle: &OnceLock<Arc<BatchWriter>>) -> Option<Arc<BatchWriter>> {
-        handle.get().cloned()
-    }
-
     /// Retrieve the active session handle if it exists.
     pub fn get_session(&self, session_id: &Uuid) -> Option<Arc<RwLock<Session>>> {
         self.active_sessions
@@ -412,7 +407,7 @@ impl SessionManager {
             SessionMetrics::record_traffic(&user_label, update.bytes_sent, update.bytes_received);
 
             #[cfg(feature = "database")]
-            if let Some(writer) = Self::clone_batch_writer_handle(batch_writer) {
+            if let Some(writer) = batch_writer.get().cloned() {
                 let snapshot = session_guard.clone();
                 drop(session_guard);
                 writer.enqueue(snapshot).await;

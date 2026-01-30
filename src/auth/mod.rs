@@ -183,10 +183,9 @@ impl AuthManager {
                     Ok(Some((username, groups)))
                 } else {
                     warn!(user = %username, "User/pass authentication failed");
-                    Err(RustSocksError::AuthFailed(format!(
-                        "Invalid credentials for user: {}",
-                        username
-                    )))
+                    Err(RustSocksError::AuthFailed(
+                        "Invalid credentials".to_string(),
+                    ))
                 }
             }
             (AuthBackend::PamUsername(pam), AuthMethod::UserPass) => {

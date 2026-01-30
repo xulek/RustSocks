@@ -102,7 +102,7 @@ impl AclEngine {
 
             // Insert into both maps - regular and lowercase index
             groups.insert(group_acl.name.clone(), compiled_group.clone());
-            groups_by_lowercase.insert(group_acl.name.to_ascii_lowercase(), compiled_group);
+            groups_by_lowercase.insert(group_acl.name.to_lowercase(), compiled_group);
         }
 
         Ok(CompiledAclConfig {
@@ -286,7 +286,7 @@ impl AclEngine {
 
         // OPTIMIZATION: Iterate through user's LDAP groups with O(1) lookup instead of O(n*m) nested loop
         for ldap_group in user_groups {
-            let lowercase_group = ldap_group.to_ascii_lowercase();
+            let lowercase_group = ldap_group.to_lowercase();
             if let Some(group_acl) = config.groups_by_lowercase.get(&lowercase_group) {
                 // Cheap clone - just Arc increment, no deep copy
                 // Rules are already sorted during compilation
@@ -322,7 +322,7 @@ impl AclEngine {
 
         // Use O(1) lowercase lookup instead of nested loop
         for ldap_group in user_groups {
-            let lowercase_group = ldap_group.to_ascii_lowercase();
+            let lowercase_group = ldap_group.to_lowercase();
             if config.groups_by_lowercase.contains_key(&lowercase_group) {
                 matched.push(ldap_group.clone());
             }

@@ -428,7 +428,7 @@ async fn test_udp_packet_roundtrip() {
         data: Bytes::from_static(b"Hello, UDP!"),
     };
 
-    let serialized = serialize_udp_packet(&original_packet);
+    let serialized = serialize_udp_packet(&original_packet).unwrap();
     let deserialized = parse_udp_packet(Bytes::from(serialized)).unwrap();
 
     assert_eq!(deserialized.header.port, original_packet.header.port);

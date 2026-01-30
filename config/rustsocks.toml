@@ -74,7 +74,7 @@ enabled = true
 altcha_enabled = true
 session_secret = "your-super-secret-random-string-here"
 session_duration_hours = 24
-cookie_secure = false
+cookie_secure = true
 
 [[sessions.dashboard_auth.users]]
 username = "admin"

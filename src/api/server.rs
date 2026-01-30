@@ -1556,9 +1556,10 @@ pub async fn start_api_server(
             .nest(&base_path, app)
     };
 
-    // Layer with state and body limit
+    // Layer with state, body limit, and security headers
     let app = app
         .layer(DefaultBodyLimit::max(1024 * 1024)) // 1MB max body
+        .layer(middleware::from_fn(security_headers_middleware))
         .with_state(state);
 
     // Bind and listen
@@ -1708,6 +1709,21 @@ fn normalize_request_path<'a>(path: &'a str, base_path: &str) -> &'a str {
     } else {
         path
     }
+}
+
+async fn security_headers_middleware(
+    request: Request<Body>,
+    next: Next,
+) -> Response<Body> {
+    let mut response = next.run(request).await;
+    let headers = response.headers_mut();
+    headers.insert("X-Frame-Options", "SAMEORIGIN".parse().unwrap());
+    headers.insert("X-Content-Type-Options", "nosniff".parse().unwrap());
+    headers.insert(
+        "Referrer-Policy",
+        "strict-origin-when-cross-origin".parse().unwrap(),
+    );
+    response
 }
 
 fn constant_time_eq(a: &str, b: &str) -> bool {

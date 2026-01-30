@@ -13,8 +13,8 @@ pub struct TokenBucket {
     /// Current available tokens (atomic for lock-free access)
     tokens: AtomicU64,
 
-    /// Refill rate (tokens per second)
-    refill_rate: u64,
+    /// Refill rate (tokens per second, atomic for lock-free dynamic adjustment)
+    refill_rate: AtomicU64,
 
     /// Creation instant (immutable reference point for time calculations)
     created_at: Instant,
@@ -33,7 +33,7 @@ impl TokenBucket {
         Self {
             capacity,
             tokens: AtomicU64::new(capacity), // Start full
-            refill_rate,
+            refill_rate: AtomicU64::new(refill_rate),
             created_at: Instant::now(),
             last_refill_nanos: AtomicU64::new(0), // 0 nanos since creation
         }
@@ -113,7 +113,8 @@ impl TokenBucket {
         // Calculate tokens to add based on elapsed time
         // tokens = elapsed_seconds * refill_rate
         // Using integer math: tokens = (elapsed_nanos * refill_rate) / 1_000_000_000
-        let tokens_to_add = (elapsed_nanos as u128 * self.refill_rate as u128 / 1_000_000_000) as u64;
+        let rate = self.refill_rate.load(Ordering::Acquire);
+        let tokens_to_add = (elapsed_nanos as u128 * rate as u128 / 1_000_000_000) as u64;
 
         if tokens_to_add == 0 {
             return;
@@ -162,22 +163,18 @@ impl TokenBucket {
     }
 
     /// Set refill rate (for dynamic rate adjustment)
-    pub async fn set_refill_rate(&self, new_rate: u64) {
-        // Update the rate atomically by reconstructing the bucket
-        // This is safe because we're only changing the rate, not the tokens
-        let bucket = self as *const Self as *mut Self;
-        unsafe {
-            (*bucket).refill_rate = new_rate;
-        }
+    pub fn set_refill_rate(&self, new_rate: u64) {
+        self.refill_rate.store(new_rate, Ordering::Release);
     }
 
     /// Calculate wait time for given deficit
     fn calculate_wait_time(&self, deficit: u64) -> Duration {
-        if self.refill_rate == 0 {
+        let rate = self.refill_rate.load(Ordering::Acquire);
+        if rate == 0 {
             return Duration::from_secs(1); // Fallback
         }
 
-        let wait_secs = deficit as f64 / self.refill_rate as f64;
+        let wait_secs = deficit as f64 / rate as f64;
         Duration::from_secs_f64(wait_secs.max(0.001)) // Minimum 1ms
     }
 
@@ -194,7 +191,7 @@ impl TokenBucket {
 
     /// Get refill rate
     pub fn refill_rate(&self) -> u64 {
-        self.refill_rate
+        self.refill_rate.load(Ordering::Acquire)
     }
 
     /// Reset bucket to full capacity (used in tests)

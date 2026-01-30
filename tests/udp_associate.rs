@@ -375,7 +375,7 @@ username = "anonymous"
         },
         data: Bytes::from_static(b"allow"),
     };
-    let allowed_bytes = serialize_udp_packet(&allowed_packet);
+    let allowed_bytes = serialize_udp_packet(&allowed_packet).unwrap();
     udp_client
         .send_to(&allowed_bytes, &relay_addr)
         .await
@@ -398,7 +398,7 @@ username = "anonymous"
         },
         data: Bytes::from_static(b"block"),
     };
-    let blocked_bytes = serialize_udp_packet(&blocked_packet);
+    let blocked_bytes = serialize_udp_packet(&blocked_packet).unwrap();
     udp_client
         .send_to(&blocked_bytes, &relay_addr)
         .await

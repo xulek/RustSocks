@@ -78,7 +78,7 @@ dashboard_enabled = true    # Enable Web Dashboard at /
 base_path = "/"
 [sessions.dashboard_auth]
 enabled = false             # Enable Basic Auth for the dashboard
-# cookie_secure = false      # Set true when dashboard is served via HTTPS
+# cookie_secure = true       # Secure flag on cookies (default: true, set false only for HTTP-only setups)
 # [[sessions.dashboard_auth.users]]
 # username = "admin"
 # password = "strong-secret"

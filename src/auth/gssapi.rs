@@ -186,13 +186,15 @@ impl GssApiAuthenticator {
             let token = client_msg.token.clone();
             let current_ctx = server_ctx.take();
             let ctx_result = task::spawn_blocking(move || {
-                let mut ctx = current_ctx.unwrap_or_else(|| {
-                    // Acquire credentials again for new context
-                    // This is fast as credentials are cached by the system
-                    let cred = Cred::acquire(None, None, CredUsage::Accept, None)
-                        .expect("Failed to acquire credentials for new context");
-                    ServerCtx::new(cred)
-                });
+                let mut ctx = match current_ctx {
+                    Some(ctx) => ctx,
+                    None => {
+                        // Acquire credentials again for new context
+                        // This is fast as credentials are cached by the system
+                        let cred = Cred::acquire(None, None, CredUsage::Accept, None)?;
+                        ServerCtx::new(cred)
+                    }
+                };
                 let output_token = ctx.step(&token)?;
                 Ok::<_, libgssapi::error::Error>((ctx, output_token))
             })
@@ -321,10 +323,9 @@ impl GssApiAuthenticator {
         // Move ctx into spawn_blocking and get it back
         let token = client_msg.token.clone();
         let server_protection_level = self.protection_level;
-        let mut ctx_moved = std::mem::replace(
-            ctx,
-            ServerCtx::new(Cred::acquire(None, None, CredUsage::Accept, None).unwrap()),
-        );
+        let placeholder_cred = Cred::acquire(None, None, CredUsage::Accept, None)
+            .map_err(|e| GssApiAuthError::System(format!("Failed to acquire GSS-API credentials: {}", e)))?;
+        let mut ctx_moved = std::mem::replace(ctx, ServerCtx::new(placeholder_cred));
 
         let result = task::spawn_blocking(
             move || -> Result<(ServerCtx, u8, Vec<u8>), libgssapi::error::Error> {

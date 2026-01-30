@@ -9,7 +9,7 @@ use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tracing::{debug, info, warn};
 
 // HMAC for Altcha signature
@@ -25,6 +25,10 @@ use crate::smtp::notifications::{notify_with_pool, NotificationDecision, Notific
 use sqlx::{Any, Pool};
 
 const SESSION_COOKIE_NAME: &str = "rustsocks_session";
+/// Max failed login attempts per username before lockout
+const MAX_LOGIN_ATTEMPTS: u32 = 5;
+/// Lockout duration after exceeding max attempts
+const LOGIN_LOCKOUT_SECS: u64 = 300; // 5 minutes
 
 #[derive(Clone)]
 pub struct AuthState {
@@ -32,6 +36,8 @@ pub struct AuthState {
     pub sessions: Arc<DashMap<String, Session>>,
     pub base_path: String,
     pub api_token: Option<String>,
+    /// Tracks failed login attempts: username -> (count, first_failure_timestamp)
+    pub login_attempts: Arc<DashMap<String, (u32, u64)>>,
     #[cfg(feature = "database")]
     pub smtp_pool: Option<Pool<Any>>,
 }
@@ -55,6 +61,7 @@ impl AuthState {
             sessions: Arc::new(DashMap::new()),
             base_path,
             api_token,
+            login_attempts: Arc::new(DashMap::new()),
         }
     }
 
@@ -70,8 +77,48 @@ impl AuthState {
             sessions: Arc::new(DashMap::new()),
             base_path,
             api_token,
+            login_attempts: Arc::new(DashMap::new()),
             smtp_pool,
         }
+    }
+
+    /// Check if a user is currently rate-limited. Returns true if locked out.
+    fn is_login_locked(&self, username: &str) -> bool {
+        if let Some(entry) = self.login_attempts.get(username) {
+            let (count, first_failure) = *entry;
+            if count >= MAX_LOGIN_ATTEMPTS {
+                let now = current_timestamp();
+                if now - first_failure < LOGIN_LOCKOUT_SECS {
+                    return true;
+                }
+                // Lockout expired, clear
+                drop(entry);
+                self.login_attempts.remove(username);
+            }
+        }
+        false
+    }
+
+    /// Record a failed login attempt.
+    fn record_failed_login(&self, username: &str) {
+        let now = current_timestamp();
+        self.login_attempts
+            .entry(username.to_string())
+            .and_modify(|(count, first_failure)| {
+                if now - *first_failure >= LOGIN_LOCKOUT_SECS {
+                    // Reset window
+                    *count = 1;
+                    *first_failure = now;
+                } else {
+                    *count += 1;
+                }
+            })
+            .or_insert((1, now));
+    }
+
+    /// Clear login attempts on successful login.
+    fn clear_login_attempts(&self, username: &str) {
+        self.login_attempts.remove(username);
     }
 
     pub fn create_session(&self, username: String) -> String {
@@ -137,8 +184,16 @@ impl AuthState {
 fn current_timestamp() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .unwrap()
+        .unwrap_or(Duration::ZERO)
         .as_secs()
+}
+
+/// Derive a separate key for altcha CAPTCHA so the session secret is not reused directly.
+fn derive_altcha_key(session_secret: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(b"rustsocks-altcha-v1:");
+    hasher.update(session_secret.as_bytes());
+    format!("{:x}", hasher.finalize())
 }
 
 fn generate_session_token(username: &str, timestamp: u64, secret: &str) -> String {
@@ -146,7 +201,7 @@ fn generate_session_token(username: &str, timestamp: u64, secret: &str) -> Strin
     hasher.update(username.as_bytes());
     hasher.update(timestamp.to_string().as_bytes());
     hasher.update(secret.as_bytes());
-    hasher.update(rand_bytes(16).as_slice());
+    hasher.update(rand_bytes(32).as_slice());
     format!("{:x}", hasher.finalize())
 }
 
@@ -206,8 +261,23 @@ pub async fn login_handler(
 
     debug!("Login attempt for user: {}", req.username);
 
+    // Check rate limiting
+    if auth_state.is_login_locked(&req.username) {
+        warn!("Login rate-limited for user: {}", req.username);
+        return (
+            StatusCode::TOO_MANY_REQUESTS,
+            Json(LoginResponse {
+                success: false,
+                message: "Too many failed attempts. Please try again later.".to_string(),
+                username: None,
+            }),
+        )
+            .into_response();
+    }
+
     // Verify credentials
     if !auth_state.verify_credentials(&req.username, &req.password) {
+        auth_state.record_failed_login(&req.username);
         warn!("Failed login attempt for user: {}", req.username);
         #[cfg(feature = "database")]
         spawn_security_notification(
@@ -231,7 +301,7 @@ pub async fn login_handler(
         match &req.altcha {
             Some(altcha_payload) => {
                 if let Err(err_msg) =
-                    verify_altcha(altcha_payload, &auth_state.settings.session_secret)
+                    verify_altcha(altcha_payload, &derive_altcha_key(&auth_state.settings.session_secret))
                 {
                     warn!(
                         "Altcha verification failed for user {}: {}",
@@ -278,6 +348,9 @@ pub async fn login_handler(
         }
     }
 
+    // Clear rate limiter on success
+    auth_state.clear_login_attempts(&req.username);
+
     // Create session
     let token = auth_state.create_session(req.username.clone());
 
@@ -295,21 +368,30 @@ pub async fn login_handler(
         cookie.push_str("; Secure");
     }
 
-    let json_body = serde_json::to_string(&LoginResponse {
+    let json_body = match serde_json::to_string(&LoginResponse {
         success: true,
         message: "Login successful".to_string(),
         username: Some(req.username),
-    })
-    .unwrap();
+    }) {
+        Ok(body) => body,
+        Err(_) => {
+            return Response::builder()
+                .status(StatusCode::INTERNAL_SERVER_ERROR)
+                .body(Body::from("Internal server error"))
+                .expect("static response")
+                .into_response();
+        }
+    };
 
     let mut response = Response::new(Body::from(json_body));
 
-    response
-        .headers_mut()
-        .insert(header::SET_COOKIE, cookie.parse().unwrap());
-    response
-        .headers_mut()
-        .insert(header::CONTENT_TYPE, "application/json".parse().unwrap());
+    if let Ok(cookie_val) = cookie.parse() {
+        response.headers_mut().insert(header::SET_COOKIE, cookie_val);
+    }
+    response.headers_mut().insert(
+        header::CONTENT_TYPE,
+        header::HeaderValue::from_static("application/json"),
+    );
     *response.status_mut() = StatusCode::OK;
 
     response
@@ -375,7 +457,13 @@ fn verify_altcha(payload_str: &str, secret_key: &str) -> Result<(), String> {
     mac.update(signature_payload.as_bytes());
     let expected_signature = format!("{:x}", mac.finalize().into_bytes());
 
-    if payload.signature != expected_signature {
+    if payload.signature.len() != expected_signature.len()
+        || subtle::ConstantTimeEq::ct_eq(
+            payload.signature.as_bytes(),
+            expected_signature.as_bytes(),
+        )
+        .unwrap_u8() != 1
+    {
         return Err("Invalid signature".to_string());
     }
 
@@ -431,7 +519,9 @@ pub async fn logout_handler(
     if auth_state.settings.cookie_secure {
         cookie.push_str("; Secure");
     }
-    response_headers.insert(header::SET_COOKIE, cookie.parse().unwrap());
+    if let Ok(cookie_val) = cookie.parse() {
+        response_headers.insert(header::SET_COOKIE, cookie_val);
+    }
 
     (
         StatusCode::OK,
@@ -514,7 +604,8 @@ pub async fn altcha_challenge_handler(
     // Signature = HMAC-SHA256(salt + "?" + challenge, secret_key)
     // This allows server to verify the challenge was generated by us
     let signature_payload = format!("{}?{}", salt, challenge);
-    let mut mac = HmacSha256::new_from_slice(auth_state.settings.session_secret.as_bytes())
+    let altcha_key = derive_altcha_key(&auth_state.settings.session_secret);
+    let mut mac = HmacSha256::new_from_slice(altcha_key.as_bytes())
         .expect("HMAC can take key of any size");
     mac.update(signature_payload.as_bytes());
     let signature_bytes = mac.finalize().into_bytes();

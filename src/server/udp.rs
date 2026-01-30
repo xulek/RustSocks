@@ -141,7 +141,7 @@ async fn run_udp_relay(
                         let packet_data = buf.split().freeze();
 
                         // Determine if this is from client or from destination
-                        if peer_addr.ip() == client_addr.ip() {
+                        if peer_addr == client_addr {
                             // Packet from client to destination
                             if let Err(e) = handle_client_packet(
                                 &socket,
@@ -329,7 +329,7 @@ async fn handle_destination_packet(
         data: packet_data.clone(),
     };
 
-    let response_bytes = serialize_udp_packet(&response_packet);
+    let response_bytes = serialize_udp_packet(&response_packet)?;
 
     // Send to client
     if let Err(err) = udp_ctx

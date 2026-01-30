@@ -376,7 +376,7 @@ fn default_altcha_enabled() -> bool {
 }
 
 fn default_dashboard_cookie_secure() -> bool {
-    false
+    true
 }
 
 fn default_session_secret() -> String {
@@ -627,6 +627,29 @@ impl Default for MetricsSettings {
 }
 
 impl Config {
+    /// Expand environment variable references in sensitive config fields.
+    /// Supports `${VAR_NAME}` syntax. If the variable is not set, the value is left unchanged.
+    fn expand_env_vars(&mut self) {
+        fn expand(value: &mut String) {
+            if let Some(var_name) = value.strip_prefix("${").and_then(|s| s.strip_suffix('}')) {
+                if let Ok(env_val) = std::env::var(var_name) {
+                    *value = env_val;
+                }
+            }
+        }
+
+        fn expand_opt(value: &mut Option<String>) {
+            if let Some(inner) = value.as_mut() {
+                expand(inner);
+            }
+        }
+
+        expand_opt(&mut self.sessions.database_url);
+        expand_opt(&mut self.sessions.api_token);
+        expand(&mut self.sessions.dashboard_auth.session_secret);
+        expand_opt(&mut self.server.tls.key_password);
+    }
+
     /// Load configuration from file
     pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self> {
         let content = fs::read_to_string(path.as_ref())
@@ -640,6 +663,7 @@ impl Config {
         let mut config: Config = toml::from_str(content)
             .map_err(|e| RustSocksError::Config(format!("Failed to parse config: {}", e)))?;
 
+        config.expand_env_vars();
         config.validate()?;
 
         // Normalize base path after validation so downstream components can rely on canonical form.
@@ -755,6 +779,21 @@ impl Config {
                 return Err(RustSocksError::Config(
                     "PAM authentication is only supported on Unix-like systems".to_string(),
                 ));
+            }
+        }
+
+        // Ensure anonymous_user doesn't collide with a real username
+        if self.auth.socks_method == "userpass" {
+            if self
+                .auth
+                .users
+                .iter()
+                .any(|u| u.username == self.acl.anonymous_user)
+            {
+                return Err(RustSocksError::Config(format!(
+                    "auth.users contains a user named '{}' which collides with acl.anonymous_user",
+                    self.acl.anonymous_user
+                )));
             }
         }
 
@@ -927,6 +966,18 @@ impl Config {
             ));
         }
 
+        if self.server.handshake_timeout_ms > 300_000 {
+            return Err(RustSocksError::Config(
+                "server.handshake_timeout_ms must not exceed 300000 (5 minutes)".to_string(),
+            ));
+        }
+
+        if self.server.pool.idle_timeout_secs > 86400 {
+            return Err(RustSocksError::Config(
+                "server.pool.idle_timeout_secs must not exceed 86400 (24 hours)".to_string(),
+            ));
+        }
+
         if self.sessions.stats_api_enabled {
             if self.sessions.stats_api_bind_address.trim().is_empty() {
                 return Err(RustSocksError::Config(
@@ -1084,7 +1135,7 @@ base_path = "/"
 
 [sessions.dashboard_auth]
 enabled = false
-# cookie_secure = false
+# cookie_secure = true
 # [[sessions.dashboard_auth.users]]
 # username = "admin"
 # password = "strong-secret"
@@ -1182,7 +1233,7 @@ mod tests {
         assert!(!config.sessions.dashboard_enabled);
         assert!(!config.sessions.dashboard_auth.enabled);
         assert!(config.sessions.dashboard_auth.users.is_empty());
-        assert!(!config.sessions.dashboard_auth.cookie_secure);
+        assert!(config.sessions.dashboard_auth.cookie_secure);
         assert_eq!(config.sessions.base_path, "/");
         assert_eq!(config.sessions.normalized_base_path(), "/");
     }

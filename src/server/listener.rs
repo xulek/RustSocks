@@ -68,14 +68,12 @@ pub fn create_tls_acceptor(tls: &TlsSettings) -> Result<TlsAcceptor> {
         ));
     }
 
-    let cert_path = tls
-        .certificate_path
-        .as_deref()
-        .expect("validated: certificate_path must be set when TLS is enabled");
-    let key_path = tls
-        .private_key_path
-        .as_deref()
-        .expect("validated: private_key_path must be set when TLS is enabled");
+    let cert_path = tls.certificate_path.as_deref().ok_or_else(|| {
+        RustSocksError::Config("certificate_path must be set when TLS is enabled".to_string())
+    })?;
+    let key_path = tls.private_key_path.as_deref().ok_or_else(|| {
+        RustSocksError::Config("private_key_path must be set when TLS is enabled".to_string())
+    })?;
 
     let certs = load_certificates(cert_path)?;
     let key = load_private_key(key_path)?;
@@ -90,10 +88,11 @@ pub fn create_tls_acceptor(tls: &TlsSettings) -> Result<TlsAcceptor> {
     let builder = rustls::ServerConfig::builder_with_protocol_versions(protocol_versions);
 
     let mut config = if tls.require_client_auth {
-        let ca_path = tls
-            .client_ca_path
-            .as_deref()
-            .expect("validated: client_ca_path must be set when client auth is enabled");
+        let ca_path = tls.client_ca_path.as_deref().ok_or_else(|| {
+            RustSocksError::Config(
+                "client_ca_path must be set when client auth is enabled".to_string(),
+            )
+        })?;
         let root_store = build_client_root_store(ca_path)?;
         let client_verifier = rustls::server::WebPkiClientVerifier::builder(Arc::new(root_store))
             .build()
@@ -221,11 +220,11 @@ impl SocksServer {
         let mut watcher_setup: Option<(PathBuf, Arc<AclEngine>)> = None;
 
         if config.acl.enabled {
-            let config_path_str = config
-                .acl
-                .config_file
-                .as_ref()
-                .expect("validated: config_file must be provided when ACL is enabled");
+            let config_path_str = config.acl.config_file.as_ref().ok_or_else(|| {
+                RustSocksError::Config(
+                    "config_file must be provided when ACL is enabled".to_string(),
+                )
+            })?;
 
             let config_path = Self::resolve_acl_path(config_path_str)?;
 
@@ -279,7 +278,12 @@ impl SocksServer {
                 .sessions
                 .database_url
                 .as_ref()
-                .expect("validated: database_url present when SQL-backed storage enabled")
+                .ok_or_else(|| {
+                    RustSocksError::Config(
+                        "database_url must be provided when SQL-backed storage is enabled"
+                            .to_string(),
+                    )
+                })?
                 .clone();
 
             info!(database_url = %url, raw = ?url, "Initializing session store");

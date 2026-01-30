@@ -65,7 +65,7 @@ base_path = "/rustsocks"
 [sessions.dashboard_auth]
 enabled = true
 altcha_enabled = true
-cookie_secure = false
+cookie_secure = true
 session_secret = "_iAkmDrd-R9gUREdLxyageSRHgqhMdTD0DT_cw45kCQ"
 session_duration_hours = 24
 

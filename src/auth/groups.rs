@@ -50,6 +50,18 @@ pub fn get_user_groups(username: &str) -> Result<Vec<String>, std::io::Error> {
         );
     }
 
+    const MAX_GROUPS: libc::c_int = 10_000;
+    if ngroups > MAX_GROUPS {
+        warn!(
+            username = username,
+            ngroups = ngroups,
+            "User has too many groups ({}), capping at {}",
+            ngroups,
+            MAX_GROUPS
+        );
+        ngroups = MAX_GROUPS;
+    }
+
     if ngroups <= 0 {
         warn!(
             username = username,

@@ -26,11 +26,12 @@ pub struct TelemetryEvent {
 }
 
 /// In-memory history of telemetry events that can be queried by the API or UI.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct TelemetryHistory {
     events: Arc<RwLock<VecDeque<TelemetryEvent>>>,
     max_events: usize,
     max_age: ChronoDuration,
+    dropped_events: std::sync::atomic::AtomicU64,
 }
 
 impl TelemetryHistory {
@@ -40,6 +41,7 @@ impl TelemetryHistory {
             events: Arc::new(RwLock::new(VecDeque::with_capacity(max_events.max(1)))),
             max_events: max_events.max(1),
             max_age: ChronoDuration::hours(retention_hours as i64),
+            dropped_events: std::sync::atomic::AtomicU64::new(0),
         }
     }
 
@@ -59,9 +61,21 @@ impl TelemetryHistory {
 
         events.push_back(event);
 
+        let mut dropped = 0u64;
         while events.len() > self.max_events {
             events.pop_front();
+            dropped += 1;
         }
+        if dropped > 0 {
+            self.dropped_events
+                .fetch_add(dropped, std::sync::atomic::Ordering::Relaxed);
+        }
+    }
+
+    /// Get count of events dropped due to capacity limits.
+    pub fn dropped_event_count(&self) -> u64 {
+        self.dropped_events
+            .load(std::sync::atomic::Ordering::Relaxed)
     }
 
     /// Convenience helper that fills in the timestamp for you.

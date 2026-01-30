@@ -235,7 +235,7 @@ async fn fetch_history_from_store(
     let total_pages = if total == 0 {
         0
     } else {
-        ((total as f64) / (page_size as f64)).ceil() as u32
+        ((total + page_size as u64 - 1) / page_size as u64) as u32
     };
 
     let data = combined.into_iter().map(session_to_response).collect();
@@ -302,7 +302,7 @@ async fn build_memory_history_response(
     let total_pages = if total == 0 {
         0
     } else {
-        ((total as f64) / (page_size_usize as f64)).ceil() as u32
+        ((total + page_size_usize as u64 - 1) / page_size_usize as u64) as u32
     };
 
     let data = sessions

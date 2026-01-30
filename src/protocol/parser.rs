@@ -484,13 +484,23 @@ pub fn parse_udp_packet(buf: Bytes) -> Result<UdpPacket> {
 
 /// Serialize UDP packet to bytes
 /// Format: RSV(2) + FRAG(1) + ATYP(1) + DST.ADDR(var) + DST.PORT(2) + DATA
-pub fn serialize_udp_packet(packet: &UdpPacket) -> Vec<u8> {
+pub fn serialize_udp_packet(packet: &UdpPacket) -> Result<Vec<u8>> {
+    // Validate domain length before serialization
+    if let Address::Domain(domain) = &packet.header.address {
+        if domain.len() > 255 {
+            return Err(RustSocksError::Protocol(format!(
+                "Domain name too long for UDP packet: {} bytes (max 255)",
+                domain.len()
+            )));
+        }
+    }
+
     // Pre-calculate capacity to avoid reallocations
     let header_size =
         4 + match &packet.header.address {
             Address::IPv4(_) => 4,
             Address::IPv6(_) => 16,
-            Address::Domain(d) => 1 + d.len().min(255),
+            Address::Domain(d) => 1 + d.len(),
         } + 2; // port
     let mut buf = Vec::with_capacity(header_size + packet.data.len());
 
@@ -511,12 +521,9 @@ pub fn serialize_udp_packet(packet: &UdpPacket) -> Vec<u8> {
             buf.extend_from_slice(octets);
         }
         Address::Domain(domain) => {
-            // RFC 1928: Domain name length is u8 (max 255 octets)
-            // Note: This should not panic in normal operation as we validate on parse
-            let domain_len = domain.len().min(255);
             buf.push(0x03);
-            buf.push(domain_len as u8);
-            buf.extend_from_slice(&domain.as_bytes()[..domain_len]);
+            buf.push(domain.len() as u8);
+            buf.extend_from_slice(domain.as_bytes());
         }
     }
 
@@ -526,7 +533,7 @@ pub fn serialize_udp_packet(packet: &UdpPacket) -> Vec<u8> {
     // Data
     buf.extend_from_slice(packet.data.as_ref());
 
-    buf
+    Ok(buf)
 }
 
 /// Parse GSS-API message (RFC 1961)
