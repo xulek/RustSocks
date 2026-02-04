@@ -783,18 +783,17 @@ impl Config {
         }
 
         // Ensure anonymous_user doesn't collide with a real username
-        if self.auth.socks_method == "userpass" {
-            if self
+        if self.auth.socks_method == "userpass"
+            && self
                 .auth
                 .users
                 .iter()
                 .any(|u| u.username == self.acl.anonymous_user)
-            {
-                return Err(RustSocksError::Config(format!(
-                    "auth.users contains a user named '{}' which collides with acl.anonymous_user",
-                    self.acl.anonymous_user
-                )));
-            }
+        {
+            return Err(RustSocksError::Config(format!(
+                "auth.users contains a user named '{}' which collides with acl.anonymous_user",
+                self.acl.anonymous_user
+            )));
         }
 
         if self.auth.socks_method == "userpass" && self.auth.users.is_empty() {
