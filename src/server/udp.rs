@@ -118,6 +118,7 @@ async fn run_udp_relay(
     let socket = Arc::new(socket);
     let session_map = Arc::new(UdpSessionMap::new());
     let udp_ctx = Arc::new(udp_ctx);
+    let mut client_udp_addr: Option<SocketAddr> = None;
 
     const MAX_DATAGRAM: usize = 65_535;
     let mut buf = BytesMut::with_capacity(MAX_DATAGRAM);
@@ -141,7 +142,15 @@ async fn run_udp_relay(
                         let packet_data = buf.split().freeze();
 
                         // Determine if this is from client or from destination
-                        if peer_addr == client_addr {
+                        let is_client = match client_udp_addr {
+                            Some(addr) => addr == peer_addr,
+                            None => peer_addr.ip() == client_addr.ip(),
+                        };
+
+                        if is_client {
+                            if client_udp_addr.is_none() {
+                                client_udp_addr = Some(peer_addr);
+                            }
                             // Packet from client to destination
                             if let Err(e) = handle_client_packet(
                                 &socket,

@@ -20,6 +20,14 @@ fn running_under_coverage() -> bool {
         || std::env::var_os("TARPAULIN").is_some()
 }
 
+fn coverage_scale(default: usize, reduced: usize) -> usize {
+    if running_under_coverage() {
+        reduced
+    } else {
+        default
+    }
+}
+
 fn coverage_adjusted_budget(strict_ms: u64) -> Duration {
     let allowance = if running_under_coverage() {
         strict_ms + COVERAGE_SLOWDOWN_MS
@@ -193,8 +201,9 @@ mod token_bucket_tests {
             .expect("increment connection");
 
         // Spawn 10 concurrent tasks consuming bandwidth
+        let task_count = coverage_scale(10, 3);
         let mut handles = vec![];
-        for _ in 0..10 {
+        for _ in 0..task_count {
             let qos_clone = qos.clone();
             let handle = tokio::spawn(async move {
                 qos_clone
@@ -392,8 +401,9 @@ mod connection_counting_tests {
         );
 
         // Spawn 100 concurrent increments
+        let increments = coverage_scale(100, 20);
         let mut handles = vec![];
-        for i in 0..100 {
+        for i in 0..increments {
             let qos_clone = qos.clone();
             let user = format!("user{}", i % 10); // 10 different users
             let handle = tokio::spawn(async move {
@@ -408,8 +418,8 @@ mod connection_counting_tests {
             handle.await.expect("task completed");
         }
 
-        // Should have exactly 100 total connections
-        assert_eq!(qos.get_total_connections(), 100);
+        // Should have exactly the number of increments
+        assert_eq!(qos.get_total_connections(), increments);
     }
 }
 
@@ -1114,7 +1124,8 @@ mod edge_cases_tests {
         .expect("create QoS engine");
 
         // Rapid cycles
-        for _ in 0..100 {
+        let cycles = coverage_scale(100, 20);
+        for _ in 0..cycles {
             qos.check_and_inc_connection("user1", &ConnectionLimits::default())
                 .unwrap();
             qos.dec_user_connection("user1");
@@ -1176,8 +1187,10 @@ mod edge_cases_tests {
 
         let mut handles = vec![];
 
-        // Create 50 concurrent users, each making 10 allocations
-        for user_id in 0..50 {
+        // Create concurrent users, each making multiple allocations
+        let user_count = coverage_scale(50, 10);
+        let allocations_per_user = coverage_scale(10, 3);
+        for user_id in 0..user_count {
             let qos_clone = qos.clone();
             let handle = tokio::spawn(async move {
                 let user = format!("user{}", user_id);
@@ -1190,7 +1203,7 @@ mod edge_cases_tests {
                     .check_and_inc_connection(&user, &limits)
                     .expect("increment connection");
 
-                for _ in 0..10 {
+                for _ in 0..allocations_per_user {
                     qos_clone
                         .allocate_bandwidth(&user, 10_000)
                         .await
