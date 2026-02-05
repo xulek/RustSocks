@@ -143,10 +143,7 @@ impl SessionStore {
         url_lower.contains(":memory:") || url_lower.contains("mode=memory")
     }
 
-    async fn apply_migrations(
-        pool: &AnyPool,
-        flavor: &DatabaseFlavor,
-    ) -> Result<(), sqlx::Error> {
+    async fn apply_migrations(pool: &AnyPool, flavor: &DatabaseFlavor) -> Result<(), sqlx::Error> {
         let migrator = sqlx::migrate!("./migrations");
 
         match migrator.run(pool).await {
@@ -222,10 +219,7 @@ impl SessionStore {
         Ok(true)
     }
 
-    async fn smtp_columns_present(
-        pool: &AnyPool,
-        required: &[&str],
-    ) -> Result<bool, sqlx::Error> {
+    async fn smtp_columns_present(pool: &AnyPool, required: &[&str]) -> Result<bool, sqlx::Error> {
         let columns: Vec<String> =
             sqlx::query_scalar::<Any, String>("SELECT name FROM pragma_table_info('smtp_config')")
                 .fetch_all(pool)
@@ -358,17 +352,6 @@ impl SessionStore {
     }
 
     pub async fn count_sessions(&self, filter: &SessionFilter) -> Result<u64, sqlx::Error> {
-        // If filter is mostly empty and table is large, use approximate count
-        let is_simple_filter = filter.user.is_none()
-            && filter.dest_ip.is_none()
-            && filter.status.is_none()
-            && filter.start_after.is_none();
-
-        if is_simple_filter {
-            // Use fast approximate count for unfiltered queries
-            return self.approximate_total_sessions().await;
-        }
-
         let mut builder = QueryBuilder::<Any>::new(
             r#"
             SELECT COUNT(*) as count
@@ -611,11 +594,15 @@ impl SessionStore {
     }
 
     pub async fn save_batch(&self, sessions: Vec<Session>) -> Result<(), sqlx::Error> {
+        if sessions.is_empty() {
+            return Ok(());
+        }
+
+        const MAX_ROWS_PER_QUERY: usize = 500;
         let mut tx = self.pool.begin().await?;
 
-        for session in sessions {
-            let params = SessionParams::from(&session);
-            sqlx::query(
+        for chunk in sessions.chunks(MAX_ROWS_PER_QUERY) {
+            let mut builder = QueryBuilder::<Any>::new(
                 r#"
                 INSERT INTO sessions (
                     session_id,
@@ -637,7 +624,53 @@ impl SessionStore {
                     acl_rule_matched,
                     acl_decision
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                "#,
+            );
+
+            builder.push_values(chunk.iter(), |mut row, session| {
+                let SessionParams {
+                    session_id,
+                    user,
+                    start_time,
+                    end_time,
+                    duration_secs,
+                    source_ip,
+                    source_port,
+                    dest_ip,
+                    dest_port,
+                    protocol,
+                    bytes_sent,
+                    bytes_received,
+                    packets_sent,
+                    packets_received,
+                    status,
+                    close_reason,
+                    acl_rule_matched,
+                    acl_decision,
+                } = SessionParams::from(session);
+
+                row.push_bind(session_id.into_owned())
+                    .push_bind(user.into_owned())
+                    .push_bind(start_time)
+                    .push_bind(end_time)
+                    .push_bind(duration_secs)
+                    .push_bind(source_ip.into_owned())
+                    .push_bind(source_port)
+                    .push_bind(dest_ip.into_owned())
+                    .push_bind(dest_port)
+                    .push_bind(protocol.into_owned())
+                    .push_bind(bytes_sent)
+                    .push_bind(bytes_received)
+                    .push_bind(packets_sent)
+                    .push_bind(packets_received)
+                    .push_bind(status.into_owned())
+                    .push_bind(close_reason)
+                    .push_bind(acl_rule_matched)
+                    .push_bind(acl_decision.into_owned());
+            });
+
+            builder.push(
+                r#"
                 ON CONFLICT(session_id) DO UPDATE SET
                     user = excluded.user,
                     start_time = excluded.start_time,
@@ -657,27 +690,9 @@ impl SessionStore {
                     acl_rule_matched = excluded.acl_rule_matched,
                     acl_decision = excluded.acl_decision
                 "#,
-            )
-            .bind(params.session_id.as_ref())
-            .bind(params.user.as_ref())
-            .bind(&params.start_time)
-            .bind(&params.end_time)
-            .bind(params.duration_secs)
-            .bind(params.source_ip.as_ref())
-            .bind(params.source_port)
-            .bind(params.dest_ip.as_ref())
-            .bind(params.dest_port)
-            .bind(params.protocol.as_ref())
-            .bind(params.bytes_sent)
-            .bind(params.bytes_received)
-            .bind(params.packets_sent)
-            .bind(params.packets_received)
-            .bind(params.status.as_ref())
-            .bind(&params.close_reason)
-            .bind(&params.acl_rule_matched)
-            .bind(params.acl_decision.as_ref())
-            .execute(&mut *tx)
-            .await?;
+            );
+
+            builder.build().execute(&mut *tx).await?;
         }
 
         tx.commit().await
@@ -1185,11 +1200,13 @@ impl SessionRow {
             duration_secs: sanitize_duration(self.duration_secs),
             connect_latency_ms: None,
             source_ip,
-            source_port: u16::try_from(self.source_port)
-                .map_err(|_| decode_error("source_port", format!("out of range: {}", self.source_port)))?,
+            source_port: u16::try_from(self.source_port).map_err(|_| {
+                decode_error("source_port", format!("out of range: {}", self.source_port))
+            })?,
             dest_ip: self.dest_ip.into(),
-            dest_port: u16::try_from(self.dest_port)
-                .map_err(|_| decode_error("dest_port", format!("out of range: {}", self.dest_port)))?,
+            dest_port: u16::try_from(self.dest_port).map_err(|_| {
+                decode_error("dest_port", format!("out of range: {}", self.dest_port))
+            })?,
             protocol,
             bytes_sent: self.bytes_sent as u64,
             bytes_received: self.bytes_received as u64,

@@ -187,6 +187,9 @@ mod tests {
         assert_eq!(parsed[2], "gamma@example.com");
 
         let formatted = format_recipients(&parsed);
-        assert_eq!(formatted, "alpha@example.com, beta@example.com, gamma@example.com");
+        assert_eq!(
+            formatted,
+            "alpha@example.com, beta@example.com, gamma@example.com"
+        );
     }
 }

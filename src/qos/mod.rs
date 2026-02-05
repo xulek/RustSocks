@@ -68,7 +68,6 @@ impl QosEngine {
         }
     }
 
-
     /// Check connection limit and increment if allowed
     pub fn check_and_inc_connection(&self, user: &str, limits: &ConnectionLimits) -> Result<usize> {
         match self {
@@ -188,16 +187,11 @@ impl QosEngine {
     pub fn is_enabled(&self) -> bool {
         !matches!(self, Self::None)
     }
-}
 
-impl Drop for QosEngine {
-    fn drop(&mut self) {
-        // Stop rebalancing task on drop
+    /// Gracefully stop QoS background tasks.
+    pub async fn shutdown(&self) {
         if let Self::Htb(htb) = self {
-            let htb = htb.clone();
-            tokio::spawn(async move {
-                htb.stop().await;
-            });
+            htb.stop().await;
         }
     }
 }

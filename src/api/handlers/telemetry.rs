@@ -88,17 +88,32 @@ pub async fn get_telemetry_metrics(
 ) -> (StatusCode, Json<TelemetryMetricsResponse>) {
     let minutes = params.minutes;
 
-    // Get session stats
-    let all_sessions = state.session_manager.get_all_sessions().await;
-    let active_sessions = all_sessions
-        .iter()
-        .filter(|s| s.status.as_str() == "active")
-        .count() as u64;
-    let failed_sessions = all_sessions
-        .iter()
-        .filter(|s| s.status.as_str() == "failed")
-        .count() as u64;
-    let total_sessions = all_sessions.len() as u64;
+    let mut active_sessions = 0u64;
+    let mut failed_sessions = 0u64;
+    let mut total_sessions = 0u64;
+    let mut total_bytes_sent = 0u64;
+    let mut total_bytes_received = 0u64;
+    let mut latencies: Vec<f64> = Vec::new();
+
+    state
+        .session_manager
+        .visit_sessions(|session| {
+            total_sessions += 1;
+            total_bytes_sent = total_bytes_sent.saturating_add(session.bytes_sent);
+            total_bytes_received = total_bytes_received.saturating_add(session.bytes_received);
+
+            if session.status.as_str() == "active" {
+                active_sessions += 1;
+            }
+            if session.status.as_str() == "failed" {
+                failed_sessions += 1;
+            }
+
+            if let Some(latency) = session.connect_latency_ms {
+                latencies.push(latency as f64);
+            }
+        })
+        .await;
 
     let success_rate = if total_sessions > 0 {
         ((total_sessions - failed_sessions) as f64 / total_sessions as f64) * 100.0
@@ -106,19 +121,8 @@ pub async fn get_telemetry_metrics(
         100.0
     };
 
-    // Calculate throughput
-    let total_bytes_sent: u64 = all_sessions.iter().map(|s| s.bytes_sent).sum();
-    let total_bytes_received: u64 = all_sessions.iter().map(|s| s.bytes_received).sum();
-
-    // Calculate connect latency from session setup times (DNS + TCP connect)
-    let latencies: Vec<f64> = all_sessions
-        .iter()
-        .filter_map(|s| s.connect_latency_ms)
-        .map(|latency| latency as f64)
-        .collect();
-
     let latency = if !latencies.is_empty() {
-        let mut sorted = latencies.clone();
+        let mut sorted = latencies;
         sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
 
         let avg = sorted.iter().sum::<f64>() / sorted.len() as f64;
@@ -161,7 +165,7 @@ pub async fn get_telemetry_metrics(
     };
 
     // Try to get system metrics
-    let system = get_system_metrics();
+    let system = get_system_metrics().await;
 
     let response = TelemetryMetricsResponse {
         timestamp: Utc::now().to_rfc3339(),
@@ -209,17 +213,18 @@ pub async fn get_telemetry_errors(
     // Filter to errors and warnings only
     let error_events: Vec<_> = events
         .iter()
-        .filter(|e| matches!(e.severity, TelemetrySeverity::Error | TelemetrySeverity::Warning))
+        .filter(|e| {
+            matches!(
+                e.severity,
+                TelemetrySeverity::Error | TelemetrySeverity::Warning
+            )
+        })
         .collect();
 
     let total_errors = error_events.len() as u64;
 
-    // Get total events for error rate calculation
-    let all_events = if let Some(history) = state.telemetry_history.as_ref() {
-        history.get_events_since(minutes).await.len() as u64
-    } else {
-        0
-    };
+    // We already fetched this time range above.
+    let all_events = events.len() as u64;
 
     let error_rate = if all_events > 0 {
         (total_errors as f64 / all_events as f64) * 100.0
@@ -254,9 +259,7 @@ pub async fn get_telemetry_errors(
     for event in &error_events {
         if let Some(details) = &event.details {
             if let Some(dest) = details.get("destination").and_then(|d| d.as_str()) {
-                let entry = dest_errors
-                    .entry(dest.to_string())
-                    .or_insert((0, None));
+                let entry = dest_errors.entry(dest.to_string()).or_insert((0, None));
                 entry.0 += 1;
                 entry.1 = Some(event.message.clone());
             }
@@ -265,11 +268,13 @@ pub async fn get_telemetry_errors(
 
     let mut by_destination: Vec<ErrorDestinationBreakdown> = dest_errors
         .into_iter()
-        .map(|(destination, (error_count, last_error))| ErrorDestinationBreakdown {
-            destination,
-            error_count,
-            last_error,
-        })
+        .map(
+            |(destination, (error_count, last_error))| ErrorDestinationBreakdown {
+                destination,
+                error_count,
+                last_error,
+            },
+        )
         .collect();
     by_destination.sort_by(|a, b| b.error_count.cmp(&a.error_count));
     by_destination.truncate(10);
@@ -352,7 +357,13 @@ pub async fn get_telemetry_alerts(
     } else {
         0.0
     };
-    check_threshold(&thresholds, "error_rate", error_rate, &mut active_alerts, &now);
+    check_threshold(
+        &thresholds,
+        "error_rate",
+        error_rate,
+        &mut active_alerts,
+        &now,
+    );
 
     // Check pool hit rate (inverted - lower is worse)
     check_threshold(
@@ -461,49 +472,57 @@ fn percentile(sorted_data: &[f64], p: f64) -> f64 {
     sorted_data[idx.min(sorted_data.len() - 1)]
 }
 
-fn get_system_metrics() -> Option<SystemMetrics> {
-    // Try to read from /proc on Linux
+async fn get_system_metrics() -> Option<SystemMetrics> {
     #[cfg(target_os = "linux")]
     {
-        use std::fs;
-
-        let memory_info = fs::read_to_string("/proc/meminfo").ok()?;
-        let mut mem_total: u64 = 0;
-        let mut mem_available: u64 = 0;
-
-        for line in memory_info.lines() {
-            if line.starts_with("MemTotal:") {
-                mem_total = parse_meminfo_value(line);
-            } else if line.starts_with("MemAvailable:") {
-                mem_available = parse_meminfo_value(line);
-            }
-        }
-
-        let memory_usage_bytes = mem_total.saturating_sub(mem_available);
-        let memory_usage_percent = if mem_total > 0 {
-            (memory_usage_bytes as f64 / mem_total as f64) * 100.0
-        } else {
-            0.0
-        };
-
-        // CPU usage would require sampling over time, return 0 for now
-        let cpu_usage_percent = 0.0;
-
-        // Get open file descriptors for current process
-        let fd_count = fs::read_dir("/proc/self/fd").ok()?.count() as u64;
-
-        Some(SystemMetrics {
-            memory_usage_bytes,
-            memory_usage_percent,
-            cpu_usage_percent,
-            open_file_descriptors: Some(fd_count),
-        })
+        tokio::task::spawn_blocking(get_system_metrics_blocking)
+            .await
+            .ok()
+            .flatten()
     }
 
     #[cfg(not(target_os = "linux"))]
     {
         None
     }
+}
+
+#[cfg(target_os = "linux")]
+fn get_system_metrics_blocking() -> Option<SystemMetrics> {
+    // Try to read from /proc on Linux
+    use std::fs;
+
+    let memory_info = fs::read_to_string("/proc/meminfo").ok()?;
+    let mut mem_total: u64 = 0;
+    let mut mem_available: u64 = 0;
+
+    for line in memory_info.lines() {
+        if line.starts_with("MemTotal:") {
+            mem_total = parse_meminfo_value(line);
+        } else if line.starts_with("MemAvailable:") {
+            mem_available = parse_meminfo_value(line);
+        }
+    }
+
+    let memory_usage_bytes = mem_total.saturating_sub(mem_available);
+    let memory_usage_percent = if mem_total > 0 {
+        (memory_usage_bytes as f64 / mem_total as f64) * 100.0
+    } else {
+        0.0
+    };
+
+    // CPU usage would require sampling over time, return 0 for now
+    let cpu_usage_percent = 0.0;
+
+    // Get open file descriptors for current process
+    let fd_count = fs::read_dir("/proc/self/fd").ok()?.count() as u64;
+
+    Some(SystemMetrics {
+        memory_usage_bytes,
+        memory_usage_percent,
+        cpu_usage_percent,
+        open_file_descriptors: Some(fd_count),
+    })
 }
 
 #[cfg(target_os = "linux")]
@@ -663,7 +682,9 @@ fn check_threshold(
     active_alerts: &mut Vec<ActiveAlert>,
     now: &chrono::DateTime<Utc>,
 ) {
-    let Some(threshold) = thresholds.iter().find(|t| t.metric_name == metric_name && t.enabled)
+    let Some(threshold) = thresholds
+        .iter()
+        .find(|t| t.metric_name == metric_name && t.enabled)
     else {
         return;
     };

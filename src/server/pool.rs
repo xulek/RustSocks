@@ -1,6 +1,6 @@
 use dashmap::DashMap;
 use serde_json::{json, Value};
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -77,6 +77,9 @@ struct PoolMetrics {
     total_idle: AtomicUsize,
 }
 
+const MIN_METRICS_RETENTION_SECS: u64 = 300;
+const METRICS_RETENTION_MULTIPLIER: u64 = 4;
+
 #[derive(Debug, Clone, Default)]
 struct DestinationMetrics {
     total_created: u64,
@@ -128,9 +131,9 @@ pub enum ReuseHint {
 /// - Lock-free metrics updates using atomic operations
 pub struct ConnectionPool {
     config: PoolConfig,
-    /// Map: destination address -> Vec of idle connections
+    /// Map: destination address -> deque of idle connections
     /// Uses DashMap for lock-free per-shard concurrent access
-    pools: Arc<DashMap<SocketAddr, Vec<PooledConnection>>>,
+    pools: Arc<DashMap<SocketAddr, VecDeque<PooledConnection>>>,
     destination_metrics: Arc<DashMap<SocketAddr, DestinationMetrics>>,
     metrics: Arc<PoolMetrics>,
     active_counts: Arc<DashMap<SocketAddr, AtomicUsize>>,
@@ -145,6 +148,15 @@ impl ConnectionPool {
         // DashMap provides lock-free per-key access
         let mut entry = self.destination_metrics.entry(addr).or_default();
         update(&mut entry);
+    }
+
+    fn destination_last_seen(entry: &DestinationMetrics) -> Option<SystemTime> {
+        match (entry.last_activity, entry.last_miss) {
+            (Some(activity), Some(miss)) => Some(if activity >= miss { activity } else { miss }),
+            (Some(activity), None) => Some(activity),
+            (None, Some(miss)) => Some(miss),
+            (None, None) => None,
+        }
     }
 
     fn record_expired(&self, addr: SocketAddr, count: usize) {
@@ -496,7 +508,7 @@ impl ConnectionPool {
         let mut expired = 0usize;
         let mut stream: Option<TcpStream> = None;
 
-        while let Some(mut conn) = pool_entry.pop() {
+        while let Some(mut conn) = pool_entry.pop_back() {
             if conn.is_expired(idle_timeout) {
                 trace!(
                     "Discarding expired connection to {} (idle: {:?})",
@@ -561,7 +573,7 @@ impl ConnectionPool {
 
             // Insert into pool - DashMap entry API is different from HashMap
             let mut entry = self.pools.entry(addr).or_default();
-            entry.push(PooledConnection::new(stream));
+            entry.push_back(PooledConnection::new(stream));
             let pool_size = entry.len();
             drop(entry); // Explicitly drop to release lock
 
@@ -654,7 +666,7 @@ impl ConnectionPool {
             .filter_map(|entry| {
                 entry
                     .value()
-                    .first()
+                    .front()
                     .map(|conn| (*entry.key(), conn.created_at))
             })
             .collect();
@@ -668,7 +680,7 @@ impl ConnectionPool {
         // Remove the oldest connection (now safe - no conflicting locks)
         if let Some(addr) = oldest_addr {
             if let Some(mut pool) = self.pools.get_mut(&addr) {
-                pool.remove(0);
+                pool.pop_front();
                 if pool.is_empty() {
                     drop(pool);
                     self.pools.remove(&addr);
@@ -789,6 +801,11 @@ impl ConnectionPool {
         let destination_metrics = self.destination_metrics.clone();
         let metrics = Arc::clone(&self.metrics);
         let idle_timeout_secs = self.config.idle_timeout_secs;
+        let metrics_retention = Duration::from_secs(
+            idle_timeout_secs
+                .saturating_mul(METRICS_RETENTION_MULTIPLIER)
+                .max(MIN_METRICS_RETENTION_SECS),
+        );
 
         tokio::spawn(async move {
             // Run cleanup every idle_timeout/2 seconds
@@ -835,6 +852,28 @@ impl ConnectionPool {
                         total_removed
                     );
                 }
+
+                let now = SystemTime::now();
+                destination_metrics.retain(|addr, entry| {
+                    if entry.in_use > 0 {
+                        return true;
+                    }
+
+                    if let Some(pool) = pools.get(addr) {
+                        if !pool.is_empty() {
+                            return true;
+                        }
+                    }
+
+                    let Some(last_seen) = ConnectionPool::destination_last_seen(entry) else {
+                        return false;
+                    };
+
+                    match now.duration_since(last_seen) {
+                        Ok(age) => age < metrics_retention,
+                        Err(_) => true,
+                    }
+                });
             }
         });
     }

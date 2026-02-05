@@ -1479,6 +1479,18 @@ pub async fn start_api_server(
 
             let index_path = Path::new(dashboard_path).join("index.html");
             let base_for_assets = base_prefix.to_string();
+            let cached_index = match tokio::fs::read_to_string(&index_path).await {
+                Ok(raw) => Some(rewrite_dashboard_index(&raw, &base_for_assets)),
+                Err(err) => {
+                    warn!(
+                        path = %index_path.display(),
+                        error = %err,
+                        "Failed to load dashboard index.html"
+                    );
+                    None
+                }
+            };
+            let cached_index = Arc::new(cached_index);
 
             // Create ServeDir for assets directory only
             let assets_path = format!("{}/assets", dashboard_path);
@@ -1488,18 +1500,13 @@ pub async fn start_api_server(
 
             // Handler for serving rewritten index.html (for SPA routing)
             let serve_spa = {
-                let index_path = index_path.clone();
-                let base_prefix = base_for_assets.clone();
+                let cached_index = Arc::clone(&cached_index);
                 move || {
-                    let index_path = index_path.clone();
-                    let base_prefix = base_prefix.clone();
+                    let cached_index = Arc::clone(&cached_index);
                     async move {
-                        match tokio::fs::read_to_string(&index_path).await {
-                            Ok(raw) => {
-                                let rewritten = rewrite_dashboard_index(&raw, &base_prefix);
-                                Ok::<_, StatusCode>(Html(rewritten))
-                            }
-                            Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
+                        match cached_index.as_ref() {
+                            Some(index) => Ok::<_, StatusCode>(Html(index.clone())),
+                            None => Err(StatusCode::INTERNAL_SERVER_ERROR),
                         }
                     }
                 }
@@ -1711,10 +1718,7 @@ fn normalize_request_path<'a>(path: &'a str, base_path: &str) -> &'a str {
     }
 }
 
-async fn security_headers_middleware(
-    request: Request<Body>,
-    next: Next,
-) -> Response<Body> {
+async fn security_headers_middleware(request: Request<Body>, next: Next) -> Response<Body> {
     let mut response = next.run(request).await;
     let headers = response.headers_mut();
     headers.insert("X-Frame-Options", "SAMEORIGIN".parse().unwrap());

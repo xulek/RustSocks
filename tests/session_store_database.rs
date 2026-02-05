@@ -207,13 +207,21 @@ async fn close_all_active_sessions_marks_closed() {
     let affected = store.close_all_active_sessions().await.unwrap();
     assert_eq!(affected, 1);
 
-    let updated = store.get_session(&active.session_id).await.unwrap().unwrap();
+    let updated = store
+        .get_session(&active.session_id)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(updated.status, SessionStatus::Closed);
     assert_eq!(updated.close_reason.as_deref(), Some("Server restart"));
     assert!(updated.end_time.is_some());
     assert!(updated.duration_secs.is_some());
 
-    let unchanged = store.get_session(&closed.session_id).await.unwrap().unwrap();
+    let unchanged = store
+        .get_session(&closed.session_id)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(unchanged.status, SessionStatus::Closed);
     assert_eq!(unchanged.close_reason.as_deref(), Some("Finished"));
 }

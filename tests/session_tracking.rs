@@ -45,7 +45,14 @@ async fn proxy_updates_session_traffic_on_shutdown_flush() {
     };
 
     let (session_id, cancel_token) = session_manager
-        .new_session_with_control("integration-user", connection_info, "allow", None, None, None)
+        .new_session_with_control(
+            "integration-user",
+            connection_info,
+            "allow",
+            None,
+            None,
+            None,
+        )
         .await;
 
     let proxy_ctx = ProxyContext {
@@ -56,11 +63,7 @@ async fn proxy_updates_session_traffic_on_shutdown_flush() {
         qos_engine: QosEngine::None,
         user: Arc::<str>::from("integration-user"),
     };
-    let proxy_task = tokio::spawn(proxy_data(
-        server_client_stream,
-        upstream_stream,
-        proxy_ctx,
-    ));
+    let proxy_task = tokio::spawn(proxy_data(server_client_stream, upstream_stream, proxy_ctx));
 
     // Client -> Upstream payload (forces flush on close, not threshold)
     let upload_payload = b"hello-proxy-upload";

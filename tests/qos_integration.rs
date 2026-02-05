@@ -82,11 +82,7 @@ async fn bandwidth_throttling_enforced_by_proxy() {
         qos_engine: qos_engine.clone(),
         user: Arc::<str>::from("throttle-user"),
     };
-    let proxy_task = tokio::spawn(proxy_data(
-        server_client_stream,
-        upstream_stream,
-        proxy_ctx,
-    ));
+    let proxy_task = tokio::spawn(proxy_data(server_client_stream, upstream_stream, proxy_ctx));
 
     let chunk = vec![0xAB; 65_536];
     let mut total_sent = 0usize;

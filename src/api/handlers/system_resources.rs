@@ -1,6 +1,7 @@
 use crate::api::types::SystemResourcesResponse;
 use axum::{http::StatusCode, Json};
 use sysinfo::{CpuRefreshKind, MemoryRefreshKind, ProcessRefreshKind, RefreshKind, System};
+use tokio::time::{sleep, Duration};
 
 /// GET /api/system/resources - Get system and process resource usage
 pub async fn get_system_resources() -> (StatusCode, Json<SystemResourcesResponse>) {
@@ -13,7 +14,7 @@ pub async fn get_system_resources() -> (StatusCode, Json<SystemResourcesResponse
     );
 
     // Wait a moment and refresh CPU to get accurate readings
-    std::thread::sleep(std::time::Duration::from_millis(200));
+    sleep(Duration::from_millis(200)).await;
     sys.refresh_cpu_all();
     sys.refresh_memory();
 

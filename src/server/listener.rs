@@ -127,16 +127,15 @@ pub fn create_tls_acceptor(tls: &TlsSettings) -> Result<TlsAcceptor> {
 
 fn load_certificates(path: &str) -> Result<Vec<CertificateDer<'static>>> {
     let path = Path::new(path);
-    let certs: std::result::Result<Vec<_>, _> =
-        CertificateDer::pem_file_iter(path)
-            .map_err(|e| {
-                RustSocksError::Config(format!(
-                    "Failed to open TLS certificate file '{}': {}",
-                    path.display(),
-                    e
-                ))
-            })?
-            .collect();
+    let certs: std::result::Result<Vec<_>, _> = CertificateDer::pem_file_iter(path)
+        .map_err(|e| {
+            RustSocksError::Config(format!(
+                "Failed to open TLS certificate file '{}': {}",
+                path.display(),
+                e
+            ))
+        })?
+        .collect();
 
     let certs = certs.map_err(|e| {
         RustSocksError::Config(format!(
@@ -169,16 +168,15 @@ fn load_private_key(path: &str) -> Result<PrivateKeyDer<'static>> {
 
 fn build_client_root_store(path: &str) -> Result<RootCertStore> {
     let path = Path::new(path);
-    let certs: std::result::Result<Vec<_>, _> =
-        CertificateDer::pem_file_iter(path)
-            .map_err(|e| {
-                RustSocksError::Config(format!(
-                    "Failed to open client CA file '{}': {}",
-                    path.display(),
-                    e
-                ))
-            })?
-            .collect();
+    let certs: std::result::Result<Vec<_>, _> = CertificateDer::pem_file_iter(path)
+        .map_err(|e| {
+            RustSocksError::Config(format!(
+                "Failed to open client CA file '{}': {}",
+                path.display(),
+                e
+            ))
+        })?
+        .collect();
 
     let certs = certs.map_err(|e| {
         RustSocksError::Config(format!(
@@ -566,7 +564,10 @@ impl SocksServer {
                 .await
                 {
                     Ok(NotificationDecision::Sent { recipients }) => {
-                        info!("Service status notification sent to {} recipient(s)", recipients);
+                        info!(
+                            "Service status notification sent to {} recipient(s)",
+                            recipients
+                        );
                     }
                     Ok(NotificationDecision::Skipped(_)) => {}
                     Err(err) => {
@@ -651,6 +652,8 @@ impl SocksServer {
         if let Some(handle) = &self.stats_handle {
             handle.abort();
         }
+
+        self.qos_engine.shutdown().await;
 
         #[cfg(feature = "database")]
         self.session_manager.shutdown().await;

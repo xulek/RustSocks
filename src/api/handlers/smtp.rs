@@ -33,7 +33,12 @@ pub async fn get_smtp_modes() -> (StatusCode, Json<SmtpModesResponse>) {
         })
         .collect();
 
-    (StatusCode::OK, Json(SmtpModesResponse { modes: mode_options }))
+    (
+        StatusCode::OK,
+        Json(SmtpModesResponse {
+            modes: mode_options,
+        }),
+    )
 }
 
 /// GET /api/smtp/config - Get current SMTP configuration
@@ -89,7 +94,10 @@ pub async fn get_smtp_config(
                     notify_disk_threshold: config.notify_disk_threshold,
                     notify_connection_percent_threshold: config.notify_connection_percent_threshold,
                 };
-                (StatusCode::OK, Json(serde_json::to_value(response).unwrap()))
+                (
+                    StatusCode::OK,
+                    Json(serde_json::to_value(response).unwrap()),
+                )
             }
             Err(e) => {
                 error!("Failed to get SMTP config: {}", e);
@@ -166,10 +174,7 @@ pub async fn update_smtp_config(
             notify_connection_percent_threshold: request.notify_connection_percent_threshold,
         };
 
-        match repo
-            .save_config(&config, request.password.as_deref())
-            .await
-        {
+        match repo.save_config(&config, request.password.as_deref()).await {
             Ok(()) => {
                 info!("SMTP configuration updated");
                 (
@@ -246,10 +251,7 @@ pub async fn test_smtp(
                 StatusCode::OK,
                 Json(SmtpTestResponse {
                     success: true,
-                    message: format!(
-                        "Test email sent successfully to {}",
-                        request.recipient
-                    ),
+                    message: format!("Test email sent successfully to {}", request.recipient),
                     error: None,
                 }),
             ),

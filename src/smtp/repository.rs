@@ -81,7 +81,8 @@ impl SmtpRepository {
                     notify_disk_threshold: row.notify_disk_threshold.clamp(1, 100) as u8,
                     notify_connection_percent_threshold: row
                         .notify_connection_percent_threshold
-                        .clamp(1, 100) as u8,
+                        .clamp(1, 100)
+                        as u8,
                 })
             }
             None => Ok(SmtpConfig::default()),

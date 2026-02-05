@@ -193,6 +193,98 @@ impl SessionManager {
             .map(|guard| guard.value().clone())
     }
 
+    /// Retrieve a snapshot by ID from active, closed, or rejected collections.
+    pub async fn get_session_snapshot(&self, session_id: &Uuid) -> Option<Session> {
+        if let Some(handle) = self.get_session(session_id) {
+            return Some(handle.read().await.clone());
+        }
+
+        {
+            let closed = self.closed_sessions.read().await;
+            if let Some(session) = closed.iter().find(|s| &s.session_id == session_id) {
+                return Some(session.clone());
+            }
+        }
+
+        {
+            let rejected = self.rejected_sessions.read().await;
+            if let Some(session) = rejected.iter().find(|s| &s.session_id == session_id) {
+                return Some(session.clone());
+            }
+        }
+
+        None
+    }
+
+    /// Retrieve snapshots for a specific user without cloning unrelated sessions.
+    pub async fn get_sessions_for_user(&self, user: &str) -> Vec<Session> {
+        let mut sessions = Vec::new();
+
+        let active_handles: Vec<_> = self
+            .active_sessions
+            .iter()
+            .map(|entry| entry.value().clone())
+            .collect();
+        for handle in active_handles {
+            let session = handle.read().await;
+            if session.user.as_ref() == user {
+                sessions.push(session.clone());
+            }
+        }
+
+        {
+            let closed = self.closed_sessions.read().await;
+            sessions.extend(
+                closed
+                    .iter()
+                    .filter(|session| session.user.as_ref() == user)
+                    .cloned(),
+            );
+        }
+
+        {
+            let rejected = self.rejected_sessions.read().await;
+            sessions.extend(
+                rejected
+                    .iter()
+                    .filter(|session| session.user.as_ref() == user)
+                    .cloned(),
+            );
+        }
+
+        sessions
+    }
+
+    /// Visit all tracked sessions (active + closed + rejected) without creating a full snapshot.
+    pub async fn visit_sessions<F>(&self, mut visit: F)
+    where
+        F: FnMut(&Session),
+    {
+        let active_handles: Vec<_> = self
+            .active_sessions
+            .iter()
+            .map(|entry| entry.value().clone())
+            .collect();
+        for handle in active_handles {
+            let session = handle.read().await;
+            visit(&session);
+        }
+
+        {
+            let closed = self.closed_sessions.read().await;
+            for session in closed.iter() {
+                visit(session);
+            }
+        }
+
+        {
+            let rejected = self.rejected_sessions.read().await;
+            for session in rejected.iter() {
+                visit(session);
+            }
+        }
+    }
+
     /// Count currently active sessions.
     pub fn active_session_count(&self) -> usize {
         self.active_sessions.len()
@@ -523,10 +615,14 @@ impl SessionManager {
     pub async fn enforce_acl(&self, acl_engine: Arc<AclEngine>) {
         let mut to_terminate = Vec::new();
 
-        for entry in self.active_sessions.iter() {
-            let session_guard = entry.value().read().await;
-            let session = session_guard.clone();
-            drop(session_guard);
+        let active_handles: Vec<_> = self
+            .active_sessions
+            .iter()
+            .map(|entry| entry.value().clone())
+            .collect();
+
+        for handle in active_handles {
+            let session = handle.read().await.clone();
 
             let address = if let Ok(ipv4) = session.dest_ip.parse::<Ipv4Addr>() {
                 Address::IPv4(ipv4.octets())
@@ -582,10 +678,13 @@ impl SessionManager {
     pub async fn get_all_sessions(&self) -> Vec<Session> {
         let mut all = Vec::new();
 
-        // Add active sessions
-        for entry in self.active_sessions.iter() {
-            let session = entry.value().read().await.clone();
-            all.push(session);
+        let active_handles: Vec<_> = self
+            .active_sessions
+            .iter()
+            .map(|entry| entry.value().clone())
+            .collect();
+        for handle in active_handles {
+            all.push(handle.read().await.clone());
         }
 
         // Add closed sessions
@@ -600,9 +699,13 @@ impl SessionManager {
     /// Get active sessions only
     pub async fn get_active_sessions(&self) -> Vec<Session> {
         let mut sessions = Vec::new();
-        for entry in self.active_sessions.iter() {
-            let session = entry.value().read().await.clone();
-            sessions.push(session);
+        let active_handles: Vec<_> = self
+            .active_sessions
+            .iter()
+            .map(|entry| entry.value().clone())
+            .collect();
+        for handle in active_handles {
+            sessions.push(handle.read().await.clone());
         }
         sessions
     }

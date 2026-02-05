@@ -248,7 +248,9 @@ pub async fn add_group_rule(
 
     let rule = match request_to_rule(&request) {
         Ok(r) => r,
-        Err(e) => return rule_error_response(StatusCode::BAD_REQUEST, format!("Invalid rule: {}", e)),
+        Err(e) => {
+            return rule_error_response(StatusCode::BAD_REQUEST, format!("Invalid rule: {}", e))
+        }
     };
 
     let mut config = match load_config_or_err(&state).await {
@@ -270,7 +272,11 @@ pub async fn add_group_rule(
         "Added rule to group via API"
     );
 
-    rule_success_response(format!("Rule added to group '{}'", group_name), Some(rule), None)
+    rule_success_response(
+        format!("Rule added to group '{}'", group_name),
+        Some(rule),
+        None,
+    )
 }
 
 /// PUT /api/acl/groups/{groupname}/rules - Update group rule
@@ -285,7 +291,9 @@ pub async fn update_group_rule(
 
     let new_rule = match request_to_rule(&request.update) {
         Ok(r) => r,
-        Err(e) => return rule_error_response(StatusCode::BAD_REQUEST, format!("Invalid rule: {}", e)),
+        Err(e) => {
+            return rule_error_response(StatusCode::BAD_REQUEST, format!("Invalid rule: {}", e))
+        }
     };
 
     let identifier = RuleIdentifier {
@@ -298,10 +306,11 @@ pub async fn update_group_rule(
         Err(e) => return rule_error_response(e.status_code(), e.to_string()),
     };
 
-    let old_rule = match crud::update_group_rule(&mut config, &group_name, &identifier, new_rule.clone()) {
-        Ok(r) => r,
-        Err(e) => return rule_error_response(StatusCode::NOT_FOUND, e),
-    };
+    let old_rule =
+        match crud::update_group_rule(&mut config, &group_name, &identifier, new_rule.clone()) {
+            Ok(r) => r,
+            Err(e) => return rule_error_response(StatusCode::NOT_FOUND, e),
+        };
 
     if let Err(e) = save_config_or_err(&state, config).await {
         return rule_error_response(e.status_code(), e.to_string());
@@ -517,7 +526,9 @@ pub async fn add_user_rule(
 
     let rule = match request_to_rule(&request) {
         Ok(r) => r,
-        Err(e) => return rule_error_response(StatusCode::BAD_REQUEST, format!("Invalid rule: {}", e)),
+        Err(e) => {
+            return rule_error_response(StatusCode::BAD_REQUEST, format!("Invalid rule: {}", e))
+        }
     };
 
     let mut config = match load_config_or_err(&state).await {
@@ -539,7 +550,11 @@ pub async fn add_user_rule(
         "Added rule to user via API"
     );
 
-    rule_success_response(format!("Rule added to user '{}'", username), Some(rule), None)
+    rule_success_response(
+        format!("Rule added to user '{}'", username),
+        Some(rule),
+        None,
+    )
 }
 
 /// PUT /api/acl/users/{username}/rules - Update user rule
@@ -554,7 +569,9 @@ pub async fn update_user_rule(
 
     let new_rule = match request_to_rule(&request.update) {
         Ok(r) => r,
-        Err(e) => return rule_error_response(StatusCode::BAD_REQUEST, format!("Invalid rule: {}", e)),
+        Err(e) => {
+            return rule_error_response(StatusCode::BAD_REQUEST, format!("Invalid rule: {}", e))
+        }
     };
 
     let identifier = RuleIdentifier {
@@ -567,10 +584,11 @@ pub async fn update_user_rule(
         Err(e) => return rule_error_response(e.status_code(), e.to_string()),
     };
 
-    let old_rule = match crud::update_user_rule(&mut config, &username, &identifier, new_rule.clone()) {
-        Ok(r) => r,
-        Err(e) => return rule_error_response(StatusCode::NOT_FOUND, e),
-    };
+    let old_rule =
+        match crud::update_user_rule(&mut config, &username, &identifier, new_rule.clone()) {
+            Ok(r) => r,
+            Err(e) => return rule_error_response(StatusCode::NOT_FOUND, e),
+        };
 
     if let Err(e) = save_config_or_err(&state, config).await {
         return rule_error_response(e.status_code(), e.to_string());

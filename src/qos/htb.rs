@@ -281,10 +281,13 @@ impl HtbQos {
         let mut allocations = Vec::new();
         let idle_timeout = Duration::from_secs(self.config.idle_timeout_secs);
 
-        for entry in self.user_buckets.iter() {
-            let user_key = entry.key().clone();
-            let bucket = entry.value();
+        let bucket_snapshot: Vec<(Arc<str>, Arc<UserBucket>)> = self
+            .user_buckets
+            .iter()
+            .map(|entry| (entry.key().clone(), entry.value().clone()))
+            .collect();
 
+        for (user_key, bucket) in bucket_snapshot {
             let is_active = bucket.is_active(idle_timeout).await;
             let current_demand = bucket.current_demand.load(Ordering::Relaxed);
 
@@ -357,13 +360,16 @@ impl HtbQos {
         // Collect active users and their demands
         let mut active_users: Vec<(Arc<str>, Arc<UserBucket>, u64)> = Vec::new();
 
-        for entry in self.user_buckets.iter() {
-            let user = entry.key();
-            let bucket = entry.value();
+        let bucket_snapshot: Vec<(Arc<str>, Arc<UserBucket>)> = self
+            .user_buckets
+            .iter()
+            .map(|entry| (entry.key().clone(), entry.value().clone()))
+            .collect();
 
+        for (user, bucket) in bucket_snapshot {
             if bucket.is_active(idle_timeout).await {
                 let demand = self.estimate_user_demand(bucket.as_ref()).await;
-                active_users.push((user.clone(), bucket.clone(), demand));
+                active_users.push((user, bucket, demand));
             }
         }
 

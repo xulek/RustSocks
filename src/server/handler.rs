@@ -448,13 +448,8 @@ where
             }
         }
 
-        let connection_guard = check_connection_limits(
-            &mut client_stream,
-            SocksProtocol::V4,
-            &ctx,
-            &acl_user,
-        )
-        .await?;
+        let connection_guard =
+            check_connection_limits(&mut client_stream, SocksProtocol::V4, &ctx, &acl_user).await?;
 
         let session_protocol = SessionProtocol::Tcp;
         let mut acl_rule_match: Option<String> = None;
@@ -482,13 +477,8 @@ where
                         session_protocol,
                         matched_rule: matched_rule.clone(),
                     };
-                    handle_acl_block(
-                        &mut client_stream,
-                        SocksProtocol::V4,
-                        &ctx,
-                        block_ctx,
-                    )
-                    .await?;
+                    handle_acl_block(&mut client_stream, SocksProtocol::V4, &ctx, block_ctx)
+                        .await?;
 
                     return Ok(None);
                 }
@@ -785,8 +775,7 @@ where
         qos_engine: session_ctx.qos_engine.clone(),
         user: Arc::clone(&session_ctx.user),
     };
-    match proxy_data(client_stream, upstream_stream, proxy_ctx).await
-    {
+    match proxy_data(client_stream, upstream_stream, proxy_ctx).await {
         Ok(reusable_stream) => {
             if let Some(reuse) = reusable_stream {
                 connect_ctx

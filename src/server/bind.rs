@@ -94,8 +94,7 @@ where
                 qos_engine: bind_ctx.qos_engine.clone(),
                 user: Arc::clone(&bind_ctx.user),
             };
-            match proxy_data(client_stream, incoming_stream, proxy_ctx).await
-            {
+            match proxy_data(client_stream, incoming_stream, proxy_ctx).await {
                 Ok(Some(reuse)) => {
                     bind_ctx
                         .connection_pool

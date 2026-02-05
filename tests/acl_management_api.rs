@@ -4,7 +4,9 @@ use axum::{
     routing::{delete, get, post, put},
     Router,
 };
-use rustsocks::acl::types::{AclConfig, AclRule, Action, GlobalAclConfig, GroupAcl, Protocol, UserAcl};
+use rustsocks::acl::types::{
+    AclConfig, AclRule, Action, GlobalAclConfig, GroupAcl, Protocol, UserAcl,
+};
 use rustsocks::acl::{load_config, save_config, AclEngine};
 use rustsocks::api::handlers::acl_management::{
     add_group_rule, add_user_rule, add_user_to_group, create_group, create_user, delete_group,
@@ -15,7 +17,7 @@ use rustsocks::api::handlers::acl_management::{
 use rustsocks::api::handlers::sessions::ApiState;
 use rustsocks::api::types::{
     GroupDetailResponse, GroupListResponse, RuleOperationResponse, RuleSearchResponse,
-    UpdateGlobalSettingsResponse, UserDetailResponse, UserListResponse, UserGroupOperationResponse,
+    UpdateGlobalSettingsResponse, UserDetailResponse, UserGroupOperationResponse, UserListResponse,
 };
 use rustsocks::config::Config;
 use rustsocks::server::pool::{ConnectionPool, PoolConfig};
@@ -76,7 +78,10 @@ fn build_router(state: ApiState) -> Router {
         .route("/api/acl/groups/{groupname}", delete(delete_group))
         .route("/api/acl/groups/{groupname}/rules", post(add_group_rule))
         .route("/api/acl/groups/{groupname}/rules", put(update_group_rule))
-        .route("/api/acl/groups/{groupname}/rules", delete(delete_group_rule))
+        .route(
+            "/api/acl/groups/{groupname}/rules",
+            delete(delete_group_rule),
+        )
         .route("/api/acl/users", get(list_users))
         .route("/api/acl/users", post(create_user))
         .route("/api/acl/users/{username}", get(get_user_detail))
@@ -184,8 +189,7 @@ async fn test_group_rule_crud() {
         "priority": 100
     });
 
-    let (status, body) =
-        send_json(&app, "POST", "/api/acl/groups/devs/rules", add_rule).await;
+    let (status, body) = send_json(&app, "POST", "/api/acl/groups/devs/rules", add_rule).await;
     assert_eq!(status, StatusCode::OK);
     let response: RuleOperationResponse = serde_json::from_slice(&body).unwrap();
     assert!(response.success);
@@ -209,8 +213,7 @@ async fn test_group_rule_crud() {
         }
     });
 
-    let (status, body) =
-        send_json(&app, "PUT", "/api/acl/groups/devs/rules", update_rule).await;
+    let (status, body) = send_json(&app, "PUT", "/api/acl/groups/devs/rules", update_rule).await;
     assert_eq!(status, StatusCode::OK);
     let response: RuleOperationResponse = serde_json::from_slice(&body).unwrap();
     assert!(response.success);
@@ -222,8 +225,7 @@ async fn test_group_rule_crud() {
         "ports": ["443"]
     });
 
-    let (status, body) =
-        send_json(&app, "DELETE", "/api/acl/groups/devs/rules", delete_rule).await;
+    let (status, body) = send_json(&app, "DELETE", "/api/acl/groups/devs/rules", delete_rule).await;
     assert_eq!(status, StatusCode::OK);
     let response: RuleOperationResponse = serde_json::from_slice(&body).unwrap();
     assert!(response.success);
@@ -292,8 +294,7 @@ async fn test_user_rule_crud_and_group_assignment() {
         "priority": 50
     });
 
-    let (status, body) =
-        send_json(&app, "POST", "/api/acl/users/alice/rules", add_rule).await;
+    let (status, body) = send_json(&app, "POST", "/api/acl/users/alice/rules", add_rule).await;
     assert_eq!(status, StatusCode::OK);
     let response: RuleOperationResponse = serde_json::from_slice(&body).unwrap();
     assert!(response.success);
@@ -313,8 +314,7 @@ async fn test_user_rule_crud_and_group_assignment() {
         }
     });
 
-    let (status, body) =
-        send_json(&app, "PUT", "/api/acl/users/alice/rules", update_rule).await;
+    let (status, body) = send_json(&app, "PUT", "/api/acl/users/alice/rules", update_rule).await;
     assert_eq!(status, StatusCode::OK);
     let response: RuleOperationResponse = serde_json::from_slice(&body).unwrap();
     assert!(response.success);
@@ -325,8 +325,7 @@ async fn test_user_rule_crud_and_group_assignment() {
         "ports": ["22"]
     });
 
-    let (status, body) =
-        send_json(&app, "DELETE", "/api/acl/users/alice/rules", delete_rule).await;
+    let (status, body) = send_json(&app, "DELETE", "/api/acl/users/alice/rules", delete_rule).await;
     assert_eq!(status, StatusCode::OK);
     let response: RuleOperationResponse = serde_json::from_slice(&body).unwrap();
     assert!(response.success);

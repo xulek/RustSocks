@@ -323,8 +323,9 @@ impl GssApiAuthenticator {
         // Move ctx into spawn_blocking and get it back
         let token = client_msg.token.clone();
         let server_protection_level = self.protection_level;
-        let placeholder_cred = Cred::acquire(None, None, CredUsage::Accept, None)
-            .map_err(|e| GssApiAuthError::System(format!("Failed to acquire GSS-API credentials: {}", e)))?;
+        let placeholder_cred = Cred::acquire(None, None, CredUsage::Accept, None).map_err(|e| {
+            GssApiAuthError::System(format!("Failed to acquire GSS-API credentials: {}", e))
+        })?;
         let mut ctx_moved = std::mem::replace(ctx, ServerCtx::new(placeholder_cred));
 
         let result = task::spawn_blocking(

@@ -169,9 +169,7 @@ where
 
     debug!(
         "Parsed SOCKS5 request: command={:?}, address={}, port={}",
-        command,
-        address,
-        port
+        command, address, port
     );
 
     Ok(Socks5Request {
@@ -236,9 +234,7 @@ where
 
     debug!(
         "Sent SOCKS5 response: reply={:?}, bind_addr={}, bind_port={}",
-        reply,
-        bind_addr,
-        bind_port
+        reply, bind_addr, bind_port
     );
 
     Ok(())
@@ -279,10 +275,7 @@ where
 
     debug!(
         "Parsed SOCKS4 request: command={:?}, address={}, port={}, user_id={:?}",
-        command,
-        address,
-        port,
-        user_id
+        command, address, port, user_id
     );
 
     Ok(Socks4Request {

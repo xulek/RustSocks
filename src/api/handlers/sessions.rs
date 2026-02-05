@@ -361,68 +361,84 @@ pub async fn get_session_detail(
     State(state): State<ApiState>,
     Path(id): Path<String>,
 ) -> axum::response::Result<(StatusCode, Json<SessionResponse>)> {
-    let sessions = state.session_manager.get_all_sessions().await;
-
-    if let Some(session) = sessions.iter().find(|s| s.session_id.to_string() == id) {
-        Ok((StatusCode::OK, Json(session_to_response(session.clone()))))
-    } else {
-        #[cfg(feature = "database")]
+    if let Ok(session_id) = Uuid::parse_str(&id) {
+        if let Some(session) = state
+            .session_manager
+            .get_session_snapshot(&session_id)
+            .await
         {
-            if let Some(store) = state.session_store.as_ref() {
-                match Uuid::parse_str(&id) {
-                    Ok(uuid) => match store.get_session(&uuid).await {
-                        Ok(Some(session)) => {
-                            return Ok((StatusCode::OK, Json(session_to_response(session))));
-                        }
-                        Ok(None) => {}
-                        Err(e) => {
-                            warn!(session_id = %id, error = %e, "Failed to load session from store")
-                        }
-                    },
-                    Err(_) => {
-                        return Err((StatusCode::BAD_REQUEST, "Invalid session id").into());
+            return Ok((StatusCode::OK, Json(session_to_response(session))));
+        }
+    }
+
+    #[cfg(feature = "database")]
+    {
+        if let Some(store) = state.session_store.as_ref() {
+            match Uuid::parse_str(&id) {
+                Ok(uuid) => match store.get_session(&uuid).await {
+                    Ok(Some(session)) => {
+                        return Ok((StatusCode::OK, Json(session_to_response(session))));
                     }
+                    Ok(None) => {}
+                    Err(e) => {
+                        warn!(session_id = %id, error = %e, "Failed to load session from store")
+                    }
+                },
+                Err(_) => {
+                    return Err((StatusCode::BAD_REQUEST, "Invalid session id").into());
                 }
             }
         }
-
-        Err((StatusCode::NOT_FOUND, "Session not found").into())
     }
+
+    Err((StatusCode::NOT_FOUND, "Session not found").into())
 }
 
 /// GET /api/sessions/stats - Get aggregated session statistics
 pub async fn get_session_stats(
     State(state): State<ApiState>,
 ) -> (StatusCode, Json<SessionStatsResponse>) {
-    let all_sessions = state.session_manager.get_all_sessions().await;
-
-    let active_sessions = all_sessions
-        .iter()
-        .filter(|s| s.status.as_str() == "active")
-        .count() as u64;
-    let closed_sessions = all_sessions
-        .iter()
-        .filter(|s| s.status.as_str() == "closed")
-        .count() as u64;
-    let failed_sessions = all_sessions
-        .iter()
-        .filter(|s| s.status.as_str() == "failed")
-        .count() as u64;
-
-    let total_bytes_sent: u64 = all_sessions.iter().map(|s| s.bytes_sent).sum();
-    let total_bytes_received: u64 = all_sessions.iter().map(|s| s.bytes_received).sum();
+    let mut active_sessions = 0u64;
+    let mut closed_sessions = 0u64;
+    let mut failed_sessions = 0u64;
+    let mut total_sessions = 0u64;
+    let mut total_bytes_sent = 0u64;
+    let mut total_bytes_received = 0u64;
 
     // Calculate top users (by session count)
     let mut user_stats: std::collections::HashMap<String, (u64, u64, u64)> =
         std::collections::HashMap::new();
-    for session in &all_sessions {
-        let entry = user_stats
-            .entry(session.user.to_string())
-            .or_insert((0, 0, 0));
-        entry.0 += 1;
-        entry.1 += session.bytes_sent;
-        entry.2 += session.bytes_received;
-    }
+    let mut dest_stats: std::collections::HashMap<String, (u64, u64, u64)> =
+        std::collections::HashMap::new();
+
+    state
+        .session_manager
+        .visit_sessions(|session| {
+            total_sessions += 1;
+            total_bytes_sent = total_bytes_sent.saturating_add(session.bytes_sent);
+            total_bytes_received = total_bytes_received.saturating_add(session.bytes_received);
+
+            match session.status {
+                SessionStatus::Active => active_sessions += 1,
+                SessionStatus::Closed => closed_sessions += 1,
+                SessionStatus::Failed => failed_sessions += 1,
+                SessionStatus::RejectedByAcl => {}
+            }
+
+            let user_entry = user_stats
+                .entry(session.user.to_string())
+                .or_insert((0, 0, 0));
+            user_entry.0 += 1;
+            user_entry.1 = user_entry.1.saturating_add(session.bytes_sent);
+            user_entry.2 = user_entry.2.saturating_add(session.bytes_received);
+
+            let key = format!("{}:{}", session.dest_ip, session.dest_port);
+            let dest_entry = dest_stats.entry(key).or_insert((0, 0, 0));
+            dest_entry.0 += 1;
+            dest_entry.1 = dest_entry.1.saturating_add(session.bytes_sent);
+            dest_entry.2 = dest_entry.2.saturating_add(session.bytes_received);
+        })
+        .await;
 
     let mut top_users: Vec<UserStat> = user_stats
         .into_iter()
@@ -435,17 +451,6 @@ pub async fn get_session_stats(
         .collect();
     top_users.sort_by(|a, b| b.session_count.cmp(&a.session_count));
     top_users.truncate(10);
-
-    // Calculate top destinations
-    let mut dest_stats: std::collections::HashMap<String, (u64, u64, u64)> =
-        std::collections::HashMap::new();
-    for session in &all_sessions {
-        let key = format!("{}:{}", session.dest_ip, session.dest_port);
-        let entry = dest_stats.entry(key).or_insert((0, 0, 0));
-        entry.0 += 1;
-        entry.1 += session.bytes_sent;
-        entry.2 += session.bytes_received;
-    }
 
     let mut top_destinations: Vec<DestinationStat> = dest_stats
         .into_iter()
@@ -460,7 +465,7 @@ pub async fn get_session_stats(
     top_destinations.truncate(10);
 
     let response = SessionStatsResponse {
-        total_sessions: all_sessions.len() as u64,
+        total_sessions,
         active_sessions,
         closed_sessions,
         failed_sessions,
@@ -479,7 +484,7 @@ pub async fn get_user_sessions(
     Path(user): Path<String>,
 ) -> (StatusCode, Json<Vec<SessionResponse>>) {
     #[cfg(feature = "database")]
-    let all_sessions: Vec<Session> = {
+    let db_sessions: Vec<Session> = {
         let mut sessions = Vec::new();
         if let Some(store) = state.session_store.as_ref() {
             let filter = SessionFilter {
@@ -513,20 +518,16 @@ pub async fn get_user_sessions(
     };
 
     #[cfg(not(feature = "database"))]
-    let all_sessions: Vec<Session> = Vec::new();
+    let db_sessions: Vec<Session> = Vec::new();
 
     // Add active sessions from memory (might overlap with DB, we'll deduplicate)
-    let memory_sessions = state.session_manager.get_all_sessions().await;
-    let user_memory_sessions: Vec<Session> = memory_sessions
-        .into_iter()
-        .filter(|s| s.user.as_ref() == user)
-        .collect();
+    let user_memory_sessions = state.session_manager.get_sessions_for_user(&user).await;
 
     // Deduplicate by session_id (prefer in-memory sessions as they're more up-to-date)
     let mut session_map = std::collections::HashMap::new();
 
     // Add DB sessions first
-    for session in all_sessions {
+    for session in db_sessions {
         session_map.insert(session.session_id, session);
     }
 
@@ -595,14 +596,7 @@ pub async fn terminate_session(
     };
 
     // Check if session exists and is active
-    let session_exists = state
-        .session_manager
-        .get_active_sessions()
-        .await
-        .iter()
-        .any(|s| s.session_id == session_uuid);
-
-    if !session_exists {
+    if state.session_manager.get_session(&session_uuid).is_none() {
         return (
             StatusCode::NOT_FOUND,
             Json(serde_json::json!({

@@ -23,12 +23,15 @@ use crate::config::DashboardAuthSettings;
 use crate::smtp::notifications::{notify_with_pool, NotificationDecision, NotificationKind};
 #[cfg(feature = "database")]
 use sqlx::{Any, Pool};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 const SESSION_COOKIE_NAME: &str = "rustsocks_session";
 /// Max failed login attempts per username before lockout
 const MAX_LOGIN_ATTEMPTS: u32 = 5;
 /// Lockout duration after exceeding max attempts
 const LOGIN_LOCKOUT_SECS: u64 = 300; // 5 minutes
+/// How often login path should run full session cleanup.
+const SESSION_CLEANUP_INTERVAL_SECS: u64 = 60;
 
 #[derive(Clone)]
 pub struct AuthState {
@@ -38,6 +41,8 @@ pub struct AuthState {
     pub api_token: Option<String>,
     /// Tracks failed login attempts: username -> (count, first_failure_timestamp)
     pub login_attempts: Arc<DashMap<String, (u32, u64)>>,
+    /// Next Unix timestamp when full session cleanup is allowed.
+    next_cleanup_at: Arc<AtomicU64>,
     #[cfg(feature = "database")]
     pub smtp_pool: Option<Pool<Any>>,
 }
@@ -62,6 +67,7 @@ impl AuthState {
             base_path,
             api_token,
             login_attempts: Arc::new(DashMap::new()),
+            next_cleanup_at: Arc::new(AtomicU64::new(0)),
         }
     }
 
@@ -78,6 +84,7 @@ impl AuthState {
             base_path,
             api_token,
             login_attempts: Arc::new(DashMap::new()),
+            next_cleanup_at: Arc::new(AtomicU64::new(0)),
             smtp_pool,
         }
     }
@@ -137,7 +144,7 @@ impl AuthState {
         self.sessions.insert(token.clone(), session);
 
         // Cleanup expired sessions
-        self.cleanup_expired_sessions();
+        self.cleanup_expired_sessions_if_due(now);
 
         token
     }
@@ -163,6 +170,27 @@ impl AuthState {
     pub fn cleanup_expired_sessions(&self) {
         let now = current_timestamp();
         self.sessions.retain(|_, session| session.expires_at > now);
+    }
+
+    fn cleanup_expired_sessions_if_due(&self, now: u64) {
+        let next_cleanup = self.next_cleanup_at.load(Ordering::Relaxed);
+        if now < next_cleanup {
+            return;
+        }
+
+        let scheduled_next = now.saturating_add(SESSION_CLEANUP_INTERVAL_SECS);
+        if self
+            .next_cleanup_at
+            .compare_exchange(
+                next_cleanup,
+                scheduled_next,
+                Ordering::Relaxed,
+                Ordering::Relaxed,
+            )
+            .is_ok()
+        {
+            self.cleanup_expired_sessions();
+        }
     }
 
     pub fn verify_credentials(&self, username: &str, password: &str) -> bool {
@@ -280,11 +308,7 @@ pub async fn login_handler(
         auth_state.record_failed_login(&req.username);
         warn!("Failed login attempt for user: {}", req.username);
         #[cfg(feature = "database")]
-        spawn_security_notification(
-            &auth_state,
-            &req.username,
-            "Invalid username or password",
-        );
+        spawn_security_notification(&auth_state, &req.username, "Invalid username or password");
         return (
             StatusCode::UNAUTHORIZED,
             Json(LoginResponse {
@@ -300,9 +324,10 @@ pub async fn login_handler(
     if auth_state.settings.altcha_enabled {
         match &req.altcha {
             Some(altcha_payload) => {
-                if let Err(err_msg) =
-                    verify_altcha(altcha_payload, &derive_altcha_key(&auth_state.settings.session_secret))
-                {
+                if let Err(err_msg) = verify_altcha(
+                    altcha_payload,
+                    &derive_altcha_key(&auth_state.settings.session_secret),
+                ) {
                     warn!(
                         "Altcha verification failed for user {}: {}",
                         req.username, err_msg
@@ -386,7 +411,9 @@ pub async fn login_handler(
     let mut response = Response::new(Body::from(json_body));
 
     if let Ok(cookie_val) = cookie.parse() {
-        response.headers_mut().insert(header::SET_COOKIE, cookie_val);
+        response
+            .headers_mut()
+            .insert(header::SET_COOKIE, cookie_val);
     }
     response.headers_mut().insert(
         header::CONTENT_TYPE,
@@ -411,15 +438,7 @@ fn spawn_security_notification(auth_state: &AuthState, username: &str, reason: &
     let api_token = auth_state.api_token.clone();
 
     tokio::spawn(async move {
-        match notify_with_pool(
-            &pool,
-            api_token,
-            NotificationKind::Security,
-            subject,
-            body,
-        )
-        .await
-        {
+        match notify_with_pool(&pool, api_token, NotificationKind::Security, subject, body).await {
             Ok(NotificationDecision::Sent { recipients }) => {
                 info!("Security notification sent to {} recipient(s)", recipients);
             }
@@ -462,7 +481,8 @@ fn verify_altcha(payload_str: &str, secret_key: &str) -> Result<(), String> {
             payload.signature.as_bytes(),
             expected_signature.as_bytes(),
         )
-        .unwrap_u8() != 1
+        .unwrap_u8()
+            != 1
     {
         return Err("Invalid signature".to_string());
     }
@@ -605,8 +625,8 @@ pub async fn altcha_challenge_handler(
     // This allows server to verify the challenge was generated by us
     let signature_payload = format!("{}?{}", salt, challenge);
     let altcha_key = derive_altcha_key(&auth_state.settings.session_secret);
-    let mut mac = HmacSha256::new_from_slice(altcha_key.as_bytes())
-        .expect("HMAC can take key of any size");
+    let mut mac =
+        HmacSha256::new_from_slice(altcha_key.as_bytes()).expect("HMAC can take key of any size");
     mac.update(signature_payload.as_bytes());
     let signature_bytes = mac.finalize().into_bytes();
     let signature = format!("{:x}", signature_bytes);

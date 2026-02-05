@@ -18,8 +18,8 @@ fn derive_key(api_token: &str) -> [u8; 32] {
 /// Returns base64-encoded: nonce || ciphertext || tag
 pub fn encrypt_password(password: &str, api_token: &str) -> Result<String, String> {
     let key = derive_key(api_token);
-    let cipher = Aes256Gcm::new_from_slice(&key)
-        .map_err(|e| format!("Failed to create cipher: {}", e))?;
+    let cipher =
+        Aes256Gcm::new_from_slice(&key).map_err(|e| format!("Failed to create cipher: {}", e))?;
 
     let mut nonce_bytes = [0u8; NONCE_SIZE];
     rand::thread_rng().fill(&mut nonce_bytes);
@@ -41,8 +41,8 @@ pub fn encrypt_password(password: &str, api_token: &str) -> Result<String, Strin
 /// Expects base64-encoded: nonce || ciphertext || tag
 pub fn decrypt_password(encrypted: &str, api_token: &str) -> Result<String, String> {
     let key = derive_key(api_token);
-    let cipher = Aes256Gcm::new_from_slice(&key)
-        .map_err(|e| format!("Failed to create cipher: {}", e))?;
+    let cipher =
+        Aes256Gcm::new_from_slice(&key).map_err(|e| format!("Failed to create cipher: {}", e))?;
 
     let combined = BASE64
         .decode(encrypted)
