@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react'
 import { X } from 'lucide-react'
 import { formatBytes, formatDateTime, formatDuration } from '../lib/format'
+import { getSessionStatusBadgeClass, getSessionStatusLabel } from '../lib/sessionStatus'
 
 const DetailRow = ({ label, value }) => (
   <div className="detail-row">
@@ -8,17 +9,6 @@ const DetailRow = ({ label, value }) => (
     <div className="detail-value">{value ?? '—'}</div>
   </div>
 )
-
-const resolveStatusBadge = (status) => {
-  const normalized = status?.toLowerCase()
-  const map = {
-    active: 'badge badge-success',
-    closed: 'badge badge-warning',
-    failed: 'badge badge-danger',
-    rejected_by_acl: 'badge badge-danger'
-  }
-  return map[normalized] || 'badge badge-warning'
-}
 
 const resolveAclBadge = (decision) => {
   if (!decision) return 'badge badge-warning'
@@ -68,8 +58,8 @@ function SessionDetailDrawer({ open, session, loading, error, onClose }) {
               <DetailRow
                 label="Status"
                 value={
-                  <span className={resolveStatusBadge(session.status)} style={{ textTransform: 'capitalize' }}>
-                    {session.status}
+                  <span className={getSessionStatusBadgeClass(session.status)}>
+                    {getSessionStatusLabel(session.status)}
                   </span>
                 }
               />

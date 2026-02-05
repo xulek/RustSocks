@@ -7,7 +7,7 @@ use axum::{
 use rustsocks::api::handlers::sessions::ApiState;
 use rustsocks::api::handlers::{
     get_acl_rules, get_active_sessions, get_metrics, get_session_history, get_session_stats,
-    get_user_sessions, health_check, test_acl_decision,
+    get_user_sessions, health_check, terminate_session, test_acl_decision,
 };
 use rustsocks::config::Config;
 use rustsocks::server::pool::{ConnectionPool, PoolConfig};
@@ -388,6 +388,47 @@ async fn test_session_history_pagination() {
     assert_eq!(result["page_size"], 5);
     assert_eq!(result["total_pages"], 2);
     assert_eq!(result["data"].as_array().unwrap().len(), 5);
+}
+
+#[tokio::test]
+async fn test_admin_terminate_sets_terminated_by_admin_status() {
+    let session_manager = Arc::new(SessionManager::new());
+
+    let conn_info = ConnectionInfo {
+        source_ip: "127.0.0.1".parse::<IpAddr>().unwrap(),
+        source_port: 20001,
+        dest_ip: "8.8.8.8".to_string(),
+        dest_port: 443,
+        protocol: SessionProtocol::Tcp,
+    };
+
+    let session_id = session_manager
+        .new_session("admin-test-user", conn_info, "allow", None)
+        .await;
+
+    let state = create_api_state(session_manager.clone());
+
+    let app = Router::new()
+        .route("/api/sessions/{id}/terminate", post(terminate_session))
+        .with_state(state);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri(format!("/api/sessions/{}/terminate", session_id))
+                .method("POST")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let closed_sessions = session_manager.get_closed_sessions().await;
+    assert_eq!(closed_sessions.len(), 1);
+    assert_eq!(closed_sessions[0].session_id, session_id);
+    assert_eq!(closed_sessions[0].status, SessionStatus::TerminatedByAdmin);
 }
 
 #[tokio::test]

@@ -17,15 +17,12 @@ import {
   DEFAULT_PAGE_SIZE,
   sessionsToCsv
 } from '../lib/sessions'
+import {
+  SESSION_STATUS_OPTIONS,
+  getSessionStatusBadgeClass,
+  getSessionStatusLabel
+} from '../lib/sessionStatus'
 import SessionDetailDrawer from '../components/SessionDetailDrawer'
-
-const statusOptions = [
-  { value: '', label: 'Any Status' },
-  { value: 'active', label: 'Active' },
-  { value: 'closed', label: 'Closed' },
-  { value: 'failed', label: 'Failed' },
-  { value: 'rejected_by_acl', label: 'Rejected by ACL' }
-]
 
 const getInitialFilters = (params) => ({
   user: params.get('user') || '',
@@ -264,16 +261,6 @@ function Sessions() {
     }
   }
 
-  const getStatusBadge = (status) => {
-    const statusMap = {
-      active: 'badge-success',
-      closed: 'badge-warning',
-      failed: 'badge-danger',
-      rejected_by_acl: 'badge-danger'
-    }
-    return `badge ${statusMap[status.toLowerCase()] || 'badge-warning'}`
-  }
-
   const aclBadgeClass = (decision) => {
     if (!decision) return 'badge badge-warning'
     return decision.toLowerCase() === 'allow' ? 'badge badge-success' : 'badge badge-danger'
@@ -381,7 +368,7 @@ function Sessions() {
                   value={filterDraft.status}
                   onChange={(e) => handleDraftChange('status', e.target.value)}
                 >
-                  {statusOptions.map((option) => (
+                  {SESSION_STATUS_OPTIONS.map((option) => (
                     <option key={option.value} value={option.value}>
                       {option.label}
                     </option>
@@ -504,8 +491,8 @@ function Sessions() {
                   <td><code>{session.dest_ip}:{session.dest_port}</code></td>
                   <td>{session.protocol.toUpperCase()}</td>
                   <td>
-                    <span className={getStatusBadge(session.status)}>
-                      {session.status}
+                    <span className={getSessionStatusBadgeClass(session.status)}>
+                      {getSessionStatusLabel(session.status)}
                     </span>
                   </td>
                   <td>

@@ -50,6 +50,7 @@ impl std::str::FromStr for Protocol {
 pub enum SessionStatus {
     Active,
     Closed,
+    TerminatedByAdmin,
     Failed,
     RejectedByAcl,
 }
@@ -60,6 +61,7 @@ impl SessionStatus {
         match self {
             SessionStatus::Active => "active",
             SessionStatus::Closed => "closed",
+            SessionStatus::TerminatedByAdmin => "terminated_by_admin",
             SessionStatus::Failed => "failed",
             SessionStatus::RejectedByAcl => "rejected_by_acl",
         }
@@ -73,6 +75,7 @@ impl std::str::FromStr for SessionStatus {
         match value {
             "active" | "ACTIVE" => Ok(SessionStatus::Active),
             "closed" | "CLOSED" => Ok(SessionStatus::Closed),
+            "terminated_by_admin" | "TERMINATED_BY_ADMIN" => Ok(SessionStatus::TerminatedByAdmin),
             "failed" | "FAILED" => Ok(SessionStatus::Failed),
             "rejected_by_acl" | "REJECTED_BY_ACL" => Ok(SessionStatus::RejectedByAcl),
             _ => Err(format!("Invalid session status: {}", value)),
@@ -311,6 +314,17 @@ mod tests {
     fn session_status_serializes_to_snake_case() {
         let value = serde_json::to_string(&SessionStatus::RejectedByAcl).unwrap();
         assert_eq!(value, "\"rejected_by_acl\"");
+    }
+
+    #[test]
+    fn terminated_by_admin_status_roundtrip() {
+        let value = serde_json::to_string(&SessionStatus::TerminatedByAdmin).unwrap();
+        assert_eq!(value, "\"terminated_by_admin\"");
+
+        let parsed = "terminated_by_admin"
+            .parse::<SessionStatus>()
+            .expect("status should parse");
+        assert_eq!(parsed, SessionStatus::TerminatedByAdmin);
     }
 
     #[test]

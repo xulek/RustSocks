@@ -12,6 +12,7 @@ import {
 } from 'recharts'
 import { getApiUrl } from '../lib/basePath'
 import { formatBytes, formatDateTime, formatDuration } from '../lib/format'
+import { getSessionStatusBadgeClass, getSessionStatusLabel } from '../lib/sessionStatus'
 
 const DetailRow = ({ label, value }) => (
   <div className="detail-row">
@@ -77,7 +78,9 @@ function UserDetailModal({ open, user, onClose, onEditRule, onDeleteRule }) {
       totalSessions: sessions.length,
       totalBandwidth: sessions.reduce((sum, s) => sum + (s.bytes_sent || 0) + (s.bytes_received || 0), 0),
       activeSessions: sessions.filter(s => s.status === 'active').length,
-      closedSessions: sessions.filter(s => s.status === 'closed').length,
+      closedSessions: sessions.filter(
+        s => s.status === 'closed' || s.status === 'terminated_by_admin'
+      ).length,
       failedSessions: sessions.filter(s => s.status === 'failed').length,
       totalBytesIn: sessions.reduce((sum, s) => sum + (s.bytes_received || 0), 0),
       totalBytesOut: sessions.reduce((sum, s) => sum + (s.bytes_sent || 0), 0)
@@ -354,12 +357,8 @@ function UserDetailModal({ open, user, onClose, onEditRule, onDeleteRule }) {
                         <tr key={idx}>
                           <td><code style={{ fontSize: '11px' }}>{session.dest_ip}:{session.dest_port}</code></td>
                           <td>
-                            <span className={`badge ${
-                              session.status === 'active' ? 'badge-success' :
-                              session.status === 'closed' ? 'badge-warning' :
-                              'badge-danger'
-                            }`} style={{ fontSize: '11px' }}>
-                              {session.status}
+                            <span className={getSessionStatusBadgeClass(session.status)} style={{ fontSize: '11px' }}>
+                              {getSessionStatusLabel(session.status)}
                             </span>
                           </td>
                           <td>{formatBytes(session.bytes_sent)}</td>

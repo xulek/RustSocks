@@ -421,6 +421,7 @@ pub async fn get_session_stats(
             match session.status {
                 SessionStatus::Active => active_sessions += 1,
                 SessionStatus::Closed => closed_sessions += 1,
+                SessionStatus::TerminatedByAdmin => closed_sessions += 1,
                 SessionStatus::Failed => failed_sessions += 1,
                 SessionStatus::RejectedByAcl => {}
             }
@@ -608,7 +609,11 @@ pub async fn terminate_session(
     // Terminate the session
     state
         .session_manager
-        .terminate_session(&session_uuid, "Terminated by admin", SessionStatus::Closed)
+        .terminate_session(
+            &session_uuid,
+            "Terminated by admin",
+            SessionStatus::TerminatedByAdmin,
+        )
         .await;
 
     (
