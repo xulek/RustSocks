@@ -143,6 +143,11 @@ impl SessionStore {
         url_lower.contains(":memory:") || url_lower.contains("mode=memory")
     }
 
+    #[cfg(test)]
+    pub(crate) async fn close_for_test(&self) {
+        self.pool.close().await;
+    }
+
     async fn apply_migrations(pool: &AnyPool, flavor: &DatabaseFlavor) -> Result<(), sqlx::Error> {
         let migrator = sqlx::migrate!("./migrations");
 

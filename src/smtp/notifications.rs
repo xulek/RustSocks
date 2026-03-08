@@ -35,8 +35,8 @@ struct CooldownState {
 }
 
 impl CooldownState {
-    fn check_and_mark(
-        &mut self,
+    fn can_send(
+        &self,
         kind: NotificationKind,
         cooldown_seconds: u64,
         now: u64,
@@ -51,8 +51,11 @@ impl CooldownState {
             }
         }
 
-        self.last_sent.insert(kind, now);
         Ok(())
+    }
+
+    fn mark_sent(&mut self, kind: NotificationKind, now: u64) {
+        self.last_sent.insert(kind, now);
     }
 }
 
@@ -123,10 +126,18 @@ fn check_cooldown(
     cooldown_seconds: u64,
 ) -> Result<(), NotificationSkipReason> {
     let now = current_timestamp();
+    let state = cooldown_state()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    state.can_send(kind, cooldown_seconds, now)
+}
+
+fn mark_notification_sent(kind: NotificationKind) {
+    let now = current_timestamp();
     let mut state = cooldown_state()
         .lock()
-        .expect("notification cooldown lock poisoned");
-    state.check_and_mark(kind, cooldown_seconds, now)
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    state.mark_sent(kind, now);
 }
 
 pub async fn send_notification(
@@ -149,6 +160,7 @@ pub async fn send_notification(
         client.send(recipient, subject, body).await?;
     }
 
+    mark_notification_sent(kind);
     Ok(NotificationDecision::Sent { recipients })
 }
 
@@ -398,17 +410,31 @@ mod tests {
     fn cooldown_blocks_repeated_notifications() {
         let mut state = CooldownState::default();
         let now = 1_000;
+        assert_eq!(state.can_send(NotificationKind::Critical, 60, now), Ok(()));
+        state.mark_sent(NotificationKind::Critical, now);
         assert_eq!(
-            state.check_and_mark(NotificationKind::Critical, 60, now),
-            Ok(())
-        );
-        assert_eq!(
-            state.check_and_mark(NotificationKind::Critical, 60, now + 30),
+            state.can_send(NotificationKind::Critical, 60, now + 30),
             Err(NotificationSkipReason::CooldownActive)
         );
+        assert_eq!(state.can_send(NotificationKind::Critical, 60, now + 61), Ok(()));
+    }
+
+    #[test]
+    fn cooldown_is_not_armed_until_send_succeeds() {
+        let mut state = CooldownState::default();
+        let now = 2_000;
         assert_eq!(
-            state.check_and_mark(NotificationKind::Critical, 60, now + 61),
+            state.can_send(NotificationKind::Security, 60, now),
             Ok(())
+        );
+        assert_eq!(
+            state.can_send(NotificationKind::Security, 60, now + 30),
+            Ok(())
+        );
+        state.mark_sent(NotificationKind::Security, now + 30);
+        assert_eq!(
+            state.can_send(NotificationKind::Security, 60, now + 45),
+            Err(NotificationSkipReason::CooldownActive)
         );
     }
 }

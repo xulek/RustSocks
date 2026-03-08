@@ -1594,7 +1594,7 @@ pub async fn start_api_server(
     }
 
     let handle = tokio::spawn(async move {
-        let server = axum::serve(listener, app);
+        let server = axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>());
         if let Err(err) = server.await {
             error!("API server error: {}", err);
         }

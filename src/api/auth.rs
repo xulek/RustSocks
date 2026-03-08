@@ -1,6 +1,6 @@
 use axum::{
     body::Body,
-    extract::State,
+    extract::{ConnectInfo, State},
     http::{header, HeaderMap, StatusCode},
     response::IntoResponse,
     Json,
@@ -8,7 +8,8 @@ use axum::{
 use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::sync::Arc;
+use std::net::{IpAddr, SocketAddr};
+use std::sync::{Arc, OnceLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tracing::{debug, info, warn};
 
@@ -19,6 +20,8 @@ type HmacSha256 = Hmac<Sha256>;
 
 use crate::auth::verify_password;
 use crate::config::DashboardAuthSettings;
+use argon2::password_hash::{rand_core::OsRng as ArgonOsRng, PasswordHasher, SaltString};
+use argon2::Argon2;
 #[cfg(feature = "database")]
 use crate::smtp::notifications::{notify_with_pool, NotificationDecision, NotificationKind};
 #[cfg(feature = "database")]
@@ -28,10 +31,19 @@ use std::sync::atomic::{AtomicU64, Ordering};
 const SESSION_COOKIE_NAME: &str = "rustsocks_session";
 /// Max failed login attempts per username before lockout
 const MAX_LOGIN_ATTEMPTS: u32 = 5;
+/// Max failed login attempts per source IP before lockout
+const MAX_LOGIN_ATTEMPTS_PER_IP: u32 = 20;
 /// Lockout duration after exceeding max attempts
 const LOGIN_LOCKOUT_SECS: u64 = 300; // 5 minutes
 /// How often login path should run full session cleanup.
 const SESSION_CLEANUP_INTERVAL_SECS: u64 = 60;
+const INVALID_LOGIN_MESSAGE: &str = "Invalid credentials or CAPTCHA";
+
+#[derive(Clone, Copy, Debug)]
+struct LoginAttemptState {
+    count: u32,
+    first_failure: u64,
+}
 
 #[derive(Clone)]
 pub struct AuthState {
@@ -39,8 +51,10 @@ pub struct AuthState {
     pub sessions: Arc<DashMap<String, Session>>,
     pub base_path: String,
     pub api_token: Option<String>,
-    /// Tracks failed login attempts: username -> (count, first_failure_timestamp)
-    pub login_attempts: Arc<DashMap<String, (u32, u64)>>,
+    /// Tracks failed login attempts scoped to (username, source IP).
+    login_attempts: Arc<DashMap<String, LoginAttemptState>>,
+    /// Tracks failed login attempts scoped to source IP only.
+    ip_login_attempts: Arc<DashMap<IpAddr, LoginAttemptState>>,
     /// Next Unix timestamp when full session cleanup is allowed.
     next_cleanup_at: Arc<AtomicU64>,
     #[cfg(feature = "database")]
@@ -67,6 +81,7 @@ impl AuthState {
             base_path,
             api_token,
             login_attempts: Arc::new(DashMap::new()),
+            ip_login_attempts: Arc::new(DashMap::new()),
             next_cleanup_at: Arc::new(AtomicU64::new(0)),
         }
     }
@@ -84,48 +99,30 @@ impl AuthState {
             base_path,
             api_token,
             login_attempts: Arc::new(DashMap::new()),
+            ip_login_attempts: Arc::new(DashMap::new()),
             next_cleanup_at: Arc::new(AtomicU64::new(0)),
             smtp_pool,
         }
     }
 
     /// Check if a user is currently rate-limited. Returns true if locked out.
-    fn is_login_locked(&self, username: &str) -> bool {
-        if let Some(entry) = self.login_attempts.get(username) {
-            let (count, first_failure) = *entry;
-            if count >= MAX_LOGIN_ATTEMPTS {
-                let now = current_timestamp();
-                if now - first_failure < LOGIN_LOCKOUT_SECS {
-                    return true;
-                }
-                // Lockout expired, clear
-                drop(entry);
-                self.login_attempts.remove(username);
-            }
-        }
-        false
+    fn is_login_locked(&self, username: &str, source_ip: IpAddr) -> bool {
+        let login_key = login_attempt_key(username, source_ip);
+        Self::attempt_locked(&self.login_attempts, &login_key, MAX_LOGIN_ATTEMPTS)
+            || Self::attempt_locked(&self.ip_login_attempts, &source_ip, MAX_LOGIN_ATTEMPTS_PER_IP)
     }
 
     /// Record a failed login attempt.
-    fn record_failed_login(&self, username: &str) {
+    fn record_failed_login(&self, username: &str, source_ip: IpAddr) {
         let now = current_timestamp();
-        self.login_attempts
-            .entry(username.to_string())
-            .and_modify(|(count, first_failure)| {
-                if now - *first_failure >= LOGIN_LOCKOUT_SECS {
-                    // Reset window
-                    *count = 1;
-                    *first_failure = now;
-                } else {
-                    *count += 1;
-                }
-            })
-            .or_insert((1, now));
+        let login_key = login_attempt_key(username, source_ip);
+        Self::record_attempt(&self.login_attempts, login_key, now);
+        Self::record_attempt(&self.ip_login_attempts, source_ip, now);
     }
 
     /// Clear login attempts on successful login.
-    fn clear_login_attempts(&self, username: &str) {
-        self.login_attempts.remove(username);
+    fn clear_login_attempts(&self, username: &str, source_ip: IpAddr) {
+        self.login_attempts.remove(&login_attempt_key(username, source_ip));
     }
 
     pub fn create_session(&self, username: String) -> String {
@@ -194,10 +191,12 @@ impl AuthState {
     }
 
     pub fn verify_credentials(&self, username: &str, password: &str) -> bool {
-        self.settings
-            .users
-            .iter()
-            .any(|user| user.username == username && verify_password(&user.password, password))
+        if let Some(user) = self.settings.users.iter().find(|user| user.username == username) {
+            verify_password(&user.password, password)
+        } else {
+            let _ = verify_password(dummy_password_hash(), password);
+            false
+        }
     }
 
     pub fn cookie_path(&self) -> &str {
@@ -207,6 +206,48 @@ impl AuthState {
             self.base_path.as_str()
         }
     }
+
+    fn attempt_locked<K>(
+        attempts: &DashMap<K, LoginAttemptState>,
+        key: &K,
+        max_attempts: u32,
+    ) -> bool
+    where
+        K: Eq + std::hash::Hash + Clone,
+    {
+        if let Some(entry) = attempts.get(key) {
+            let state = *entry;
+            if state.count >= max_attempts {
+                let now = current_timestamp();
+                if now.saturating_sub(state.first_failure) < LOGIN_LOCKOUT_SECS {
+                    return true;
+                }
+                drop(entry);
+                attempts.remove(key);
+            }
+        }
+        false
+    }
+
+    fn record_attempt<K>(attempts: &DashMap<K, LoginAttemptState>, key: K, now: u64)
+    where
+        K: Eq + std::hash::Hash,
+    {
+        attempts
+            .entry(key)
+            .and_modify(|state| {
+                if now.saturating_sub(state.first_failure) >= LOGIN_LOCKOUT_SECS {
+                    state.count = 1;
+                    state.first_failure = now;
+                } else {
+                    state.count += 1;
+                }
+            })
+            .or_insert(LoginAttemptState {
+                count: 1,
+                first_failure: now,
+            });
+    }
 }
 
 fn current_timestamp() -> u64 {
@@ -214,6 +255,36 @@ fn current_timestamp() -> u64 {
         .duration_since(UNIX_EPOCH)
         .unwrap_or(Duration::ZERO)
         .as_secs()
+}
+
+fn normalize_username(username: &str) -> String {
+    username.trim().to_ascii_lowercase()
+}
+
+fn login_attempt_key(username: &str, source_ip: IpAddr) -> String {
+    format!("{}|{}", normalize_username(username), source_ip)
+}
+
+fn dummy_password_hash() -> &'static str {
+    static DUMMY_HASH: OnceLock<String> = OnceLock::new();
+    DUMMY_HASH.get_or_init(|| {
+        let salt = SaltString::generate(&mut ArgonOsRng);
+        Argon2::default()
+            .hash_password(b"rustsocks-dashboard-dummy", &salt)
+            .map(|hash| hash.to_string())
+            .unwrap_or_else(|_| "rustsocks-dashboard-dummy".to_string())
+    })
+}
+
+fn invalid_login_response() -> (StatusCode, Json<LoginResponse>) {
+    (
+        StatusCode::UNAUTHORIZED,
+        Json(LoginResponse {
+            success: false,
+            message: INVALID_LOGIN_MESSAGE.to_string(),
+            username: None,
+        }),
+    )
 }
 
 /// Derive a separate key for altcha CAPTCHA so the session secret is not reused directly.
@@ -281,39 +352,24 @@ pub struct AltchaConfigResponse {
 
 // Handlers
 pub async fn login_handler(
+    ConnectInfo(remote_addr): ConnectInfo<SocketAddr>,
     State(auth_state): State<Arc<AuthState>>,
     Json(req): Json<LoginRequest>,
 ) -> impl IntoResponse {
     use axum::body::Body;
     use axum::response::Response;
 
-    debug!("Login attempt for user: {}", req.username);
+    let source_ip = remote_addr.ip();
+    debug!(user = %req.username, source_ip = %source_ip, "Login attempt");
 
     // Check rate limiting
-    if auth_state.is_login_locked(&req.username) {
-        warn!("Login rate-limited for user: {}", req.username);
+    if auth_state.is_login_locked(&req.username, source_ip) {
+        warn!(user = %req.username, source_ip = %source_ip, "Login rate-limited");
         return (
             StatusCode::TOO_MANY_REQUESTS,
             Json(LoginResponse {
                 success: false,
                 message: "Too many failed attempts. Please try again later.".to_string(),
-                username: None,
-            }),
-        )
-            .into_response();
-    }
-
-    // Verify credentials
-    if !auth_state.verify_credentials(&req.username, &req.password) {
-        auth_state.record_failed_login(&req.username);
-        warn!("Failed login attempt for user: {}", req.username);
-        #[cfg(feature = "database")]
-        spawn_security_notification(&auth_state, &req.username, "Invalid username or password");
-        return (
-            StatusCode::UNAUTHORIZED,
-            Json(LoginResponse {
-                success: false,
-                message: "Invalid username or password".to_string(),
                 username: None,
             }),
         )
@@ -328,53 +384,42 @@ pub async fn login_handler(
                     altcha_payload,
                     &derive_altcha_key(&auth_state.settings.session_secret),
                 ) {
-                    warn!(
-                        "Altcha verification failed for user {}: {}",
-                        req.username, err_msg
-                    );
+                    auth_state.record_failed_login(&req.username, source_ip);
+                    warn!(user = %req.username, source_ip = %source_ip, error = %err_msg, "Altcha verification failed");
                     #[cfg(feature = "database")]
                     spawn_security_notification(
                         &auth_state,
                         &req.username,
                         &format!("Altcha verification failed: {}", err_msg),
                     );
-                    return (
-                        StatusCode::UNAUTHORIZED,
-                        Json(LoginResponse {
-                            success: false,
-                            message: format!("CAPTCHA verification failed: {}", err_msg),
-                            username: None,
-                        }),
-                    )
-                        .into_response();
+                    return invalid_login_response().into_response();
                 }
             }
             None => {
-                warn!(
-                    "Altcha required but not provided for user: {}",
-                    req.username
-                );
+                auth_state.record_failed_login(&req.username, source_ip);
+                warn!(user = %req.username, source_ip = %source_ip, "Altcha required but not provided");
                 #[cfg(feature = "database")]
                 spawn_security_notification(
                     &auth_state,
                     &req.username,
                     "Altcha required but not provided",
                 );
-                return (
-                    StatusCode::UNAUTHORIZED,
-                    Json(LoginResponse {
-                        success: false,
-                        message: "CAPTCHA verification required".to_string(),
-                        username: None,
-                    }),
-                )
-                    .into_response();
+                return invalid_login_response().into_response();
             }
         }
     }
 
+    // Verify credentials after challenge validation to avoid leaking valid credentials.
+    if !auth_state.verify_credentials(&req.username, &req.password) {
+        auth_state.record_failed_login(&req.username, source_ip);
+        warn!(user = %req.username, source_ip = %source_ip, "Invalid username or password");
+        #[cfg(feature = "database")]
+        spawn_security_notification(&auth_state, &req.username, "Invalid username or password");
+        return invalid_login_response().into_response();
+    }
+
     // Clear rate limiter on success
-    auth_state.clear_login_attempts(&req.username);
+    auth_state.clear_login_attempts(&req.username, source_ip);
 
     // Create session
     let token = auth_state.create_session(req.username.clone());
@@ -675,6 +720,45 @@ pub fn extract_session_from_headers(headers: &HeaderMap) -> Option<String> {
 mod tests {
     use super::*;
     use axum::http::{header, HeaderMap, HeaderValue};
+    use base64::engine::general_purpose;
+    use base64::Engine;
+    use serde_json::Value;
+
+    fn test_auth_state(settings: DashboardAuthSettings) -> Arc<AuthState> {
+        #[cfg(feature = "database")]
+        {
+            Arc::new(AuthState::new(settings, "".to_string(), None, None))
+        }
+        #[cfg(not(feature = "database"))]
+        {
+            Arc::new(AuthState::new(settings, "".to_string(), None))
+        }
+    }
+
+    fn build_valid_altcha_payload(secret: &str) -> String {
+        let salt = "testsalt?expires=9999999999".to_string();
+        let number = 4242u32;
+        let challenge_input = format!("{}{}", salt, number);
+        let mut hasher = Sha256::new();
+        hasher.update(challenge_input.as_bytes());
+        let challenge = format!("{:x}", hasher.finalize());
+
+        let signature_payload = format!("{}?{}", salt, challenge);
+        let mut mac = HmacSha256::new_from_slice(derive_altcha_key(secret).as_bytes())
+            .expect("HMAC can take key of any size");
+        mac.update(signature_payload.as_bytes());
+        let signature = format!("{:x}", mac.finalize().into_bytes());
+
+        let payload = serde_json::json!({
+            "algorithm": "SHA-256",
+            "challenge": challenge,
+            "number": number,
+            "salt": salt,
+            "signature": signature,
+        });
+
+        general_purpose::STANDARD.encode(payload.to_string())
+    }
 
     #[test]
     fn random_string_has_expected_shape() {
@@ -730,5 +814,79 @@ mod tests {
             extract_session_from_headers(&headers),
             Some("abc123".to_string())
         );
+    }
+
+    #[test]
+    fn login_lockout_is_scoped_by_source_ip() {
+        let state = test_auth_state(DashboardAuthSettings::default());
+        let ip_a: IpAddr = "192.0.2.10".parse().unwrap();
+        let ip_b: IpAddr = "192.0.2.11".parse().unwrap();
+
+        for _ in 0..MAX_LOGIN_ATTEMPTS {
+            state.record_failed_login("Alice", ip_a);
+        }
+
+        assert!(state.is_login_locked("alice", ip_a));
+        assert!(!state.is_login_locked("alice", ip_b));
+    }
+
+    #[tokio::test]
+    async fn login_handler_uses_same_error_for_missing_altcha_and_bad_password() {
+        let mut settings = DashboardAuthSettings::default();
+        settings.altcha_enabled = true;
+        settings.session_secret = "test-secret".to_string();
+        settings.users = vec![crate::config::User {
+            username: "alice".to_string(),
+            password: "secret123".to_string(),
+        }];
+        let state = test_auth_state(settings.clone());
+        let remote_addr: SocketAddr = "203.0.113.15:4242".parse().unwrap();
+
+        let missing_altcha = login_handler(
+            ConnectInfo(remote_addr),
+            State(state.clone()),
+            Json(LoginRequest {
+                username: "alice".to_string(),
+                password: "secret123".to_string(),
+                altcha: None,
+            }),
+        )
+        .await
+        .into_response();
+
+        let bad_password = login_handler(
+            ConnectInfo(remote_addr),
+            State(state.clone()),
+            Json(LoginRequest {
+                username: "alice".to_string(),
+                password: "wrong".to_string(),
+                altcha: Some(build_valid_altcha_payload(&settings.session_secret)),
+            }),
+        )
+        .await
+        .into_response();
+
+        let missing_altcha_body: Value = serde_json::from_slice(
+            &axum::body::to_bytes(missing_altcha.into_body(), usize::MAX)
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+        let bad_password_body: Value = serde_json::from_slice(
+            &axum::body::to_bytes(bad_password.into_body(), usize::MAX)
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+
+        assert_eq!(
+            missing_altcha_body.get("message").and_then(Value::as_str),
+            Some(INVALID_LOGIN_MESSAGE)
+        );
+        assert_eq!(
+            bad_password_body.get("message").and_then(Value::as_str),
+            Some(INVALID_LOGIN_MESSAGE)
+        );
+        assert_eq!(state.sessions.len(), 0);
     }
 }

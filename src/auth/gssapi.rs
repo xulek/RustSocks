@@ -66,9 +66,9 @@ impl GssApiAuthenticator {
         #[cfg(not(unix))]
         {
             let _ = settings; // Avoid unused variable warning
-            return Err(GssApiAuthError::NotSupported(
+            Err(GssApiAuthError::NotSupported(
                 "GSS-API is only supported on Unix systems".to_string(),
-            ));
+            ))
         }
 
         #[cfg(unix)]
@@ -120,9 +120,9 @@ impl GssApiAuthenticator {
         #[cfg(not(unix))]
         {
             let _ = stream; // Avoid unused variable warning
-            return Err(GssApiAuthError::NotSupported(
+            Err(GssApiAuthError::NotSupported(
                 "GSS-API is only supported on Unix systems".to_string(),
-            ));
+            ))
         }
 
         #[cfg(unix)]

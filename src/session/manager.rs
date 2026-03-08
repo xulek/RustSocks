@@ -296,6 +296,37 @@ impl SessionManager {
         }
     }
 
+    pub async fn visit_sessions_started_since<F>(&self, cutoff: chrono::DateTime<Utc>, mut visit: F)
+    where
+        F: FnMut(&Session),
+    {
+        let active_handles: Vec<_> = self
+            .active_sessions
+            .iter()
+            .map(|entry| entry.value().clone())
+            .collect();
+        for handle in active_handles {
+            let session = handle.read().await;
+            if session.start_time >= cutoff {
+                visit(&session);
+            }
+        }
+
+        {
+            let closed = self.closed_sessions.read().await;
+            for session in closed.iter().filter(|session| session.start_time >= cutoff) {
+                visit(session);
+            }
+        }
+
+        {
+            let rejected = self.rejected_sessions.read().await;
+            for session in rejected.iter().filter(|session| session.start_time >= cutoff) {
+                visit(session);
+            }
+        }
+    }
+
     pub async fn visit_closed_sessions<F>(&self, mut visit: F)
     where
         F: FnMut(&Session),

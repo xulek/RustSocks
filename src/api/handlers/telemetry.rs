@@ -87,6 +87,7 @@ pub async fn get_telemetry_metrics(
     Query(params): Query<TelemetryQueryParams>,
 ) -> (StatusCode, Json<TelemetryMetricsResponse>) {
     let minutes = params.minutes;
+    let cutoff = Utc::now() - chrono::Duration::minutes(minutes as i64);
 
     let mut active_sessions = 0u64;
     let mut failed_sessions = 0u64;
@@ -97,7 +98,7 @@ pub async fn get_telemetry_metrics(
 
     state
         .session_manager
-        .visit_sessions(|session| {
+        .visit_sessions_started_since(cutoff, |session| {
             total_sessions += 1;
             total_bytes_sent = total_bytes_sent.saturating_add(session.bytes_sent);
             total_bytes_received = total_bytes_received.saturating_add(session.bytes_received);
@@ -158,7 +159,7 @@ pub async fn get_telemetry_metrics(
     };
 
     // Calculate bytes per second (rough estimate based on active sessions)
-    let bytes_per_second = if active_sessions > 0 {
+    let bytes_per_second = if total_sessions > 0 {
         (total_bytes_sent + total_bytes_received) as f64 / (minutes as f64 * 60.0)
     } else {
         0.0
@@ -193,6 +194,83 @@ pub async fn get_telemetry_metrics(
     };
 
     (StatusCode::OK, Json(response))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::Config;
+    use crate::server::pool::{ConnectionPool, PoolConfig};
+    use crate::session::{
+        types::Protocol as SessionProtocol, ConnectionInfo, SessionManager, SessionStatus,
+    };
+    use std::net::{IpAddr, Ipv4Addr};
+    use std::path::PathBuf;
+    use std::sync::Arc;
+
+    fn test_state(session_manager: Arc<SessionManager>) -> ApiState {
+        ApiState {
+            session_manager,
+            acl_engine: None,
+            acl_config_path: None,
+            connection_pool: Arc::new(ConnectionPool::new(PoolConfig::default())),
+            start_time: std::time::Instant::now(),
+            #[cfg(feature = "database")]
+            session_store: None,
+            metrics_history: None,
+            telemetry_history: None,
+            config_path: None::<PathBuf>,
+            config_snapshot: Arc::new(Config::default()),
+            original_args: Arc::new(Vec::new()),
+        }
+    }
+
+    fn sample_connection(dest_ip: &str) -> ConnectionInfo {
+        ConnectionInfo {
+            source_ip: IpAddr::V4(Ipv4Addr::LOCALHOST),
+            source_port: 40000,
+            dest_ip: dest_ip.to_string(),
+            dest_port: 443,
+            protocol: SessionProtocol::Tcp,
+        }
+    }
+
+    #[tokio::test]
+    async fn telemetry_metrics_respect_requested_time_window() {
+        let manager = Arc::new(SessionManager::new());
+
+        let recent_session = manager
+            .new_session("alice", sample_connection("recent.example"), "allow", None)
+            .await;
+        manager.update_traffic(&recent_session, 200, 100, 1, 1).await;
+        manager
+            .close_session(&recent_session, Some("done".into()), SessionStatus::Closed)
+            .await;
+
+        let old_session = manager
+            .new_session("bob", sample_connection("old.example"), "allow", None)
+            .await;
+        manager.update_traffic(&old_session, 5000, 5000, 5, 5).await;
+        {
+            if let Some(old) = manager.get_session(&old_session) {
+                let mut session = old.write().await;
+                session.start_time -= chrono::Duration::hours(2);
+            }
+        }
+
+        let (_status, Json(response)) = get_telemetry_metrics(
+            State(test_state(manager)),
+            Query(TelemetryQueryParams {
+                minutes: 30,
+                limit: None,
+            }),
+        )
+        .await;
+
+        assert_eq!(response.connections.total, 1);
+        assert_eq!(response.throughput.bytes_sent, 200);
+        assert_eq!(response.throughput.bytes_received, 100);
+    }
 }
 
 /// GET /api/telemetry/errors - Get error breakdown (Errors tab)

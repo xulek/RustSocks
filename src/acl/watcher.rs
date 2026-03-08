@@ -19,7 +19,7 @@ pub struct AclWatcher {
     engine: Arc<AclEngine>,
     watcher: Option<RecommendedWatcher>,
     poll_handle: Option<JoinHandle<()>>,
-    last_fingerprint: Arc<Mutex<Option<FileFingerprint>>>,
+    reload_state: Arc<Mutex<ReloadState>>,
     session_manager: Option<Arc<SessionManager>>,
 }
 
@@ -27,6 +27,13 @@ pub struct AclWatcher {
 struct FileFingerprint {
     modified: Option<SystemTime>,
     len: u64,
+}
+
+#[derive(Debug, Default)]
+struct ReloadState {
+    applied_fingerprint: Option<FileFingerprint>,
+    last_failed_fingerprint: Option<FileFingerprint>,
+    last_failure_log_at: Option<Instant>,
 }
 
 impl FileFingerprint {
@@ -53,7 +60,7 @@ impl AclWatcher {
             engine,
             watcher: None,
             poll_handle: None,
-            last_fingerprint: Arc::new(Mutex::new(None)),
+            reload_state: Arc::new(Mutex::new(ReloadState::default())),
             session_manager,
         }
     }
@@ -63,7 +70,7 @@ impl AclWatcher {
         let (tx, mut rx) = mpsc::channel(100);
         let config_path = self.config_path.clone();
         let engine = self.engine.clone();
-        let fingerprint_state = self.last_fingerprint.clone();
+        let reload_state = self.reload_state.clone();
         let session_manager = self.session_manager.clone();
 
         // Setup file watcher
@@ -91,8 +98,8 @@ impl AclWatcher {
 
         // Capture the initial fingerprint so we don't reload immediately
         if let Ok(initial_fp) = FileFingerprint::capture(&config_path) {
-            let mut state = fingerprint_state.lock().await;
-            *state = Some(initial_fp);
+            let mut state = reload_state.lock().await;
+            state.applied_fingerprint = Some(initial_fp);
         }
 
         info!(
@@ -101,7 +108,7 @@ impl AclWatcher {
         );
 
         // Spawn background task to handle reload events
-        let fingerprint_state_clone = fingerprint_state.clone();
+        let reload_state_clone = reload_state.clone();
         let session_manager_clone = session_manager.clone();
         tokio::spawn(async move {
             while let Some(_event) = rx.recv().await {
@@ -109,7 +116,7 @@ impl AclWatcher {
                 Self::maybe_reload(
                     &config_path,
                     &engine,
-                    &fingerprint_state_clone,
+                    &reload_state_clone,
                     session_manager_clone.clone(),
                 )
                 .await;
@@ -119,7 +126,7 @@ impl AclWatcher {
         // Spawn polling fallback for environments where filesystem events are unreliable
         let poll_path = self.config_path.clone();
         let poll_engine = self.engine.clone();
-        let poll_state = self.last_fingerprint.clone();
+        let poll_state = self.reload_state.clone();
         let poll_manager = session_manager.clone();
         let poll_handle = tokio::spawn(async move {
             let mut ticker = interval(Duration::from_secs(1));
@@ -140,6 +147,7 @@ impl AclWatcher {
         config_path: &Path,
         engine: &Arc<AclEngine>,
         session_manager: Option<Arc<SessionManager>>,
+        log_failures: bool,
     ) -> bool {
         let start_time = Instant::now();
 
@@ -147,10 +155,12 @@ impl AclWatcher {
         let new_config = match load_acl_config_sync(config_path) {
             Ok(config) => config,
             Err(e) => {
-                error!(
-                    error = %e,
-                    "Failed to load new ACL config, keeping current configuration"
-                );
+                if log_failures {
+                    error!(
+                        error = %e,
+                        "Failed to load new ACL config, keeping current configuration"
+                    );
+                }
                 return false;
             }
         };
@@ -184,10 +194,12 @@ impl AclWatcher {
                 true
             }
             Err(e) => {
-                error!(
-                    error = %e,
-                    "Failed to reload ACL config, keeping current configuration"
-                );
+                if log_failures {
+                    error!(
+                        error = %e,
+                        "Failed to reload ACL config, keeping current configuration"
+                    );
+                }
                 // The current config remains unchanged due to the failed reload
                 // This is our "rollback" - we simply don't swap if validation/compilation fails
                 false
@@ -199,7 +211,7 @@ impl AclWatcher {
     async fn maybe_reload(
         config_path: &Path,
         engine: &Arc<AclEngine>,
-        state: &Arc<Mutex<Option<FileFingerprint>>>,
+        state: &Arc<Mutex<ReloadState>>,
         session_manager: Option<Arc<SessionManager>>,
     ) {
         let current_fp = match FileFingerprint::capture(config_path) {
@@ -214,19 +226,39 @@ impl AclWatcher {
             }
         };
 
-        let should_reload = {
+        let (should_reload, should_log_failure) = {
             let state_lock = state.lock().await;
-            state_lock.as_ref() != Some(&current_fp)
+            let should_reload = state_lock.applied_fingerprint.as_ref() != Some(&current_fp);
+            let should_log_failure = !matches!(
+                (
+                    state_lock.last_failed_fingerprint.as_ref(),
+                    state_lock.last_failure_log_at,
+                ),
+                (Some(last_failed), Some(last_logged))
+                    if *last_failed == current_fp
+                        && last_logged.elapsed() < Duration::from_secs(30)
+            );
+            (should_reload, should_log_failure)
         };
 
         if !should_reload {
             return;
         }
 
-        Self::handle_reload_event(config_path, engine, session_manager).await;
+        let success =
+            Self::handle_reload_event(config_path, engine, session_manager, should_log_failure).await;
 
         let mut state_lock = state.lock().await;
-        *state_lock = Some(current_fp);
+        if success {
+            state_lock.applied_fingerprint = Some(current_fp);
+            state_lock.last_failed_fingerprint = None;
+            state_lock.last_failure_log_at = None;
+        } else {
+            state_lock.last_failed_fingerprint = Some(current_fp);
+            if should_log_failure {
+                state_lock.last_failure_log_at = Some(Instant::now());
+            }
+        }
     }
 
     /// Stop watching
@@ -335,6 +367,29 @@ mod tests {
         // Original config should still be intact
         let user_count = engine.get_user_count().await;
         assert_eq!(user_count, 1);
+    }
+
+    #[tokio::test]
+    async fn test_failed_reload_does_not_replace_applied_fingerprint() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let path = temp_file.path().to_path_buf();
+        let initial_config = create_test_config();
+        fs::write(&path, toml::to_string_pretty(&initial_config).unwrap()).unwrap();
+
+        let engine = Arc::new(AclEngine::new(initial_config).unwrap());
+        let fingerprint = FileFingerprint::capture(&path).unwrap();
+        let state = Arc::new(Mutex::new(ReloadState {
+            applied_fingerprint: Some(fingerprint.clone()),
+            last_failed_fingerprint: None,
+            last_failure_log_at: None,
+        }));
+
+        fs::write(&path, "this is not valid toml").unwrap();
+        AclWatcher::maybe_reload(&path, &engine, &state, None).await;
+
+        let state = state.lock().await;
+        assert_eq!(state.applied_fingerprint.as_ref(), Some(&fingerprint));
+        assert!(state.last_failed_fingerprint.is_some());
     }
 
     #[tokio::test]
