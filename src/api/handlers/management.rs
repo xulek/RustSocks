@@ -88,13 +88,16 @@ pub async fn reload_acl(State(state): State<ApiState>) -> (StatusCode, Json<Relo
 
     // Reload ACL engine
     match acl_engine.reload(new_config).await {
-        Ok(()) => (
-            StatusCode::OK,
-            Json(ReloadResponse {
-                success: true,
-                message: "ACL reloaded successfully".to_string(),
-            }),
-        ),
+        Ok(()) => {
+            state.session_manager.enforce_acl(acl_engine.clone()).await;
+            (
+                StatusCode::OK,
+                Json(ReloadResponse {
+                    success: true,
+                    message: "ACL reloaded successfully".to_string(),
+                }),
+            )
+        }
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(ReloadResponse {
@@ -161,6 +164,32 @@ pub struct UpdateConfigRequest {
 
 fn default_restart_flag() -> bool {
     true
+}
+
+async fn load_effective_config(state: &ApiState) -> Config {
+    if let Some(path) = state.config_path.as_ref() {
+        match fs::read_to_string(path).await {
+            Ok(content) => match Config::from_toml_str(&content) {
+                Ok(config) => return config,
+                Err(err) => {
+                    warn!(
+                        error = %err,
+                        path = %path.display(),
+                        "Failed to parse configuration file, falling back to startup snapshot"
+                    );
+                }
+            },
+            Err(err) => {
+                warn!(
+                    error = %err,
+                    path = %path.display(),
+                    "Failed to read configuration file, falling back to startup snapshot"
+                );
+            }
+        }
+    }
+
+    (*state.config_snapshot).clone()
 }
 
 #[derive(Serialize)]
@@ -339,14 +368,15 @@ pub struct RuntimeConfigUpdateRequest {
 pub async fn get_runtime_config(
     State(state): State<ApiState>,
 ) -> (StatusCode, Json<RuntimeConfigResponse>) {
+    let current_config = load_effective_config(&state).await;
     let response = RuntimeConfigResponse {
         path: state.config_path.as_ref().map(|p| p.display().to_string()),
         editable: state.config_path.is_some(),
-        server: map_server_config(&state.config_snapshot),
-        pool: map_pool_config(&state.config_snapshot),
-        sessions: map_sessions_config(&state.config_snapshot),
-        metrics: map_metrics_config(&state.config_snapshot),
-        telemetry: map_telemetry_config(&state.config_snapshot),
+        server: map_server_config(&current_config),
+        pool: map_pool_config(&current_config),
+        sessions: map_sessions_config(&current_config),
+        metrics: map_metrics_config(&current_config),
+        telemetry: map_telemetry_config(&current_config),
     };
 
     (StatusCode::OK, Json(response))
@@ -369,7 +399,7 @@ pub async fn update_runtime_config(
         );
     };
 
-    let mut new_config = (*state.config_snapshot).clone();
+    let mut new_config = load_effective_config(&state).await;
     apply_server_config(&mut new_config, &payload.server);
     apply_pool_config(&mut new_config, &payload.pool);
     apply_sessions_config(&mut new_config, &payload.sessions);
@@ -645,15 +675,22 @@ pub async fn test_acl_decision(
 
 /// GET /metrics - Prometheus metrics endpoint
 pub async fn get_metrics(State(state): State<ApiState>) -> (StatusCode, String) {
-    let sessions = state.session_manager.get_all_sessions().await;
+    let mut active_count = 0usize;
+    let mut total_sessions = 0usize;
+    let mut total_bytes_sent = 0u64;
+    let mut total_bytes_received = 0u64;
 
-    let active_count = sessions
-        .iter()
-        .filter(|s| s.status.as_str() == "active")
-        .count();
-    let total_sessions = sessions.len();
-    let total_bytes_sent: u64 = sessions.iter().map(|s| s.bytes_sent).sum();
-    let total_bytes_received: u64 = sessions.iter().map(|s| s.bytes_received).sum();
+    state
+        .session_manager
+        .visit_sessions(|session| {
+            total_sessions += 1;
+            if session.status.as_str() == "active" {
+                active_count += 1;
+            }
+            total_bytes_sent = total_bytes_sent.saturating_add(session.bytes_sent);
+            total_bytes_received = total_bytes_received.saturating_add(session.bytes_received);
+        })
+        .await;
 
     let metrics = format!(
         "# HELP rustsocks_active_sessions Active sessions\n\

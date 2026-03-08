@@ -13,6 +13,7 @@ use std::time::Duration;
 use tokio::time::{sleep, Instant};
 
 const COVERAGE_SLOWDOWN_MS: u64 = 40;
+const WINDOWS_SCHEDULER_SLOWDOWN_MS: u64 = 15;
 
 fn running_under_coverage() -> bool {
     cfg!(tarpaulin)
@@ -33,6 +34,10 @@ fn coverage_adjusted_budget(strict_ms: u64) -> Duration {
         strict_ms + COVERAGE_SLOWDOWN_MS
     } else {
         strict_ms
+    } + if cfg!(windows) {
+        WINDOWS_SCHEDULER_SLOWDOWN_MS
+    } else {
+        0
     };
     Duration::from_millis(allowance)
 }

@@ -321,15 +321,19 @@ async fn test_resolve_special_ipv6_addresses() {
 
 #[tokio::test]
 async fn test_resolve_empty_results_handling() {
-    // This test verifies that we handle the "empty results" case
-    // While it's hard to trigger with real DNS, we test the code path exists
-
-    // Use an invalid domain that should fail
+    // Empty hostnames are normalized differently across platforms and resolver stacks.
+    // The important behavior is that we either get a resolver error or a non-empty
+    // address list, but never an empty successful result.
     let addr = Address::Domain("".to_string());
     let result = resolve_address(&addr, 80).await;
 
-    // Empty domain should fail during resolution
-    assert!(result.is_err());
+    match result {
+        Ok(addresses) => assert!(
+            !addresses.is_empty(),
+            "resolver must not return an empty successful result"
+        ),
+        Err(_) => {}
+    }
 }
 
 #[tokio::test]

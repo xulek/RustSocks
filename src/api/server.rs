@@ -1,7 +1,7 @@
 use axum::{
     body::Body,
     extract::{DefaultBodyLimit, State},
-    http::{header, Request, Response, StatusCode},
+    http::{header, Method, Request, Response, StatusCode},
     middleware::{self, Next},
     response::{Html, IntoResponse, Redirect},
     routing::{get, get_service, post, put},
@@ -1656,8 +1656,15 @@ async fn api_auth_middleware(
         return next.run(request).await;
     }
 
-    let auth_required = auth_state.settings.enabled || auth_state.api_token.is_some();
-    if !auth_required {
+    let auth_configured = auth_state.settings.enabled || auth_state.api_token.is_some();
+    if !auth_configured && is_sensitive_api_request(request.method(), path) {
+        return Response::builder()
+            .status(StatusCode::FORBIDDEN)
+            .body(Body::empty())
+            .unwrap();
+    }
+
+    if !auth_configured {
         return next.run(request).await;
     }
 
@@ -1681,6 +1688,28 @@ async fn api_auth_middleware(
             .body(Body::empty())
             .unwrap()
     }
+}
+
+fn is_sensitive_api_request(method: &Method, path: &str) -> bool {
+    if path.starts_with("/api/admin/") || path.starts_with("/api/smtp/") {
+        return true;
+    }
+
+    if path == "/api/acl/rules"
+        || path == "/api/acl/test"
+        || path.starts_with("/api/acl/groups")
+        || path.starts_with("/api/acl/users")
+        || path.starts_with("/api/acl/global")
+        || path == "/api/acl/search"
+    {
+        return true;
+    }
+
+    if path.starts_with("/api/sessions/") && *method != Method::GET {
+        return true;
+    }
+
+    path.starts_with("/api/telemetry/alerts/") && *method != Method::GET
 }
 
 fn extract_api_token(headers: &axum::http::HeaderMap) -> Option<&str> {
@@ -1864,6 +1893,81 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn api_denies_sensitive_routes_when_auth_is_not_configured() {
+        let app = Router::new()
+            .route("/api/admin/runtime-config", get(|| async { "ok" }))
+            .route("/api/acl/rules", get(|| async { "ok" }))
+            .route("/api/acl/test", post(|| async { "ok" }))
+            .route("/api/acl/groups", get(|| async { "ok" }))
+            .route("/api/sessions/123/terminate", post(|| async { "ok" }))
+            .layer(middleware::from_fn_with_state(
+                auth_state_with(false, None, "/"),
+                api_auth_middleware,
+            ));
+
+        let admin = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/admin/runtime-config")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(admin.status(), StatusCode::FORBIDDEN);
+
+        let acl = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/acl/groups")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(acl.status(), StatusCode::FORBIDDEN);
+
+        let acl_rules = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/acl/rules")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(acl_rules.status(), StatusCode::FORBIDDEN);
+
+        let acl_test = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/acl/test")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(acl_test.status(), StatusCode::FORBIDDEN);
+
+        let terminate = app
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/sessions/123/terminate")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(terminate.status(), StatusCode::FORBIDDEN);
     }
 
     #[tokio::test]

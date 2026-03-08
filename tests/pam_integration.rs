@@ -372,7 +372,10 @@ mod non_unix_tests {
             "PAM should not be available on non-Unix platforms"
         );
 
-        let err = result.unwrap_err();
+        let err = match result {
+            Ok(_) => panic!("PAM should not be available on non-Unix platforms"),
+            Err(err) => err,
+        };
         assert!(
             err.to_string().contains("not supported") || err.to_string().contains("not available"),
             "Error should indicate PAM is not supported"

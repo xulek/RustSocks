@@ -3,12 +3,14 @@
 //! Provides Kerberos authentication for SOCKS5 using the GSS-API protocol.
 
 use crate::config::GssApiSettings;
-use crate::protocol::{
-    parse_gssapi_message, send_gssapi_abort, send_gssapi_message, GssApiMessageType,
-    GssApiProtectionLevel,
-};
+use crate::protocol::GssApiProtectionLevel;
 use std::fmt;
 use tokio::io::{AsyncRead, AsyncWrite};
+#[cfg(unix)]
+use crate::protocol::{
+    parse_gssapi_message, send_gssapi_abort, send_gssapi_message, GssApiMessageType,
+};
+#[cfg(unix)]
 use tracing::{debug, error, info, trace, warn};
 
 #[cfg(unix)]
@@ -20,8 +22,11 @@ use libgssapi::{
 /// GSS-API authentication error types
 #[derive(Debug)]
 pub enum GssApiAuthError {
+    #[cfg_attr(not(unix), allow(dead_code))]
     Config(String),
+    #[cfg_attr(not(unix), allow(dead_code))]
     System(String),
+    #[cfg_attr(not(unix), allow(dead_code))]
     AuthFailed(String),
     #[allow(dead_code)] // Only used on non-Unix platforms
     NotSupported(String),
@@ -49,6 +54,7 @@ impl std::error::Error for GssApiAuthError {}
 pub struct GssApiAuthenticator {
     #[allow(dead_code)] // TODO: Use for service principal specification
     service_name: String,
+    #[cfg_attr(not(unix), allow(dead_code))]
     protection_level: GssApiProtectionLevel,
     #[allow(dead_code)]
     settings: GssApiSettings,
@@ -420,6 +426,7 @@ mod tests {
 
     #[test]
     fn test_invalid_protection_level() {
+        #[cfg_attr(not(unix), allow(unused_variables))]
         let settings = GssApiSettings {
             service_name: "socks@example.com".to_string(),
             keytab_path: None,
@@ -436,6 +443,7 @@ mod tests {
 
     #[test]
     fn test_empty_service_name() {
+        #[cfg_attr(not(unix), allow(unused_variables))]
         let settings = GssApiSettings {
             service_name: "".to_string(),
             keytab_path: None,

@@ -1,4 +1,4 @@
-#![cfg(feature = "database")]
+#![cfg(all(feature = "database", not(windows)))]
 
 use chrono::{Duration as ChronoDuration, Utc};
 use rustsocks::session::{
@@ -9,9 +9,10 @@ use tempfile::TempDir;
 use uuid::Uuid;
 
 async fn setup_store() -> (SessionStore, TempDir) {
-    let temp_dir = TempDir::new().unwrap();
-    let db_path = temp_dir.path().join("sessions.db");
-    let db_url = format!("sqlite://{}", db_path.display());
+    std::fs::create_dir_all("target").unwrap();
+    let temp_dir = TempDir::new_in("target").unwrap();
+    let db_path = temp_dir.path().join(format!("sessions-{}.db", Uuid::new_v4()));
+    let db_url = format!("sqlite://{}", db_path.to_string_lossy().replace('\\', "/"));
     let store = SessionStore::connect(&db_url).await.unwrap();
     (store, temp_dir)
 }

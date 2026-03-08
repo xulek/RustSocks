@@ -141,6 +141,23 @@ pub struct ConnectionPool {
 }
 
 impl ConnectionPool {
+    fn reserve_idle_slot(&self) -> bool {
+        loop {
+            let current = self.metrics.total_idle.load(Ordering::Relaxed);
+            if current >= self.config.max_total_idle {
+                return false;
+            }
+            if self
+                .metrics
+                .total_idle
+                .compare_exchange(current, current + 1, Ordering::Relaxed, Ordering::Relaxed)
+                .is_ok()
+            {
+                return true;
+            }
+        }
+    }
+
     fn update_destination_metrics<F>(&self, addr: SocketAddr, update: F)
     where
         F: FnOnce(&mut DestinationMetrics),
@@ -179,9 +196,6 @@ impl ConnectionPool {
 
     fn record_evicted(&self, addr: SocketAddr) {
         self.metrics.evicted.fetch_add(1, Ordering::Relaxed);
-
-        // Decrement total_idle atomically
-        self.metrics.total_idle.fetch_sub(1, Ordering::Relaxed);
 
         self.update_destination_metrics(addr, |entry| {
             entry.evicted += 1;
@@ -245,17 +259,17 @@ impl ConnectionPool {
         &self,
         context: &str,
         destination: SocketAddr,
-        dropped_for_capacity: bool,
+        drop_reason: Option<&str>,
         evicted_addr: Option<SocketAddr>,
     ) {
-        if dropped_for_capacity {
+        if let Some(reason) = drop_reason {
             let message = format!(
-                "Connection to {} dropped while {} (per-destination limit: {})",
-                destination, context, self.config.max_idle_per_dest
+                "Connection to {} dropped while {} ({})",
+                destination, context, reason
             );
             let details = json!({
                 "destination": destination.to_string(),
-                "max_idle_per_dest": self.config.max_idle_per_dest,
+                "reason": reason,
                 "context": context,
             });
             self.emit_telemetry_event(
@@ -410,10 +424,9 @@ impl ConnectionPool {
 
         match hint {
             ReuseHint::Reuse => {
-                let (inserted, dropped_for_capacity, evicted_addr) =
-                    self.insert_stream(addr, stream);
+                let (inserted, drop_reason, evicted_addr) = self.insert_stream(addr, stream);
 
-                if dropped_for_capacity {
+                if drop_reason.is_some() {
                     self.metrics.dropped_full.fetch_add(1, Ordering::Relaxed);
                     self.update_destination_metrics(addr, |entry| {
                         entry.drops += 1;
@@ -430,15 +443,11 @@ impl ConnectionPool {
                     });
                 }
 
-                if let Some(evicted) = evicted_addr {
-                    self.record_evicted(evicted);
-                }
-
                 self.decrement_active(addr);
                 self.log_capacity_events(
                     "returning to pool",
                     addr,
-                    dropped_for_capacity,
+                    drop_reason,
                     evicted_addr,
                 )
                 .await;
@@ -551,45 +560,43 @@ impl ConnectionPool {
         &self,
         addr: SocketAddr,
         stream: TcpStream,
-    ) -> (bool, bool, Option<SocketAddr>) {
-        let mut dropped_for_capacity = false;
-        let mut inserted = false;
+    ) -> (bool, Option<&'static str>, Option<SocketAddr>) {
+        let mut drop_reason = None;
         let mut evicted_addr = None;
 
-        // Check per-destination limit first (fast path)
-        if let Some(pool) = self.pools.get(&addr) {
-            if pool.len() >= self.config.max_idle_per_dest {
-                trace!("Pool for {} is full, discarding connection", addr);
-                dropped_for_capacity = true;
+        if !self.reserve_idle_slot() {
+            evicted_addr = self.evict_oldest();
+            if let Some(evicted) = evicted_addr {
+                self.record_evicted(evicted);
+            }
+            if !self.reserve_idle_slot() {
+                drop_reason = Some("global idle limit");
+                drop(stream);
+                return (false, drop_reason, evicted_addr);
             }
         }
 
-        if !dropped_for_capacity {
-            // Check total idle limit using atomic counter (no linear scan!)
-            let total_idle = self.metrics.total_idle.load(Ordering::Relaxed);
-            if total_idle >= self.config.max_total_idle {
-                evicted_addr = self.evict_oldest();
+        {
+            let mut entry = self.pools.entry(addr).or_default();
+            if entry.len() >= self.config.max_idle_per_dest {
+                trace!("Pool for {} is full, discarding connection", addr);
+                self.metrics.total_idle.fetch_sub(1, Ordering::Relaxed);
+                drop_reason = Some("per-destination limit");
+                drop(stream);
+                return (false, drop_reason, evicted_addr);
             }
 
-            // Insert into pool - DashMap entry API is different from HashMap
-            let mut entry = self.pools.entry(addr).or_default();
             entry.push_back(PooledConnection::new(stream));
             let pool_size = entry.len();
             drop(entry); // Explicitly drop to release lock
-
-            // Increment total_idle atomically
-            self.metrics.total_idle.fetch_add(1, Ordering::Relaxed);
 
             debug!(
                 "💾 Returned connection to pool for {} (pool size: {})",
                 addr, pool_size
             );
-            inserted = true;
-        } else {
-            drop(stream);
         }
 
-        (inserted, dropped_for_capacity, evicted_addr)
+        (true, drop_reason, evicted_addr)
     }
 
     /// Establish a fresh upstream connection and add it to the pool.
@@ -608,9 +615,9 @@ impl ConnectionPool {
             entry.last_activity = Some(now);
         });
 
-        let (inserted, dropped_for_capacity, evicted_addr) = self.insert_stream(addr, stream);
+        let (inserted, drop_reason, evicted_addr) = self.insert_stream(addr, stream);
 
-        if dropped_for_capacity {
+        if drop_reason.is_some() {
             self.metrics.dropped_full.fetch_add(1, Ordering::Relaxed);
             self.update_destination_metrics(addr, |entry| {
                 entry.drops += 1;
@@ -622,14 +629,10 @@ impl ConnectionPool {
             );
         }
 
-        if let Some(evicted) = evicted_addr {
-            self.record_evicted(evicted);
-        }
-
         self.log_capacity_events(
             "refreshing idle pool",
             addr,
-            dropped_for_capacity,
+            drop_reason,
             evicted_addr,
         )
         .await;
@@ -680,16 +683,23 @@ impl ConnectionPool {
         // Remove the oldest connection (now safe - no conflicting locks)
         if let Some(addr) = oldest_addr {
             if let Some(mut pool) = self.pools.get_mut(&addr) {
-                pool.pop_front();
+                let removed = pool.pop_front().is_some();
                 if pool.is_empty() {
                     drop(pool);
                     self.pools.remove(&addr);
+                } else {
+                    drop(pool);
                 }
-                trace!("Evicted oldest connection to {}", addr);
+
+                if removed {
+                    self.metrics.total_idle.fetch_sub(1, Ordering::Relaxed);
+                    trace!("Evicted oldest connection to {}", addr);
+                    return Some(addr);
+                }
             }
         }
 
-        oldest_addr
+        None
     }
 
     /// Clean up expired connections (called periodically)

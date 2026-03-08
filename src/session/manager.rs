@@ -18,6 +18,7 @@ use std::sync::Arc;
 #[cfg(feature = "database")]
 use std::sync::OnceLock;
 use std::time::Duration;
+use tokio::sync::mpsc::error::TrySendError;
 use tokio::sync::{broadcast, mpsc, RwLock};
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
@@ -34,6 +35,7 @@ pub struct SessionManager {
     closed_sessions: RwLock<Vec<Session>>,
     rejected_sessions: RwLock<Vec<Session>>,
     session_controls: DashMap<Uuid, SessionControl>,
+    history_retention: Option<ChronoDuration>,
     #[cfg(feature = "database")]
     store: Option<Arc<SessionStore>>,
     #[cfg(feature = "database")]
@@ -61,16 +63,25 @@ const DEFAULT_TRAFFIC_QUEUE_CAPACITY: usize = 10_000;
 impl SessionManager {
     /// Create a new empty manager.
     pub fn new() -> Self {
-        Self::new_with_capacity(DEFAULT_TRAFFIC_QUEUE_CAPACITY)
+        Self::new_with_history_retention(DEFAULT_TRAFFIC_QUEUE_CAPACITY, None)
     }
 
     pub fn new_with_capacity(capacity: usize) -> Self {
+        Self::new_with_history_retention(capacity, None)
+    }
+
+    pub fn new_with_history_retention(
+        capacity: usize,
+        history_retention: Option<Duration>,
+    ) -> Self {
         let (traffic_tx, traffic_rx) = mpsc::channel(capacity);
         let manager = Self {
             active_sessions: DashMap::new(),
             closed_sessions: RwLock::new(Vec::new()),
             rejected_sessions: RwLock::new(Vec::new()),
             session_controls: DashMap::new(),
+            history_retention: history_retention
+                .and_then(|retention| ChronoDuration::from_std(retention).ok()),
             #[cfg(feature = "database")]
             store: None,
             #[cfg(feature = "database")]
@@ -285,6 +296,37 @@ impl SessionManager {
         }
     }
 
+    pub async fn visit_closed_sessions<F>(&self, mut visit: F)
+    where
+        F: FnMut(&Session),
+    {
+        let closed = self.closed_sessions.read().await;
+        for session in closed.iter() {
+            visit(session);
+        }
+    }
+
+    fn prune_history(sessions: &mut Vec<Session>, retention: ChronoDuration) {
+        let cutoff = Utc::now() - retention;
+        sessions.retain(|session| session.end_time.unwrap_or(session.start_time) >= cutoff);
+    }
+
+    async fn push_closed_session(&self, session: Session) {
+        let mut closed = self.closed_sessions.write().await;
+        closed.push(session);
+        if let Some(retention) = self.history_retention {
+            Self::prune_history(&mut closed, retention);
+        }
+    }
+
+    async fn push_rejected_session(&self, session: Session) {
+        let mut rejected = self.rejected_sessions.write().await;
+        rejected.push(session);
+        if let Some(retention) = self.history_retention {
+            Self::prune_history(&mut rejected, retention);
+        }
+    }
+
     /// Count currently active sessions.
     pub fn active_session_count(&self) -> usize {
         self.active_sessions.len()
@@ -458,13 +500,74 @@ impl SessionManager {
             packets_received,
         };
 
-        if let Err(err) = self.traffic_tx.try_send(update) {
-            tracing::debug!(
-                session = %session_id,
-                "Failed to enqueue traffic update: {}",
-                err
-            );
+        match self.traffic_tx.try_send(update) {
+            Ok(()) => {}
+            Err(TrySendError::Full(update)) | Err(TrySendError::Closed(update)) => {
+                if let Err(update) = self.try_apply_traffic_update_inline(update) {
+                    let active_sessions = self.active_sessions.clone();
+                    #[cfg(feature = "database")]
+                    let batch_writer = self.batch_writer.clone();
+
+                    tokio::spawn(async move {
+                        SessionManager::apply_traffic_update(
+                            &active_sessions,
+                            #[cfg(feature = "database")]
+                            &batch_writer,
+                            update,
+                        )
+                        .await;
+                    });
+                }
+
+                tracing::warn!(
+                    session = %session_id,
+                    "Traffic queue saturated, applying update directly"
+                );
+            }
         }
+    }
+
+    fn try_apply_traffic_update_inline(&self, update: TrafficUpdate) -> Result<(), TrafficUpdate> {
+        let Some(entry) = self.active_sessions.get(&update.session_id) else {
+            return Err(update);
+        };
+
+        let session = entry.value().clone();
+        drop(entry);
+
+        let Ok(mut session_guard) = session.try_write() else {
+            return Err(update);
+        };
+
+        #[cfg(feature = "metrics")]
+        let user_label = session_guard.user.clone();
+        session_guard.bytes_sent = session_guard.bytes_sent.saturating_add(update.bytes_sent);
+        session_guard.bytes_received = session_guard
+            .bytes_received
+            .saturating_add(update.bytes_received);
+        session_guard.packets_sent = session_guard
+            .packets_sent
+            .saturating_add(update.packets_sent);
+        session_guard.packets_received = session_guard
+            .packets_received
+            .saturating_add(update.packets_received);
+
+        #[cfg(feature = "metrics")]
+        SessionMetrics::record_traffic(&user_label, update.bytes_sent, update.bytes_received);
+
+        #[cfg(feature = "database")]
+        if let Some(writer) = self.batch_writer.get().cloned() {
+            let snapshot = session_guard.clone();
+            drop(session_guard);
+            tokio::spawn(async move {
+                writer.enqueue(snapshot).await;
+            });
+        }
+
+        #[cfg(not(feature = "database"))]
+        drop(session_guard);
+
+        Ok(())
     }
 
     #[cfg(test)]
@@ -529,7 +632,7 @@ impl SessionManager {
 
             // Use write lock for appending to closed sessions
             // RwLock reduces contention compared to Mutex for read-heavy workloads
-            self.closed_sessions.write().await.push(snapshot.clone());
+            self.push_closed_session(snapshot.clone()).await;
 
             #[cfg(feature = "database")]
             if let Some(writer) = self.current_batch_writer() {
@@ -581,7 +684,7 @@ impl SessionManager {
         }
 
         // Use write lock for appending to rejected sessions
-        self.rejected_sessions.write().await.push(session);
+        self.push_rejected_session(session).await;
 
         session_id
     }
@@ -672,28 +775,6 @@ impl SessionManager {
             self.terminate_session(&session_id, reason.clone(), SessionStatus::Failed)
                 .await;
         }
-    }
-
-    /// Get all sessions (active + closed + rejected)
-    pub async fn get_all_sessions(&self) -> Vec<Session> {
-        let mut all = Vec::new();
-
-        let active_handles: Vec<_> = self
-            .active_sessions
-            .iter()
-            .map(|entry| entry.value().clone())
-            .collect();
-        for handle in active_handles {
-            all.push(handle.read().await.clone());
-        }
-
-        // Add closed sessions
-        all.extend(self.closed_sessions.read().await.clone());
-
-        // Add rejected sessions
-        all.extend(self.rejected_sessions.read().await.clone());
-
-        all
     }
 
     /// Get active sessions only
@@ -1072,5 +1153,67 @@ mod tests {
     async fn new_with_capacity_sets_queue_size() {
         let manager = SessionManager::new_with_capacity(5);
         assert_eq!(manager.traffic_queue_remaining(), 5);
+    }
+
+    #[tokio::test]
+    async fn inline_traffic_update_fallback_updates_session_counters() {
+        const UPDATE_COUNT: u64 = 128;
+        let manager = SessionManager::new_with_capacity(1);
+        let session_id = manager
+            .new_session("alice", sample_connection(), "allow", None)
+            .await;
+
+        for _ in 0..UPDATE_COUNT {
+            manager
+                .try_apply_traffic_update_inline(TrafficUpdate {
+                    session_id,
+                    bytes_sent: 1,
+                    bytes_received: 2,
+                    packets_sent: 1,
+                    packets_received: 1,
+                })
+                .expect("inline fallback should update an active session");
+        }
+
+        let session = manager
+            .get_session(&session_id)
+            .expect("active session")
+            .read()
+            .await
+            .clone();
+
+        assert_eq!(session.bytes_sent, UPDATE_COUNT);
+        assert_eq!(session.bytes_received, UPDATE_COUNT * 2);
+        assert_eq!(session.packets_sent, UPDATE_COUNT);
+        assert_eq!(session.packets_received, UPDATE_COUNT);
+    }
+
+    #[tokio::test]
+    async fn history_retention_prunes_old_closed_sessions() {
+        let manager = SessionManager::new_with_history_retention(8, Some(Duration::from_secs(1)));
+        let session_id = manager
+            .new_session("alice", sample_connection(), "allow", None)
+            .await;
+
+        manager
+            .close_session(&session_id, Some("expired".into()), SessionStatus::Closed)
+            .await;
+
+        {
+            let mut closed = manager.closed_sessions.write().await;
+            closed[0].start_time -= ChronoDuration::hours(48);
+            closed[0].end_time = closed[0].end_time.map(|end| end - ChronoDuration::hours(48));
+        }
+
+        let current_id = manager
+            .new_session("bob", sample_connection(), "allow", None)
+            .await;
+        manager
+            .close_session(&current_id, Some("current".into()), SessionStatus::Closed)
+            .await;
+
+        let closed = manager.closed_snapshot().await;
+        assert_eq!(closed.len(), 1);
+        assert_eq!(closed[0].user.as_ref(), "bob");
     }
 }

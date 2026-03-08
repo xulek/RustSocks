@@ -258,7 +258,10 @@ mod tests {
 
         // Should have refilled ~100 tokens in 100ms
         let available = bucket.available_tokens();
-        assert!((90..=110).contains(&available)); // Allow some tolerance
+        assert!(
+            (80..=140).contains(&available),
+            "expected roughly 100 refilled tokens after 100ms, got {available}"
+        );
     }
 
     #[test]

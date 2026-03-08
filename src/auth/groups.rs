@@ -9,7 +9,9 @@
 /// 3. ACL engine filters only groups defined in ACL config
 /// 4. Irrelevant groups are ignored (no need to define thousands of LDAP groups)
 ///
+#[cfg(unix)]
 use std::ffi::CString;
+#[cfg(unix)]
 use tracing::{debug, warn};
 
 /// Get all groups for a user from the system (LDAP via NSS/SSSD)
@@ -144,6 +146,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn test_get_user_groups_nonexistent_user() {
         let result = get_user_groups("nonexistent_user_that_does_not_exist_12345");
         assert!(result.is_err(), "Should fail for nonexistent user");

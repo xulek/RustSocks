@@ -8,10 +8,13 @@ pub enum PamMethod {
 
 #[derive(Debug, Error)]
 pub enum PamAuthError {
+    #[cfg_attr(not(unix), allow(dead_code))]
     #[error("PAM authentication failed: {0}")]
     AuthFailed(String),
+    #[cfg_attr(not(unix), allow(dead_code))]
     #[error("PAM configuration error: {0}")]
     Config(String),
+    #[cfg_attr(not(unix), allow(dead_code))]
     #[error("PAM system error: {0}")]
     System(String),
     #[cfg_attr(unix, allow(dead_code))]

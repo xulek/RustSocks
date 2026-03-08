@@ -152,10 +152,13 @@ async fn fetch_history_from_store(
     sort_by: Option<String>,
     sort_dir: Option<String>,
 ) -> Result<PagedResponse<SessionResponse>, sqlx::Error> {
-    let mut in_memory = manager.get_closed_sessions().await;
-    in_memory.retain(|session| {
-        matches_history_filters(session, user_filter, dest_filter, status_filter, cutoff)
-    });
+    let mut in_memory = Vec::new();
+    manager.visit_closed_sessions(|session| {
+        if matches_history_filters(session, user_filter, dest_filter, status_filter, cutoff) {
+            in_memory.push(session.clone());
+        }
+    })
+    .await;
 
     let extra_ids: Vec<_> = in_memory.iter().map(|s| s.session_id).collect();
     let persisted_ids = store.existing_session_ids(&extra_ids).await?;
@@ -263,10 +266,13 @@ async fn build_memory_history_response(
     sort_by: Option<String>,
     sort_dir: Option<String>,
 ) -> PagedResponse<SessionResponse> {
-    let mut sessions = manager.get_closed_sessions().await;
-    sessions.retain(|session| {
-        matches_history_filters(session, user_filter, dest_filter, status_filter, cutoff)
-    });
+    let mut sessions = Vec::new();
+    manager.visit_closed_sessions(|session| {
+        if matches_history_filters(session, user_filter, dest_filter, status_filter, cutoff) {
+            sessions.push(session.clone());
+        }
+    })
+    .await;
 
     // Apply sorting
     let sort_field = sort_by.as_deref().unwrap_or("start_time");

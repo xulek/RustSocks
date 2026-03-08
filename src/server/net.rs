@@ -1,5 +1,12 @@
 use tokio::net::TcpStream;
-use tracing::{debug, warn};
+#[cfg(any(
+    target_os = "linux",
+    target_os = "android",
+    target_os = "fuchsia",
+    target_os = "cygwin",
+))]
+use tracing::debug;
+use tracing::warn;
 
 /// Tune TCP sockets for low-latency proxy traffic.
 ///

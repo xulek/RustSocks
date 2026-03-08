@@ -28,6 +28,24 @@ use tokio::sync::{Mutex, Semaphore};
 use tokio::task::JoinHandle;
 use tokio_rustls::{rustls, TlsAcceptor};
 use tracing::{error, info, warn};
+
+fn redact_database_url(url: &str) -> String {
+    if url.starts_with("sqlite:") {
+        return url.to_string();
+    }
+
+    let Some((scheme, rest)) = url.split_once("://") else {
+        return "<redacted>".to_string();
+    };
+
+    let Some((credentials, suffix)) = rest.split_once('@') else {
+        return format!("{scheme}://{rest}");
+    };
+
+    let username = credentials.split(':').next().unwrap_or("user");
+    format!("{scheme}://{username}:***@{suffix}")
+}
+
 pub struct SocksServer {
     config: Arc<Config>,
     auth_manager: Arc<AuthManager>,
@@ -262,8 +280,12 @@ impl SocksServer {
         };
 
         #[cfg_attr(not(feature = "database"), allow(unused_mut))]
-        let mut session_manager_inner =
-            SessionManager::new_with_capacity(config.sessions.traffic_queue_capacity);
+        let mut session_manager_inner = SessionManager::new_with_history_retention(
+            config.sessions.traffic_queue_capacity,
+            Some(Duration::from_secs(
+                config.sessions.retention_days.saturating_mul(24 * 3600),
+            )),
+        );
 
         #[cfg(feature = "database")]
         if config.sessions.enabled
@@ -284,7 +306,10 @@ impl SocksServer {
                 })?
                 .clone();
 
-            info!(database_url = %url, raw = ?url, "Initializing session store");
+            info!(
+                database_url = %redact_database_url(&url),
+                "Initializing session store"
+            );
 
             match SessionStore::connect(&url).await {
                 Ok(store) => {
@@ -303,7 +328,7 @@ impl SocksServer {
                         config.sessions.retention_days,
                         config.sessions.cleanup_interval_hours,
                     );
-                    info!("Session store initialized at {}", url);
+                    info!("Session store initialized");
                 }
                 Err(e) => {
                     return Err(RustSocksError::Config(format!(
@@ -685,7 +710,7 @@ impl SocksServer {
 
 #[cfg(test)]
 mod tests {
-    use super::ConnectionLimiter;
+    use super::{redact_database_url, ConnectionLimiter};
 
     #[test]
     fn connection_limiter_enforces_capacity() {
@@ -699,5 +724,11 @@ mod tests {
 
         drop(permit1);
         assert!(limiter.try_acquire().is_some());
+    }
+
+    #[test]
+    fn database_url_redaction_hides_passwords() {
+        let redacted = redact_database_url("mysql://alice:secret@example.com:3306/rustsocks");
+        assert_eq!(redacted, "mysql://alice:***@example.com:3306/rustsocks");
     }
 }
