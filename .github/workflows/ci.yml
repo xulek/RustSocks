@@ -39,7 +39,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Build with database feature
-        run: cargo build --locked --all-targets --features database
+        run: cargo build --locked --features database --lib --bins --tests
 
       - name: Build release binary for artifact
         run: cargo build --locked --features database --release
@@ -59,6 +59,8 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libpam0g-dev libkrb5-dev
 
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
 
       - uses: Swatinem/rust-cache@v2
 

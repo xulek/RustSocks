@@ -16,6 +16,8 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config llvm clang libpam0g-dev libkrb5-dev
 
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
 
       - uses: Swatinem/rust-cache@v2
 
@@ -23,7 +25,7 @@ jobs:
         run: cargo install cargo-tarpaulin --locked
 
       - name: Run coverage
-        run: cargo tarpaulin --locked --features database --out Xml --output-dir coverage
+        run: cargo tarpaulin --locked --features database --engine llvm --lib --bins --tests --out Xml --output-dir coverage
 
       - name: Upload coverage report
         uses: actions/upload-artifact@v4
