@@ -59,7 +59,11 @@ mod unix {
 
     struct PamTransaction {
         handle: *mut PamHandle,
+        #[allow(dead_code)]
+        // Kept alive for the lifetime of the PAM handle; the callback pointer is registered from it.
         conversation: PamConversation,
+        #[allow(dead_code)]
+        // Owns the strings referenced by the PAM conversation callback.
         conversation_data: Box<ConversationData>,
         user: CString,
         rhost: CString,
