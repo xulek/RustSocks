@@ -1,0 +1,3069 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="High-performance SOCKS5 proxy with ACLs, sessions, metrics, and a modern web dashboard.">
+      
+      
+      
+        <link rel="canonical" href="https://xulek.github.io/RustSocks/technical/session-management/">
+      
+      
+        <link rel="prev" href="../pam-authentication/">
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.4">
+    
+    
+      
+        <title>Session Management - RustSocks Documentation</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=IBM+Plex+Sans:300,300i,400,400i,700,700i%7CIBM+Plex+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"IBM Plex Sans";--md-code-font:"IBM Plex Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="blue-grey" data-md-color-accent="cyan">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#session-management" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="RustSocks Documentation" class="md-header__button md-logo" aria-label="RustSocks Documentation" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            RustSocks Documentation
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Session Management
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="blue-grey" data-md-color-accent="cyan"  aria-hidden="true"  type="radio" name="__palette" id="__palette_0">
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/xulek/RustSocks" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    xulek/RustSocks
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../usage/quick-start/" class="md-tabs__link">
+          
+  
+  
+  Getting Started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../ui/overview/" class="md-tabs__link">
+          
+  
+  
+  UI & Dashboard
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../config/rustsocks/" class="md-tabs__link">
+          
+  
+  
+  Configuration
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../usage/examples/" class="md-tabs__link">
+          
+  
+  
+  Usage & Examples
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../guides/web-dashboard/" class="md-tabs__link">
+          
+  
+  
+  Guides
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../references/project-readme/" class="md-tabs__link">
+          
+  
+  
+  References
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../architecture/" class="md-tabs__link">
+          
+  
+  
+  Technical
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="RustSocks Documentation" class="md-nav__button md-logo" aria-label="RustSocks Documentation" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    RustSocks Documentation
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/xulek/RustSocks" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    xulek/RustSocks
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/quick-start/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quick Start
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/docker/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker Deployment
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    UI & Dashboard
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    UI & Dashboard
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../ui/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/dashboard-authentication/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Authentication
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/smtp-configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SMTP Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Configuration
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../config/rustsocks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    rustsocks.toml
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../config/acl/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    acl.toml
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Usage & Examples
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Usage & Examples
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/examples/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Common Scenarios
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/web-dashboard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Web Dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/building-with-base-path/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Base Path Deployment
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/ldap-groups/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LDAP Groups
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/active-directory/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Active Directory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    References
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    References
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../references/project-readme/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Project README
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../references/claude/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Developer Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../references/dashboard-readme/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dashboard README
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../references/loadtests-manual/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Load Testing Manual
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Technical
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Technical
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../acl-engine/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ACL Engine
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../connection-pool/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Connection Pool
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../protocol/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Protocol & TLS
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../pam-authentication/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PAM Authentication
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Session Management
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Session Management
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Overview
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#architecture" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Architecture
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Architecture">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#in-memory-storage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        In-Memory Storage
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#session-lifecycle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Session Lifecycle
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#database-persistence" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Database Persistence
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Database Persistence">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#sqlite-backend" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SQLite Backend
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Schema
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#safety-hardening" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Safety Hardening
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#batch-writer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Batch Writer
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cleanup-task" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cleanup Task
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#traffic-tracking" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Traffic Tracking
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Traffic Tracking">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#implementation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Implementation
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#statistics-api" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Statistics API
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Statistics API">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#rolling-window-aggregation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rolling Window Aggregation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#http-endpoint" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        HTTP Endpoint
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#operational-telemetry" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Operational Telemetry
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#prometheus-metrics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Prometheus Metrics
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Prometheus Metrics">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#available-metrics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Available Metrics
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#integration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Integration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#querying" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Querying
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuration_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Configuration">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#complete-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Complete Example
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#database-operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Database Operations
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Database Operations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#running-migrations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Running Migrations
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#querying-session-data" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Querying Session Data
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#backup-and-export" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Backup and Export
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#performance-characteristics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Performance Characteristics
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Performance Characteristics">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#memory-usage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Memory Usage
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#best-practices" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Best Practices
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Best Practices">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#when-to-enable-database-persistence" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When to Enable Database Persistence
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#when-to-use-memory-only-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When to Use Memory-Only Mode
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tuning-guidelines" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tuning Guidelines
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Troubleshooting
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Troubleshooting">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#problem-high-database-write-latency" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Problem: High database write latency
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#problem-memory-usage-growing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Problem: Memory usage growing
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#problem-statistics-api-slow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Problem: Statistics API slow
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#related-documentation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Related Documentation
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Overview
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#architecture" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Architecture
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Architecture">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#in-memory-storage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        In-Memory Storage
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#session-lifecycle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Session Lifecycle
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#database-persistence" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Database Persistence
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Database Persistence">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#sqlite-backend" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SQLite Backend
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Schema
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#safety-hardening" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Safety Hardening
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#batch-writer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Batch Writer
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cleanup-task" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cleanup Task
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#traffic-tracking" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Traffic Tracking
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Traffic Tracking">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#implementation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Implementation
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#statistics-api" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Statistics API
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Statistics API">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#rolling-window-aggregation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rolling Window Aggregation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#http-endpoint" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        HTTP Endpoint
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#operational-telemetry" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Operational Telemetry
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#prometheus-metrics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Prometheus Metrics
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Prometheus Metrics">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#available-metrics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Available Metrics
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#integration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Integration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#querying" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Querying
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuration_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Configuration">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#complete-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Complete Example
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#database-operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Database Operations
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Database Operations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#running-migrations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Running Migrations
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#querying-session-data" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Querying Session Data
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#backup-and-export" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Backup and Export
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#performance-characteristics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Performance Characteristics
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Performance Characteristics">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#memory-usage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Memory Usage
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#best-practices" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Best Practices
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Best Practices">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#when-to-enable-database-persistence" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When to Enable Database Persistence
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#when-to-use-memory-only-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When to Use Memory-Only Mode
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tuning-guidelines" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tuning Guidelines
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Troubleshooting
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Troubleshooting">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#problem-high-database-write-latency" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Problem: High database write latency
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#problem-memory-usage-growing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Problem: Memory usage growing
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#problem-statistics-api-slow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Problem: Statistics API slow
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#related-documentation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Related Documentation
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="session-management">Session Management<a class="headerlink" href="#session-management" title="Permanent link">&para;</a></h1>
+<p>This document describes the session tracking, persistence, and statistics features in RustSocks.</p>
+<h2 id="overview">Overview<a class="headerlink" href="#overview" title="Permanent link">&para;</a></h2>
+<p>RustSocks provides comprehensive session management including:
+- Real-time session tracking
+- SQLite persistence (optional)
+- Traffic metrics and statistics
+- Prometheus metrics integration (optional)
+- REST API for session queries</p>
+<h2 id="architecture">Architecture<a class="headerlink" href="#architecture" title="Permanent link">&para;</a></h2>
+<h3 id="in-memory-storage">In-Memory Storage<a class="headerlink" href="#in-memory-storage" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><span class="c1">// Active sessions</span>
+<span class="n">DashMap</span><span class="o">&lt;</span><span class="nb">String</span><span class="p">,</span><span class="w"> </span><span class="n">Session</span><span class="o">&gt;</span><span class="w">  </span><span class="c1">// Concurrent hashmap, lock-free reads</span>
+
+<span class="c1">// Completed sessions (snapshots)</span>
+<span class="n">RwLock</span><span class="o">&lt;</span><span class="nb">Vec</span><span class="o">&lt;</span><span class="n">Session</span><span class="o">&gt;&gt;</span><span class="w">      </span><span class="c1">// Read-heavy workload</span>
+</code></pre></div>
+<p><strong>Benefits</strong>:
+- Lock-free concurrent access for active sessions
+- Efficient lookups without blocking
+- Minimal write contention</p>
+<h3 id="session-lifecycle">Session Lifecycle<a class="headerlink" href="#session-lifecycle" title="Permanent link">&para;</a></h3>
+<ol>
+<li><strong>Creation</strong> (<code>new_session()</code>):</li>
+<li>Generate UUID session ID</li>
+<li>Store in active sessions map</li>
+<li>
+<p>Initialize traffic counters</p>
+</li>
+<li>
+<p><strong>Traffic Updates</strong> (<code>update_traffic()</code>):</p>
+</li>
+<li>Called periodically during proxy loop</li>
+<li>Increment bytes/packets counters</li>
+<li>
+<p>Reduces write amplification</p>
+</li>
+<li>
+<p><strong>Closure</strong> (<code>close_session()</code>):</p>
+</li>
+<li>Mark session as completed</li>
+<li>Record duration and close reason</li>
+<li>Move to completed snapshots</li>
+<li>
+<p>Queue for database write (if enabled)</p>
+</li>
+<li>
+<p><strong>Rejection Tracking</strong> (<code>track_rejected_session()</code>):</p>
+</li>
+<li>Record ACL-blocked connections</li>
+<li>Store matched rule and decision</li>
+<li>Useful for audit and troubleshooting</li>
+</ol>
+<h2 id="database-persistence">Database Persistence<a class="headerlink" href="#database-persistence" title="Permanent link">&para;</a></h2>
+<p><strong>Feature Flag</strong>: <code>database</code></p>
+<h3 id="sqlite-backend">SQLite Backend<a class="headerlink" href="#sqlite-backend" title="Permanent link">&para;</a></h3>
+<p>Uses <code>sqlx</code> for async SQLite operations:
+- Connection pooling
+- Async migrations
+- Type-safe queries
+- Transaction support</p>
+<h3 id="schema">Schema<a class="headerlink" href="#schema" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><span class="k">CREATE</span><span class="w"> </span><span class="k">TABLE</span><span class="w"> </span><span class="n">sessions</span><span class="w"> </span><span class="p">(</span>
+<span class="w">    </span><span class="n">session_id</span><span class="w"> </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">PRIMARY</span><span class="w"> </span><span class="k">KEY</span><span class="p">,</span>
+<span class="w">    </span><span class="k">user</span><span class="w"> </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<span class="w">    </span><span class="n">start_time</span><span class="w"> </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<span class="w">    </span><span class="n">end_time</span><span class="w"> </span><span class="nb">TEXT</span><span class="p">,</span>
+<span class="w">    </span><span class="n">duration_secs</span><span class="w"> </span><span class="nb">INTEGER</span><span class="p">,</span>
+<span class="w">    </span><span class="n">source_ip</span><span class="w"> </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<span class="w">    </span><span class="n">source_port</span><span class="w"> </span><span class="nb">INTEGER</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<span class="w">    </span><span class="n">dest_ip</span><span class="w"> </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<span class="w">    </span><span class="n">dest_port</span><span class="w"> </span><span class="nb">INTEGER</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<span class="w">    </span><span class="n">protocol</span><span class="w"> </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<span class="w">    </span><span class="n">bytes_sent</span><span class="w"> </span><span class="nb">INTEGER</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<span class="w">    </span><span class="n">bytes_received</span><span class="w"> </span><span class="nb">INTEGER</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<span class="w">    </span><span class="n">packets_sent</span><span class="w"> </span><span class="nb">INTEGER</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<span class="w">    </span><span class="n">packets_received</span><span class="w"> </span><span class="nb">INTEGER</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<span class="w">    </span><span class="n">status</span><span class="w"> </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<span class="w">    </span><span class="n">close_reason</span><span class="w"> </span><span class="nb">TEXT</span><span class="p">,</span>
+<span class="w">    </span><span class="n">acl_rule_matched</span><span class="w"> </span><span class="nb">TEXT</span><span class="p">,</span>
+<span class="w">    </span><span class="n">acl_decision</span><span class="w"> </span><span class="nb">TEXT</span>
+<span class="p">);</span>
+
+<span class="k">CREATE</span><span class="w"> </span><span class="k">INDEX</span><span class="w"> </span><span class="n">idx_sessions_user</span><span class="w"> </span><span class="k">ON</span><span class="w"> </span><span class="n">sessions</span><span class="p">(</span><span class="k">user</span><span class="p">);</span>
+<span class="k">CREATE</span><span class="w"> </span><span class="k">INDEX</span><span class="w"> </span><span class="n">idx_sessions_start_time</span><span class="w"> </span><span class="k">ON</span><span class="w"> </span><span class="n">sessions</span><span class="p">(</span><span class="n">start_time</span><span class="p">);</span>
+<span class="k">CREATE</span><span class="w"> </span><span class="k">INDEX</span><span class="w"> </span><span class="n">idx_sessions_status</span><span class="w"> </span><span class="k">ON</span><span class="w"> </span><span class="n">sessions</span><span class="p">(</span><span class="n">status</span><span class="p">);</span>
+</code></pre></div>
+<h3 id="safety-hardening">Safety Hardening<a class="headerlink" href="#safety-hardening" title="Permanent link">&para;</a></h3>
+<p>To protect the on-disk database:
+- On startup RustSocks verifies the SQLite header. If the file looks corrupt, it is quarantined (<code>sessions.db.corrupt.&lt;timestamp&gt;</code>) and a fresh database is created.
+- Before running migrations a timestamped snapshot (<code>sessions.db.bak.&lt;timestamp&gt;</code>) is created so you can roll back schema mistakes quickly.
+- After migrations, <code>PRAGMA integrity_check</code> is executed. A failed check automatically moves the broken file aside and recreates a healthy database.
+- Journaling now auto-detects whether the filesystem supports WAL. If shared-memory files cannot be created the server transparently falls back to the safer DELETE journal. In safety-first mode we force <code>PRAGMA synchronous = FULL</code> for maximal durability.</p>
+<p>Together these steps ensure a hostile environment (read-only mounts, sudden power loss, partial writes) cannot silently destroy <code>sessions.db</code>.</p>
+<h3 id="batch-writer">Batch Writer<a class="headerlink" href="#batch-writer" title="Permanent link">&para;</a></h3>
+<p>Efficient batch writing reduces database overhead:</p>
+<div class="highlight"><pre><span></span><code><span class="k">[sessions]</span>
+<span class="n">batch_size</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">100</span><span class="w">           </span><span class="c1"># Sessions per batch</span>
+<span class="n">batch_interval_ms</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1000</span><span class="w">   </span><span class="c1"># Max time between flushes</span>
+</code></pre></div>
+<p><strong>Algorithm</strong>:
+1. Queue sessions in memory
+2. Flush when:
+   - Batch size reached, OR
+   - Interval elapsed, OR
+   - Shutdown initiated
+3. Single transaction per batch
+4. Background task handles writes</p>
+<p><strong>Benefits</strong>:
+- Reduced write I/O (100x fewer transactions)
+- Lower contention on database
+- Graceful degradation on database failure</p>
+<h3 id="cleanup-task">Cleanup Task<a class="headerlink" href="#cleanup-task" title="Permanent link">&para;</a></h3>
+<p>Automatic cleanup of old records:</p>
+<div class="highlight"><pre><span></span><code><span class="k">[sessions]</span>
+<span class="n">retention_days</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">90</span><span class="w">           </span><span class="c1"># Keep sessions for 90 days</span>
+<span class="n">cleanup_interval_hours</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">24</span><span class="w">   </span><span class="c1"># Run cleanup daily</span>
+</code></pre></div>
+<p><strong>Algorithm</strong>:
+1. Run periodically (configurable interval)
+2. Delete sessions older than retention period
+3. Use index on <code>start_time</code> for efficiency
+4. Runs in background, non-blocking</p>
+<h2 id="traffic-tracking">Traffic Tracking<a class="headerlink" href="#traffic-tracking" title="Permanent link">&para;</a></h2>
+<h3 id="configuration">Configuration<a class="headerlink" href="#configuration" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><span class="k">[sessions]</span>
+<span class="n">traffic_update_packet_interval</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">10</span>
+</code></pre></div>
+<p>Determines how often <code>update_traffic()</code> is called during proxying.</p>
+<p><strong>Trade-offs</strong>:
+- <strong>Lower value</strong> (e.g., 1-10): More accurate real-time stats, higher overhead
+- <strong>Higher value</strong> (e.g., 50-100): Less overhead, delayed stats updates</p>
+<h3 id="implementation">Implementation<a class="headerlink" href="#implementation" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><span class="c1">// In proxy.rs</span>
+<span class="kd">let</span><span class="w"> </span><span class="k">mut</span><span class="w"> </span><span class="n">packet_count</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+
+<span class="k">loop</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">tokio</span><span class="p">::</span><span class="n">select</span><span class="o">!</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="c1">// ... data transfer ...</span>
+<span class="w">    </span><span class="p">}</span>
+
+<span class="w">    </span><span class="n">packet_count</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="n">packet_count</span><span class="w"> </span><span class="o">&gt;=</span><span class="w"> </span><span class="n">update_interval</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">session_manager</span><span class="p">.</span><span class="n">update_traffic</span><span class="p">(</span><span class="n">session_id</span><span class="p">,</span><span class="w"> </span><span class="n">bytes_sent</span><span class="p">,</span><span class="w"> </span><span class="n">bytes_received</span><span class="p">);</span>
+<span class="w">        </span><span class="n">packet_count</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">}</span>
+
+<span class="c1">// Final flush on connection close</span>
+<span class="n">session_manager</span><span class="p">.</span><span class="n">update_traffic</span><span class="p">(</span><span class="n">session_id</span><span class="p">,</span><span class="w"> </span><span class="n">bytes_sent</span><span class="p">,</span><span class="w"> </span><span class="n">bytes_received</span><span class="p">);</span>
+</code></pre></div>
+<h2 id="statistics-api">Statistics API<a class="headerlink" href="#statistics-api" title="Permanent link">&para;</a></h2>
+<h3 id="rolling-window-aggregation">Rolling Window Aggregation<a class="headerlink" href="#rolling-window-aggregation" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><span class="k">pub</span><span class="w"> </span><span class="k">fn</span><span class="w"> </span><span class="nf">get_stats</span><span class="p">(</span><span class="o">&amp;</span><span class="bp">self</span><span class="p">,</span><span class="w"> </span><span class="n">window_hours</span><span class="p">:</span><span class="w"> </span><span class="kt">u64</span><span class="p">)</span><span class="w"> </span><span class="p">-&gt;</span><span class="w"> </span><span class="nc">SessionStats</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="c1">// Aggregate sessions from last N hours</span>
+<span class="w">    </span><span class="c1">// Returns:</span>
+<span class="w">    </span><span class="c1">// - Active session count</span>
+<span class="w">    </span><span class="c1">// - Total sessions/bytes</span>
+<span class="w">    </span><span class="c1">// - Top users (by bandwidth)</span>
+<span class="w">    </span><span class="c1">// - Top destinations (by sessions)</span>
+<span class="p">}</span>
+</code></pre></div>
+<h3 id="http-endpoint">HTTP Endpoint<a class="headerlink" href="#http-endpoint" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>GET /api/sessions/stats?window_hours=48
+</code></pre></div>
+<p><strong>Response</strong>:
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;window_hours&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">48</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;active_sessions&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">42</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;total_sessions&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">15234</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;total_bytes_sent&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">523423123</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;total_bytes_received&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">234234234</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;top_users&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">    </span><span class="p">{</span><span class="nt">&quot;user&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;alice&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;sessions&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">523</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;bytes&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">523423123</span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span><span class="nt">&quot;user&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;bob&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;sessions&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">234</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;bytes&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">234234234</span><span class="p">}</span>
+<span class="w">  </span><span class="p">],</span>
+<span class="w">  </span><span class="nt">&quot;top_destinations&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">    </span><span class="p">{</span><span class="nt">&quot;dest&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;example.com:443&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;sessions&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1234</span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span><span class="nt">&quot;dest&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;api.github.com:443&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;sessions&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">456</span><span class="p">}</span>
+<span class="w">  </span><span class="p">]</span>
+<span class="p">}</span>
+</code></pre></div></p>
+<h2 id="operational-telemetry">Operational Telemetry<a class="headerlink" href="#operational-telemetry" title="Permanent link">&para;</a></h2>
+<p>RustSocks buffers short-lived operational events alongside the rolling metrics history. These events currently capture:
+- Connection pool pressure (drops and evictions when the per-destination or global caps are hit)
+- Connection failures when the upstream cannot be reached</p>
+<p>Use the <code>[telemetry]</code> config block to control retention:</p>
+<div class="highlight"><pre><span></span><code><span class="k">[telemetry]</span>
+<span class="n">enabled</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span><span class="w">              </span><span class="c1"># Enable the telemetry buffer</span>
+<span class="n">max_events</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">256</span><span class="w">            </span><span class="c1"># Maximum events cached in memory</span>
+<span class="n">retention_hours</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">6</span><span class="w">         </span><span class="c1"># How long events stay in the buffer</span>
+</code></pre></div>
+<p>Fetch events via the new REST endpoint:</p>
+<div class="highlight"><pre><span></span><code>GET /api/telemetry/events?minutes=60&amp;limit=50
+</code></pre></div>
+<p>Optional query parameters:
+- <code>minutes</code>: look back this many minutes (default: full buffer)
+- <code>limit</code>: maximum number of events returned (default 100, max 500)
+- <code>severity</code>: filter by <code>info</code>, <code>warning</code>, or <code>error</code>
+- <code>category</code>: filter by event category (currently <code>connection_pool</code>)</p>
+<p>Each event includes a timestamp, severity, category, message, and optional <code>details</code>
+such as destination addresses or pool limits. Combine it with the metrics history endpoint in
+the dashboard to show a small “Operational Telemetry” feed for rapid troubleshooting.</p>
+<h2 id="prometheus-metrics">Prometheus Metrics<a class="headerlink" href="#prometheus-metrics" title="Permanent link">&para;</a></h2>
+<p><strong>Feature Flag</strong>: <code>metrics</code></p>
+<p><strong>Note</strong>: The <code>/metrics</code> endpoint is served by the stats API server, so <code>sessions.stats_api_enabled</code> must be <code>true</code>.</p>
+<h3 id="available-metrics">Available Metrics<a class="headerlink" href="#available-metrics" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code># Active session gauge
+rustsocks_active_sessions
+
+# Total sessions counter
+rustsocks_sessions_total
+
+# Rejected sessions counter
+rustsocks_sessions_rejected_total
+
+# Session duration histogram
+rustsocks_session_duration_seconds (buckets: 0.1, 0.5, 1, 5, 10, 30, 60, 300)
+
+# Traffic counters
+rustsocks_bytes_sent_total
+rustsocks_bytes_received_total
+
+# Per-user metrics
+rustsocks_user_sessions_total{user=&quot;alice&quot;}
+rustsocks_user_bandwidth_bytes_total{user=&quot;alice&quot;, direction=&quot;sent&quot;}
+rustsocks_user_bandwidth_bytes_total{user=&quot;alice&quot;, direction=&quot;received&quot;}
+</code></pre></div>
+<h3 id="integration">Integration<a class="headerlink" href="#integration" title="Permanent link">&para;</a></h3>
+<p>Metrics are automatically updated:
+- On session creation
+- On traffic updates
+- On session closure
+- On ACL rejection</p>
+<h3 id="querying">Querying<a class="headerlink" href="#querying" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><span class="c1"># Prometheus scrape endpoint</span>
+curl<span class="w"> </span>http://127.0.0.1:9090/metrics
+
+<span class="c1"># Example queries</span>
+<span class="c1"># Average session duration</span>
+rate<span class="o">(</span>rustsocks_session_duration_seconds_sum<span class="o">[</span>5m<span class="o">])</span><span class="w"> </span>/<span class="w"> </span>rate<span class="o">(</span>rustsocks_session_duration_seconds_count<span class="o">[</span>5m<span class="o">])</span>
+
+<span class="c1"># Bandwidth by user</span>
+rate<span class="o">(</span>rustsocks_user_bandwidth_bytes_total<span class="o">{</span><span class="nv">user</span><span class="o">=</span><span class="s2">&quot;alice&quot;</span><span class="o">}[</span>5m<span class="o">])</span>
+
+<span class="c1"># Rejection rate</span>
+rate<span class="o">(</span>rustsocks_sessions_rejected_total<span class="o">[</span>5m<span class="o">])</span><span class="w"> </span>/<span class="w"> </span>rate<span class="o">(</span>rustsocks_sessions_total<span class="o">[</span>5m<span class="o">])</span>
+</code></pre></div>
+<h2 id="configuration_1">Configuration<a class="headerlink" href="#configuration_1" title="Permanent link">&para;</a></h2>
+<h3 id="complete-example">Complete Example<a class="headerlink" href="#complete-example" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><span class="k">[sessions]</span>
+<span class="n">enabled</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+<span class="n">storage</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;sqlite&quot;</span><span class="w">  </span><span class="c1"># or &quot;memory&quot; / &quot;mariadb&quot; / &quot;mysql&quot;</span>
+
+<span class="c1"># Database settings</span>
+<span class="n">database_url</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;sqlite://data/sessions.db&quot;</span>
+<span class="n">batch_size</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">100</span>
+<span class="n">batch_interval_ms</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1000</span>
+<span class="n">retention_days</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">90</span>
+<span class="n">cleanup_interval_hours</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">24</span>
+
+<span class="c1"># Traffic tracking</span>
+<span class="n">traffic_update_packet_interval</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">10</span>
+
+<span class="c1"># Statistics API</span>
+<span class="n">stats_api_enabled</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+<span class="n">stats_api_bind_address</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;127.0.0.1&quot;</span>
+<span class="n">stats_api_port</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">9090</span>
+<span class="n">stats_window_hours</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">24</span>
+</code></pre></div>
+<h2 id="database-operations">Database Operations<a class="headerlink" href="#database-operations" title="Permanent link">&para;</a></h2>
+<h3 id="running-migrations">Running Migrations<a class="headerlink" href="#running-migrations" title="Permanent link">&para;</a></h3>
+<p>Migrations are applied automatically on startup:</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># Manual migration (for testing)</span>
+sqlx<span class="w"> </span>migrate<span class="w"> </span>run<span class="w"> </span>--database-url<span class="w"> </span>sqlite://sessions.db
+</code></pre></div>
+<p>Migrations are located in <code>migrations/</code> directory.</p>
+<h3 id="querying-session-data">Querying Session Data<a class="headerlink" href="#querying-session-data" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><span class="c1">-- Active sessions</span>
+<span class="k">SELECT</span><span class="w"> </span><span class="k">user</span><span class="p">,</span><span class="w"> </span><span class="n">dest_ip</span><span class="p">,</span><span class="w"> </span><span class="n">dest_port</span><span class="p">,</span><span class="w"> </span><span class="n">bytes_sent</span><span class="p">,</span><span class="w"> </span><span class="n">bytes_received</span>
+<span class="k">FROM</span><span class="w"> </span><span class="n">sessions</span><span class="w"> </span><span class="k">WHERE</span><span class="w"> </span><span class="n">status</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">&#39;active&#39;</span><span class="p">;</span>
+
+<span class="c1">-- Rejected by ACL</span>
+<span class="k">SELECT</span><span class="w"> </span><span class="k">user</span><span class="p">,</span><span class="w"> </span><span class="n">dest_ip</span><span class="p">,</span><span class="w"> </span><span class="n">dest_port</span><span class="p">,</span><span class="w"> </span><span class="n">acl_rule_matched</span>
+<span class="k">FROM</span><span class="w"> </span><span class="n">sessions</span><span class="w"> </span><span class="k">WHERE</span><span class="w"> </span><span class="n">status</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">&#39;rejected_by_acl&#39;</span><span class="p">;</span>
+
+<span class="c1">-- Top users by traffic</span>
+<span class="k">SELECT</span><span class="w"> </span><span class="k">user</span><span class="p">,</span>
+<span class="w">       </span><span class="k">SUM</span><span class="p">(</span><span class="n">bytes_sent</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">bytes_received</span><span class="p">)</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="n">total_bytes</span><span class="p">,</span>
+<span class="w">       </span><span class="k">COUNT</span><span class="p">(</span><span class="o">*</span><span class="p">)</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="n">sessions</span>
+<span class="k">FROM</span><span class="w"> </span><span class="n">sessions</span>
+<span class="k">GROUP</span><span class="w"> </span><span class="k">BY</span><span class="w"> </span><span class="k">user</span>
+<span class="k">ORDER</span><span class="w"> </span><span class="k">BY</span><span class="w"> </span><span class="n">total_bytes</span><span class="w"> </span><span class="k">DESC</span>
+<span class="k">LIMIT</span><span class="w"> </span><span class="mi">10</span><span class="p">;</span>
+
+<span class="c1">-- Sessions in last hour</span>
+<span class="k">SELECT</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="k">FROM</span><span class="w"> </span><span class="n">sessions</span>
+<span class="k">WHERE</span><span class="w"> </span><span class="n">datetime</span><span class="p">(</span><span class="n">start_time</span><span class="p">)</span><span class="w"> </span><span class="o">&gt;=</span><span class="w"> </span><span class="n">datetime</span><span class="p">(</span><span class="s1">&#39;now&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;-1 hour&#39;</span><span class="p">);</span>
+
+<span class="c1">-- Traffic over time (hourly buckets)</span>
+<span class="k">SELECT</span>
+<span class="w">    </span><span class="n">strftime</span><span class="p">(</span><span class="s1">&#39;%Y-%m-%d %H:00&#39;</span><span class="p">,</span><span class="w"> </span><span class="n">start_time</span><span class="p">)</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="n">hour</span><span class="p">,</span>
+<span class="w">    </span><span class="k">COUNT</span><span class="p">(</span><span class="o">*</span><span class="p">)</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="n">sessions</span><span class="p">,</span>
+<span class="w">    </span><span class="k">SUM</span><span class="p">(</span><span class="n">bytes_sent</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">bytes_received</span><span class="p">)</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="n">total_bytes</span>
+<span class="k">FROM</span><span class="w"> </span><span class="n">sessions</span>
+<span class="k">WHERE</span><span class="w"> </span><span class="n">datetime</span><span class="p">(</span><span class="n">start_time</span><span class="p">)</span><span class="w"> </span><span class="o">&gt;=</span><span class="w"> </span><span class="n">datetime</span><span class="p">(</span><span class="s1">&#39;now&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;-24 hours&#39;</span><span class="p">)</span>
+<span class="k">GROUP</span><span class="w"> </span><span class="k">BY</span><span class="w"> </span><span class="n">hour</span>
+<span class="k">ORDER</span><span class="w"> </span><span class="k">BY</span><span class="w"> </span><span class="n">hour</span><span class="p">;</span>
+</code></pre></div>
+<h3 id="backup-and-export">Backup and Export<a class="headerlink" href="#backup-and-export" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><span class="c1"># Backup SQLite database</span>
+sqlite3<span class="w"> </span>sessions.db<span class="w"> </span><span class="s2">&quot;.backup sessions_backup.db&quot;</span>
+
+<span class="c1"># Export to CSV</span>
+sqlite3<span class="w"> </span>sessions.db<span class="w"> </span>-csv<span class="w"> </span>-header<span class="w"> </span><span class="s2">&quot;SELECT * FROM sessions&quot;</span><span class="w"> </span>&gt;<span class="w"> </span>sessions.csv
+
+<span class="c1"># Export specific query</span>
+sqlite3<span class="w"> </span>sessions.db<span class="w"> </span>-csv<span class="w"> </span>-header<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span><span class="s2">&quot;SELECT user, dest_ip, dest_port, bytes_sent, bytes_received FROM sessions&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>&gt;<span class="w"> </span>traffic_report.csv
+</code></pre></div>
+<h2 id="performance-characteristics">Performance Characteristics<a class="headerlink" href="#performance-characteristics" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Operation</th>
+<th>Latency</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Session creation</td>
+<td>&lt;100µs</td>
+<td>In-memory only</td>
+</tr>
+<tr>
+<td>Traffic update</td>
+<td>&lt;50µs</td>
+<td>DashMap lock-free read</td>
+</tr>
+<tr>
+<td>Session closure</td>
+<td>&lt;200µs</td>
+<td>Includes snapshot</td>
+</tr>
+<tr>
+<td>Database batch write</td>
+<td>5-50ms</td>
+<td>100 sessions per batch</td>
+</tr>
+<tr>
+<td>Stats query (24h window)</td>
+<td>10-100ms</td>
+<td>Depends on session count</td>
+</tr>
+</tbody>
+</table>
+<h3 id="memory-usage">Memory Usage<a class="headerlink" href="#memory-usage" title="Permanent link">&para;</a></h3>
+<p>Approximate memory per session:
+- <strong>Active session</strong>: ~500 bytes (in DashMap)
+- <strong>Snapshot</strong>: ~300 bytes (in Vec)
+- <strong>Database record</strong>: ~200 bytes (on disk)</p>
+<p>For 10,000 active sessions:
+- In-memory: ~5 MB
+- With snapshots: ~8 MB
+- Database: ~2 MB (compressed)</p>
+<h2 id="best-practices">Best Practices<a class="headerlink" href="#best-practices" title="Permanent link">&para;</a></h2>
+<h3 id="when-to-enable-database-persistence">When to Enable Database Persistence<a class="headerlink" href="#when-to-enable-database-persistence" title="Permanent link">&para;</a></h3>
+<p>Enable SQLite persistence when:
+- Need audit trail of all connections
+- Want historical analysis/reporting
+- Compliance requires session logs
+- Using statistics API extensively</p>
+<h3 id="when-to-use-memory-only-mode">When to Use Memory-Only Mode<a class="headerlink" href="#when-to-use-memory-only-mode" title="Permanent link">&para;</a></h3>
+<p>Use memory-only mode when:
+- Temporary/development deployments
+- Privacy requirements (no persistence)
+- High throughput (&gt;10k sessions/sec)
+- Limited disk space</p>
+<h3 id="tuning-guidelines">Tuning Guidelines<a class="headerlink" href="#tuning-guidelines" title="Permanent link">&para;</a></h3>
+<ol>
+<li><strong>Batch Size</strong> (<code>batch_size</code>):</li>
+<li>Larger batches: Better throughput, higher latency</li>
+<li>Smaller batches: Lower latency, more I/O overhead</li>
+<li>
+<p>Recommended: 50-200 for most workloads</p>
+</li>
+<li>
+<p><strong>Batch Interval</strong> (<code>batch_interval_ms</code>):</p>
+</li>
+<li>Lower interval: More real-time updates, more writes</li>
+<li>Higher interval: Better batching, delayed persistence</li>
+<li>
+<p>Recommended: 1000-5000ms</p>
+</li>
+<li>
+<p><strong>Traffic Update Interval</strong> (<code>traffic_update_packet_interval</code>):</p>
+</li>
+<li>Lower: More accurate real-time stats, higher CPU</li>
+<li>Higher: Lower overhead, delayed updates</li>
+<li>
+<p>Recommended: 10-50 packets</p>
+</li>
+<li>
+<p><strong>Retention Period</strong> (<code>retention_days</code>):</p>
+</li>
+<li>Balance compliance requirements with disk space</li>
+<li>Monitor database size growth</li>
+<li>Consider archiving to external storage</li>
+</ol>
+<h2 id="troubleshooting">Troubleshooting<a class="headerlink" href="#troubleshooting" title="Permanent link">&para;</a></h2>
+<h3 id="problem-high-database-write-latency">Problem: High database write latency<a class="headerlink" href="#problem-high-database-write-latency" title="Permanent link">&para;</a></h3>
+<p><strong>Symptoms</strong>: Slow session closures, growing batch queue</p>
+<p><strong>Solutions</strong>:
+- Increase <code>batch_size</code> (fewer transactions)
+- Increase <code>batch_interval_ms</code> (better batching)
+- Check disk I/O performance
+- Consider moving database to faster storage</p>
+<h3 id="problem-memory-usage-growing">Problem: Memory usage growing<a class="headerlink" href="#problem-memory-usage-growing" title="Permanent link">&para;</a></h3>
+<p><strong>Symptoms</strong>: High memory consumption, OOM crashes</p>
+<p><strong>Causes</strong>:
+- Too many completed session snapshots
+- Batch writer queue overflow
+- Database connection failure</p>
+<p><strong>Solutions</strong>:
+- Limit snapshot retention (not implemented yet)
+- Check database connectivity
+- Monitor batch writer queue size
+- Reduce <code>traffic_update_packet_interval</code></p>
+<h3 id="problem-statistics-api-slow">Problem: Statistics API slow<a class="headerlink" href="#problem-statistics-api-slow" title="Permanent link">&para;</a></h3>
+<p><strong>Symptoms</strong>: High latency on <code>/api/sessions/stats</code></p>
+<p><strong>Causes</strong>:
+- Large number of sessions in window
+- Complex aggregation queries
+- Database not indexed</p>
+<p><strong>Solutions</strong>:
+- Reduce <code>stats_window_hours</code>
+- Ensure indexes exist on database
+- Consider caching statistics
+- Use Prometheus instead for aggregations</p>
+<h2 id="related-documentation">Related Documentation<a class="headerlink" href="#related-documentation" title="Permanent link">&para;</a></h2>
+<ul>
+<li><a href="../architecture/">Architecture Overview</a></li>
+<li><a href="../connection-pool/">Connection Pool</a></li>
+<li><a href="../../guides/web-dashboard/">Web Dashboard Guide</a></li>
+<li><a href="../../guides/testing/">Testing Guide</a></li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.instant", "navigation.tabs", "navigation.sections", "navigation.expand", "navigation.top", "toc.follow", "search.highlight", "content.code.copy"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

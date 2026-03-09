@@ -1,0 +1,2992 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="High-performance SOCKS5 proxy with ACLs, sessions, metrics, and a modern web dashboard.">
+      
+      
+      
+        <link rel="canonical" href="https://xulek.github.io/RustSocks/guides/dashboard-authentication/">
+      
+      
+        <link rel="prev" href="../../ui/overview/">
+      
+      
+        <link rel="next" href="../smtp-configuration/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.4">
+    
+    
+      
+        <title>Authentication - RustSocks Documentation</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=IBM+Plex+Sans:300,300i,400,400i,700,700i%7CIBM+Plex+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"IBM Plex Sans";--md-code-font:"IBM Plex Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="blue-grey" data-md-color-accent="cyan">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#dashboard-authentication-guide" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="RustSocks Documentation" class="md-header__button md-logo" aria-label="RustSocks Documentation" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            RustSocks Documentation
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Authentication
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="blue-grey" data-md-color-accent="cyan"  aria-hidden="true"  type="radio" name="__palette" id="__palette_0">
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/xulek/RustSocks" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    xulek/RustSocks
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../usage/quick-start/" class="md-tabs__link">
+          
+  
+  
+  Getting Started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../../ui/overview/" class="md-tabs__link">
+          
+  
+  
+  UI & Dashboard
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../config/rustsocks/" class="md-tabs__link">
+          
+  
+  
+  Configuration
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../usage/examples/" class="md-tabs__link">
+          
+  
+  
+  Usage & Examples
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../web-dashboard/" class="md-tabs__link">
+          
+  
+  
+  Guides
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../references/project-readme/" class="md-tabs__link">
+          
+  
+  
+  References
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../technical/architecture/" class="md-tabs__link">
+          
+  
+  
+  Technical
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="RustSocks Documentation" class="md-nav__button md-logo" aria-label="RustSocks Documentation" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    RustSocks Documentation
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/xulek/RustSocks" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    xulek/RustSocks
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/quick-start/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quick Start
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/docker/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker Deployment
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    UI & Dashboard
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    UI & Dashboard
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../ui/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Authentication
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Authentication
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#table-of-contents" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Table of Contents
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#quick-start" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick Start
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Quick Start">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#basic-authentication-usernamepassword-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Basic Authentication (Username/Password Only)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Configuration">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#session-settings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Session Settings
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#user-management" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        User Management
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#base-path-support" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Base Path Support
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#altcha-captcha" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Altcha CAPTCHA
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Altcha CAPTCHA">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#how-altcha-works" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How Altcha Works
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#features" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Features
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#enabling-altcha" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Enabling Altcha
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#built-in-vs-external-altcha" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Built-in vs External Altcha
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Built-in vs External Altcha">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#built-in-endpoint-default" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Built-in Endpoint (Default)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#external-altcha-api-optional" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        External Altcha API (Optional)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#difficulty-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Difficulty Configuration
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#security-best-practices" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Security Best Practices
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Security Best Practices">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-session-secret" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Session Secret
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-strong-passwords" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Strong Passwords
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-https-in-production" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. HTTPS in Production
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-protect-api-endpoints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Protect API Endpoints
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5-session-duration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Session Duration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#6-firewall-protection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Firewall Protection
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Troubleshooting
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Troubleshooting">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#login-page-not-showing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Login Page Not Showing
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#altcha-widget-not-loading" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Altcha Widget Not Loading
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#session-expires-immediately" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Session Expires Immediately
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#base-path-issues" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Base Path Issues
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#invalid-credentials-error" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        "Invalid credentials" Error
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#api-endpoints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        API Endpoints
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="API Endpoints">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#post-apiauthlogin" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        POST /api/auth/login
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#post-apiauthlogout" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        POST /api/auth/logout
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-apiauthcheck" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GET /api/auth/check
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-apiauthaltcha-config" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GET /api/auth/altcha-config
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-apiauthaltcha-challenge" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GET /api/auth/altcha-challenge
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#example-configurations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Configurations
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Example Configurations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#simple-auth-no-captcha" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Simple Auth (No CAPTCHA)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#with-altcha-self-hosted" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        With Altcha (Self-Hosted)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#with-base-path" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        With Base Path
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#future-enhancements" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Future Enhancements
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../smtp-configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SMTP Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Configuration
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../config/rustsocks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    rustsocks.toml
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../config/acl/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    acl.toml
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Usage & Examples
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Usage & Examples
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/examples/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Common Scenarios
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../web-dashboard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Web Dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../building-with-base-path/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Base Path Deployment
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ldap-groups/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LDAP Groups
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../active-directory/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Active Directory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    References
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    References
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../references/project-readme/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Project README
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../references/claude/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Developer Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../references/dashboard-readme/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dashboard README
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../references/loadtests-manual/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Load Testing Manual
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Technical
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Technical
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../technical/architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../technical/acl-engine/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ACL Engine
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../technical/connection-pool/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Connection Pool
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../technical/protocol/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Protocol & TLS
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../technical/pam-authentication/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PAM Authentication
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../technical/session-management/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Session Management
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#table-of-contents" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Table of Contents
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#quick-start" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick Start
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Quick Start">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#basic-authentication-usernamepassword-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Basic Authentication (Username/Password Only)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Configuration">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#session-settings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Session Settings
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#user-management" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        User Management
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#base-path-support" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Base Path Support
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#altcha-captcha" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Altcha CAPTCHA
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Altcha CAPTCHA">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#how-altcha-works" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How Altcha Works
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#features" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Features
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#enabling-altcha" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Enabling Altcha
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#built-in-vs-external-altcha" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Built-in vs External Altcha
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Built-in vs External Altcha">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#built-in-endpoint-default" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Built-in Endpoint (Default)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#external-altcha-api-optional" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        External Altcha API (Optional)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#difficulty-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Difficulty Configuration
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#security-best-practices" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Security Best Practices
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Security Best Practices">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-session-secret" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Session Secret
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-strong-passwords" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Strong Passwords
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-https-in-production" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. HTTPS in Production
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-protect-api-endpoints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Protect API Endpoints
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5-session-duration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Session Duration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#6-firewall-protection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Firewall Protection
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Troubleshooting
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Troubleshooting">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#login-page-not-showing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Login Page Not Showing
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#altcha-widget-not-loading" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Altcha Widget Not Loading
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#session-expires-immediately" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Session Expires Immediately
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#base-path-issues" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Base Path Issues
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#invalid-credentials-error" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        "Invalid credentials" Error
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#api-endpoints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        API Endpoints
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="API Endpoints">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#post-apiauthlogin" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        POST /api/auth/login
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#post-apiauthlogout" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        POST /api/auth/logout
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-apiauthcheck" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GET /api/auth/check
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-apiauthaltcha-config" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GET /api/auth/altcha-config
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-apiauthaltcha-challenge" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GET /api/auth/altcha-challenge
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#example-configurations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Configurations
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Example Configurations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#simple-auth-no-captcha" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Simple Auth (No CAPTCHA)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#with-altcha-self-hosted" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        With Altcha (Self-Hosted)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#with-base-path" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        With Base Path
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#future-enhancements" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Future Enhancements
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="dashboard-authentication-guide">Dashboard Authentication Guide<a class="headerlink" href="#dashboard-authentication-guide" title="Permanent link">&para;</a></h1>
+<p>Complete guide to setting up authentication for the RustSocks dashboard with optional Altcha CAPTCHA.</p>
+<h2 id="table-of-contents">Table of Contents<a class="headerlink" href="#table-of-contents" title="Permanent link">&para;</a></h2>
+<ul>
+<li><a href="#quick-start">Quick Start</a></li>
+<li><a href="#configuration">Configuration</a></li>
+<li><a href="#altcha-captcha">Altcha CAPTCHA</a></li>
+<li><a href="#security-best-practices">Security Best Practices</a></li>
+<li><a href="#troubleshooting">Troubleshooting</a></li>
+</ul>
+<h2 id="quick-start">Quick Start<a class="headerlink" href="#quick-start" title="Permanent link">&para;</a></h2>
+<h3 id="basic-authentication-usernamepassword-only">Basic Authentication (Username/Password Only)<a class="headerlink" href="#basic-authentication-usernamepassword-only" title="Permanent link">&para;</a></h3>
+<ol>
+<li><strong>Enable authentication in config</strong>:</li>
+</ol>
+<div class="highlight"><pre><span></span><code><span class="k">[sessions]</span>
+<span class="n">enabled</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+<span class="n">stats_api_enabled</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+<span class="n">dashboard_enabled</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+
+<span class="k">[sessions.dashboard_auth]</span>
+<span class="n">enabled</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+<span class="n">altcha_enabled</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+<span class="n">session_secret</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;your-super-secret-random-string-here&quot;</span>
+<span class="n">session_duration_hours</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">24</span>
+
+<span class="k">[[sessions.dashboard_auth.users]]</span>
+<span class="n">username</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;admin&quot;</span>
+<span class="n">password</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;SecurePassword123&quot;</span>
+</code></pre></div>
+<ol>
+<li><strong>Start the server</strong>:</li>
+</ol>
+<div class="highlight"><pre><span></span><code>./target/release/rustsocks<span class="w"> </span>--config<span class="w"> </span>config/rustsocks.toml
+</code></pre></div>
+<ol>
+<li>
+<p><strong>Access dashboard</strong>: Navigate to <code>http://127.0.0.1:9090</code></p>
+</li>
+<li>
+<p><strong>Login</strong> with credentials from config</p>
+</li>
+</ol>
+<h2 id="configuration">Configuration<a class="headerlink" href="#configuration" title="Permanent link">&para;</a></h2>
+<h3 id="session-settings">Session Settings<a class="headerlink" href="#session-settings" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><span class="k">[sessions.dashboard_auth]</span>
+<span class="c1"># Enable/disable authentication</span>
+<span class="n">enabled</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+
+<span class="c1"># Session secret for token generation</span>
+<span class="c1"># CRITICAL: Use a long, random string in production</span>
+<span class="c1"># Generate with: openssl rand -base64 32</span>
+<span class="n">session_secret</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;change-me-to-very-long-random-secret-string&quot;</span>
+
+<span class="c1"># How long sessions remain valid (in hours)</span>
+<span class="n">session_duration_hours</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">24</span><span class="w">  </span><span class="c1"># Default: 24 hours</span>
+
+<span class="c1"># Mark cookies as Secure when serving the dashboard over HTTPS</span>
+<span class="n">cookie_secure</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+</code></pre></div>
+<h3 id="user-management">User Management<a class="headerlink" href="#user-management" title="Permanent link">&para;</a></h3>
+<p>Add multiple users with different credentials:</p>
+<div class="highlight"><pre><span></span><code><span class="k">[[sessions.dashboard_auth.users]]</span>
+<span class="n">username</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;admin&quot;</span>
+<span class="n">password</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;AdminPassword123&quot;</span>
+
+<span class="k">[[sessions.dashboard_auth.users]]</span>
+<span class="n">username</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;monitor&quot;</span>
+<span class="n">password</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;MonitorPassword456&quot;</span>
+
+<span class="k">[[sessions.dashboard_auth.users]]</span>
+<span class="n">username</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;operator&quot;</span>
+<span class="n">password</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;OperatorPassword789&quot;</span>
+</code></pre></div>
+<p><strong>Note</strong>: Password hashes in PHC format are supported today. If the <code>password</code> field starts with
+<code>$argon2</code>, RustSocks will verify the hash using Argon2. Plaintext passwords are still accepted
+for local testing, but production deployments should use hashed credentials.</p>
+<h3 id="base-path-support">Base Path Support<a class="headerlink" href="#base-path-support" title="Permanent link">&para;</a></h3>
+<p>Dashboard authentication respects base path configuration:</p>
+<div class="highlight"><pre><span></span><code><span class="k">[sessions]</span>
+<span class="n">base_path</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;/rustsocks&quot;</span>
+</code></pre></div>
+<p>All auth endpoints will be accessible at:
+- <code>/rustsocks/api/auth/login</code>
+- <code>/rustsocks/api/auth/logout</code>
+- <code>/rustsocks/api/auth/check</code></p>
+<h2 id="altcha-captcha">Altcha CAPTCHA<a class="headerlink" href="#altcha-captcha" title="Permanent link">&para;</a></h2>
+<p>Altcha is a self-hosted, privacy-first proof-of-work CAPTCHA that works completely offline without external services.</p>
+<h3 id="how-altcha-works">How Altcha Works<a class="headerlink" href="#how-altcha-works" title="Permanent link">&para;</a></h3>
+<ol>
+<li><strong>Server</strong> generates a cryptographic challenge (HMAC-SHA256 signed hash)</li>
+<li><strong>Browser</strong> solves proof-of-work puzzle by finding a secret number</li>
+<li><strong>Server</strong> verifies the solution before allowing login</li>
+</ol>
+<h3 id="features">Features<a class="headerlink" href="#features" title="Permanent link">&para;</a></h3>
+<p>✅ <strong>Fully self-hosted</strong> - No external dependencies
+✅ <strong>Privacy-first</strong> - No tracking, no third-party services
+✅ <strong>Offline-capable</strong> - Works without internet
+✅ <strong>Open source</strong> - Based on <a href="https://github.com/altcha-org/altcha">Altcha</a>
+✅ <strong>HMAC-secured</strong> - Cryptographically signed challenges
+✅ <strong>Configurable difficulty</strong> - Adjust PoW complexity</p>
+<h3 id="enabling-altcha">Enabling Altcha<a class="headerlink" href="#enabling-altcha" title="Permanent link">&para;</a></h3>
+<p><strong>1. Update configuration</strong>:</p>
+<div class="highlight"><pre><span></span><code><span class="k">[sessions.dashboard_auth]</span>
+<span class="n">enabled</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+<span class="n">altcha_enabled</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span><span class="w">  </span><span class="c1"># Enable Altcha CAPTCHA</span>
+<span class="n">session_secret</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;your-secret-key-used-for-hmac-signing&quot;</span>
+</code></pre></div>
+<p><strong>2. Rebuild dashboard</strong> (if modified):</p>
+<div class="highlight"><pre><span></span><code><span class="nb">cd</span><span class="w"> </span>dashboard
+npm<span class="w"> </span>run<span class="w"> </span>build
+<span class="nb">cd</span><span class="w"> </span>..
+</code></pre></div>
+<p><strong>3. Restart server</strong>:</p>
+<div class="highlight"><pre><span></span><code>./target/release/rustsocks<span class="w"> </span>--config<span class="w"> </span>config/rustsocks.toml
+</code></pre></div>
+<p><strong>4. Test login page</strong>:
+- Navigate to dashboard
+- You'll see Altcha widget on login page
+- Widget will solve PoW challenge automatically
+- Submit form after challenge is solved</p>
+<h3 id="built-in-vs-external-altcha">Built-in vs External Altcha<a class="headerlink" href="#built-in-vs-external-altcha" title="Permanent link">&para;</a></h3>
+<h4 id="built-in-endpoint-default">Built-in Endpoint (Default)<a class="headerlink" href="#built-in-endpoint-default" title="Permanent link">&para;</a></h4>
+<p>When <code>altcha_enabled = true</code> with no <code>altcha_challenge_url</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="k">[sessions.dashboard_auth]</span>
+<span class="n">altcha_enabled</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+<span class="c1"># No altcha_challenge_url specified - uses built-in</span>
+</code></pre></div>
+<p><strong>Endpoint</strong>: <code>GET /api/auth/altcha-challenge</code></p>
+<p><strong>Response format</strong>:
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;algorithm&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;SHA-256&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;challenge&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;hex_hash_of_salt&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;salt&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;random_string?expires=timestamp&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;signature&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;hmac_sha256_signature&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;maxnumber&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">50000</span>
+<span class="p">}</span>
+</code></pre></div></p>
+<p><strong>Parameters</strong>:
+- <code>algorithm</code>: Hash algorithm (SHA-256)
+- <code>challenge</code>: SHA-256 hash of salt
+- <code>salt</code>: Random salt with expiration (20 minutes)
+- <code>signature</code>: HMAC-SHA256(challenge, secret_key)
+- <code>maxnumber</code>: Proof-of-work difficulty (0-50000)</p>
+<h4 id="external-altcha-api-optional">External Altcha API (Optional)<a class="headerlink" href="#external-altcha-api-optional" title="Permanent link">&para;</a></h4>
+<p>Use hosted Altcha service:</p>
+<div class="highlight"><pre><span></span><code><span class="k">[sessions.dashboard_auth]</span>
+<span class="n">altcha_enabled</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+<span class="n">altcha_challenge_url</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;https://eu.altcha.org/api/v1/challenge?apiKey=YOUR_KEY&quot;</span>
+</code></pre></div>
+<p>Or self-host Altcha server:</p>
+<div class="highlight"><pre><span></span><code><span class="n">altcha_challenge_url</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;http://your-altcha-server.com/api/challenge&quot;</span>
+</code></pre></div>
+<h3 id="difficulty-configuration">Difficulty Configuration<a class="headerlink" href="#difficulty-configuration" title="Permanent link">&para;</a></h3>
+<p>Adjust <code>maxnumber</code> in <code>src/api/auth.rs</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="n">maxnumber</span><span class="p">:</span><span class="w"> </span><span class="nb">Some</span><span class="p">(</span><span class="mi">50000</span><span class="p">),</span><span class="w">  </span><span class="c1">// Difficulty: 0-50000</span>
+</code></pre></div>
+<p><strong>Recommended values</strong>:
+- <code>10000</code> - Easy (fast, less security)
+- <code>50000</code> - Medium (default, balanced)
+- <code>100000</code> - Hard (slow, more security)
+- <code>250000</code> - Very hard (very slow, maximum security)</p>
+<p><strong>Note</strong>: Higher values increase solve time but provide stronger bot protection.</p>
+<h2 id="security-best-practices">Security Best Practices<a class="headerlink" href="#security-best-practices" title="Permanent link">&para;</a></h2>
+<h3 id="1-session-secret">1. Session Secret<a class="headerlink" href="#1-session-secret" title="Permanent link">&para;</a></h3>
+<p><strong>❌ Bad</strong>:
+<div class="highlight"><pre><span></span><code><span class="n">session_secret</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;secret123&quot;</span>
+</code></pre></div></p>
+<p><strong>✅ Good</strong>:
+<div class="highlight"><pre><span></span><code><span class="n">session_secret</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;j8Kx9m2Nq5Pv7Yt3Zw1Bc4Df6Gh8Jl0Mn2Op4Qr6St8Uv0Wx2Yz4Ab6Cd8Ef0&quot;</span>
+</code></pre></div></p>
+<p><strong>Generate secure secret</strong>:
+<div class="highlight"><pre><span></span><code>openssl<span class="w"> </span>rand<span class="w"> </span>-base64<span class="w"> </span><span class="m">48</span>
+</code></pre></div></p>
+<h3 id="2-strong-passwords">2. Strong Passwords<a class="headerlink" href="#2-strong-passwords" title="Permanent link">&para;</a></h3>
+<p><strong>Minimum requirements</strong>:
+- 12+ characters
+- Mix of uppercase, lowercase, numbers, symbols
+- No dictionary words
+- Unique per user</p>
+<h3 id="3-https-in-production">3. HTTPS in Production<a class="headerlink" href="#3-https-in-production" title="Permanent link">&para;</a></h3>
+<p>Always use HTTPS when deploying dashboard:</p>
+<div class="highlight"><pre><span></span><code><span class="k">[server.tls]</span>
+<span class="n">enabled</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+<span class="n">certificate_path</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;/path/to/cert.pem&quot;</span>
+<span class="n">private_key_path</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;/path/to/key.pem&quot;</span>
+</code></pre></div>
+<h3 id="4-protect-api-endpoints">4. Protect API Endpoints<a class="headerlink" href="#4-protect-api-endpoints" title="Permanent link">&para;</a></h3>
+<p>If the API is exposed, set a token to require auth on <code>/api/*</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="k">[sessions]</span>
+<span class="n">api_token</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;change-me&quot;</span>
+</code></pre></div>
+<p>Requests can authenticate via <code>Authorization: Bearer &lt;token&gt;</code> or <code>x-api-token</code>.</p>
+<h3 id="5-session-duration">5. Session Duration<a class="headerlink" href="#5-session-duration" title="Permanent link">&para;</a></h3>
+<p>Adjust based on security needs:</p>
+<div class="highlight"><pre><span></span><code><span class="n">session_duration_hours</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">8</span><span class="w">  </span><span class="c1"># Work day</span>
+<span class="c1"># session_duration_hours = 1  # High security</span>
+<span class="c1"># session_duration_hours = 168  # 1 week (convenience)</span>
+</code></pre></div>
+<h3 id="6-firewall-protection">6. Firewall Protection<a class="headerlink" href="#6-firewall-protection" title="Permanent link">&para;</a></h3>
+<p>Restrict dashboard access:</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># Allow only from specific IP</span>
+iptables<span class="w"> </span>-A<span class="w"> </span>INPUT<span class="w"> </span>-p<span class="w"> </span>tcp<span class="w"> </span>-s<span class="w"> </span><span class="m">192</span>.168.1.0/24<span class="w"> </span>--dport<span class="w"> </span><span class="m">9090</span><span class="w"> </span>-j<span class="w"> </span>ACCEPT
+iptables<span class="w"> </span>-A<span class="w"> </span>INPUT<span class="w"> </span>-p<span class="w"> </span>tcp<span class="w"> </span>--dport<span class="w"> </span><span class="m">9090</span><span class="w"> </span>-j<span class="w"> </span>DROP
+</code></pre></div>
+<p>Or use reverse proxy (nginx/Apache) with IP whitelist.</p>
+<h2 id="troubleshooting">Troubleshooting<a class="headerlink" href="#troubleshooting" title="Permanent link">&para;</a></h2>
+<h3 id="login-page-not-showing">Login Page Not Showing<a class="headerlink" href="#login-page-not-showing" title="Permanent link">&para;</a></h3>
+<p><strong>Symptoms</strong>: Browser shows basic auth popup instead of login page</p>
+<p><strong>Solution</strong>: Check config:
+<div class="highlight"><pre><span></span><code><span class="k">[sessions.dashboard_auth]</span>
+<span class="n">enabled</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span><span class="w">  </span><span class="c1"># Must be true</span>
+</code></pre></div></p>
+<p>Rebuild dashboard if modified:
+<div class="highlight"><pre><span></span><code><span class="nb">cd</span><span class="w"> </span>dashboard<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>npm<span class="w"> </span>run<span class="w"> </span>build
+</code></pre></div></p>
+<h3 id="altcha-widget-not-loading">Altcha Widget Not Loading<a class="headerlink" href="#altcha-widget-not-loading" title="Permanent link">&para;</a></h3>
+<p><strong>Check browser console</strong> for errors</p>
+<p><strong>Common issues</strong>:</p>
+<ol>
+<li><strong>JavaScript disabled</strong> - Enable JavaScript</li>
+<li><strong>HTTPS required</strong> - Altcha uses Web Crypto API (requires secure context)</li>
+<li><strong>Old browser</strong> - Use modern browser with Web Components support</li>
+</ol>
+<p><strong>Test Altcha endpoint</strong>:
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>http://127.0.0.1:9090/api/auth/altcha-challenge
+</code></pre></div></p>
+<p>Should return JSON challenge.</p>
+<h3 id="session-expires-immediately">Session Expires Immediately<a class="headerlink" href="#session-expires-immediately" title="Permanent link">&para;</a></h3>
+<p><strong>Check</strong>:
+1. System clock - ensure server time is correct
+2. Session secret - verify it's set correctly
+3. Cookie settings - check browser accepts cookies</p>
+<p><strong>Debug</strong>:
+<div class="highlight"><pre><span></span><code><span class="c1"># Check server logs for session creation</span>
+grep<span class="w"> </span><span class="s2">&quot;User logged in&quot;</span><span class="w"> </span>/var/log/rustsocks.log
+</code></pre></div></p>
+<h3 id="base-path-issues">Base Path Issues<a class="headerlink" href="#base-path-issues" title="Permanent link">&para;</a></h3>
+<p><strong>Symptoms</strong>: Login works at root but not at <code>/rustsocks</code></p>
+<p><strong>Solution</strong>: Verify base path consistency:</p>
+<div class="highlight"><pre><span></span><code><span class="k">[sessions]</span>
+<span class="n">base_path</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;/rustsocks&quot;</span><span class="w">  </span><span class="c1"># Must match deployment</span>
+</code></pre></div>
+<p>Rebuild dashboard:
+<div class="highlight"><pre><span></span><code><span class="nb">cd</span><span class="w"> </span>dashboard<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>npm<span class="w"> </span>run<span class="w"> </span>build
+</code></pre></div></p>
+<h3 id="invalid-credentials-error">"Invalid credentials" Error<a class="headerlink" href="#invalid-credentials-error" title="Permanent link">&para;</a></h3>
+<p><strong>Check</strong>:
+1. Username/password in config match exactly (case-sensitive)
+2. No extra spaces in config
+3. TOML syntax is correct</p>
+<p><strong>Test credentials</strong>:
+<div class="highlight"><pre><span></span><code><span class="c1"># Print configured users (excluding passwords)</span>
+grep<span class="w"> </span>-A1<span class="w"> </span><span class="s1">&#39;dashboard_auth.users&#39;</span><span class="w"> </span>config/rustsocks.toml
+</code></pre></div></p>
+<h2 id="api-endpoints">API Endpoints<a class="headerlink" href="#api-endpoints" title="Permanent link">&para;</a></h2>
+<h3 id="post-apiauthlogin">POST /api/auth/login<a class="headerlink" href="#post-apiauthlogin" title="Permanent link">&para;</a></h3>
+<p>Login with credentials.</p>
+<p><strong>Request</strong>:
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;username&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;admin&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;password&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;password123&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;altcha&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;optional_altcha_payload&quot;</span>
+<span class="p">}</span>
+</code></pre></div></p>
+<p><strong>Response (success)</strong>:
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;success&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;message&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Login successful&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;username&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;admin&quot;</span>
+<span class="p">}</span>
+</code></pre></div></p>
+<p><strong>Sets cookie</strong>: <code>rustsocks_session=&lt;token&gt;; HttpOnly; SameSite=Strict</code></p>
+<h3 id="post-apiauthlogout">POST /api/auth/logout<a class="headerlink" href="#post-apiauthlogout" title="Permanent link">&para;</a></h3>
+<p>Logout and destroy session.</p>
+<p><strong>Response</strong>:
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;success&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;message&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Logged out successfully&quot;</span>
+<span class="p">}</span>
+</code></pre></div></p>
+<h3 id="get-apiauthcheck">GET /api/auth/check<a class="headerlink" href="#get-apiauthcheck" title="Permanent link">&para;</a></h3>
+<p>Check if current session is valid.</p>
+<p><strong>Response (authenticated)</strong>:
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;authenticated&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;username&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;admin&quot;</span>
+<span class="p">}</span>
+</code></pre></div></p>
+<p><strong>Response (not authenticated)</strong>:
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;authenticated&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span>
+<span class="p">}</span>
+</code></pre></div></p>
+<h3 id="get-apiauthaltcha-config">GET /api/auth/altcha-config<a class="headerlink" href="#get-apiauthaltcha-config" title="Permanent link">&para;</a></h3>
+<p>Get Altcha configuration.</p>
+<p><strong>Response</strong>:
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;enabled&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;challenge_url&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span>
+<span class="p">}</span>
+</code></pre></div></p>
+<h3 id="get-apiauthaltcha-challenge">GET /api/auth/altcha-challenge<a class="headerlink" href="#get-apiauthaltcha-challenge" title="Permanent link">&para;</a></h3>
+<p>Generate Altcha challenge (when enabled).</p>
+<p><strong>Response</strong>:
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;algorithm&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;SHA-256&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;challenge&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;a1b2c3...&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;salt&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;xyz123?expires=1234567890&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;signature&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;9f8e7d...&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;maxnumber&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">50000</span>
+<span class="p">}</span>
+</code></pre></div></p>
+<h2 id="example-configurations">Example Configurations<a class="headerlink" href="#example-configurations" title="Permanent link">&para;</a></h2>
+<h3 id="simple-auth-no-captcha">Simple Auth (No CAPTCHA)<a class="headerlink" href="#simple-auth-no-captcha" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><span class="k">[sessions]</span>
+<span class="n">enabled</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+<span class="n">dashboard_enabled</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+
+<span class="k">[sessions.dashboard_auth]</span>
+<span class="n">enabled</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+<span class="n">altcha_enabled</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">false</span>
+<span class="n">session_secret</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;your-secret-here&quot;</span>
+
+<span class="k">[[sessions.dashboard_auth.users]]</span>
+<span class="n">username</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;admin&quot;</span>
+<span class="n">password</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;AdminPass123&quot;</span>
+</code></pre></div>
+<h3 id="with-altcha-self-hosted">With Altcha (Self-Hosted)<a class="headerlink" href="#with-altcha-self-hosted" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><span class="k">[sessions]</span>
+<span class="n">enabled</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+<span class="n">dashboard_enabled</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+
+<span class="k">[sessions.dashboard_auth]</span>
+<span class="n">enabled</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+<span class="n">altcha_enabled</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span><span class="w">  </span><span class="c1"># Enable CAPTCHA</span>
+<span class="n">session_secret</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;your-secret-for-hmac-signing&quot;</span>
+
+<span class="k">[[sessions.dashboard_auth.users]]</span>
+<span class="n">username</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;admin&quot;</span>
+<span class="n">password</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;AdminPass123&quot;</span>
+</code></pre></div>
+<h3 id="with-base-path">With Base Path<a class="headerlink" href="#with-base-path" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><span class="k">[sessions]</span>
+<span class="n">enabled</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+<span class="n">dashboard_enabled</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+<span class="n">base_path</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;/socks&quot;</span><span class="w">  </span><span class="c1"># Dashboard at /socks</span>
+
+<span class="k">[sessions.dashboard_auth]</span>
+<span class="n">enabled</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+<span class="n">session_secret</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;your-secret-here&quot;</span>
+
+<span class="k">[[sessions.dashboard_auth.users]]</span>
+<span class="n">username</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;admin&quot;</span>
+<span class="n">password</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;AdminPass123&quot;</span>
+</code></pre></div>
+<p>Access at: <code>http://127.0.0.1:9090/socks</code></p>
+<h2 id="future-enhancements">Future Enhancements<a class="headerlink" href="#future-enhancements" title="Permanent link">&para;</a></h2>
+<p>Planned features for future versions:</p>
+<ul>
+<li>[ ] Password hashing (bcrypt/argon2)</li>
+<li>[ ] Two-factor authentication (TOTP)</li>
+<li>[ ] Role-based access control (RBAC)</li>
+<li>[ ] LDAP/Active Directory integration</li>
+<li>[ ] API key authentication</li>
+<li>[ ] Audit logging</li>
+<li>[ ] Brute-force protection</li>
+<li>[ ] Session management UI</li>
+</ul>
+<hr />
+<p><strong>Need help?</strong> Check <a href="../../references/project-readme/">Project README</a> or open an issue on GitHub.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.instant", "navigation.tabs", "navigation.sections", "navigation.expand", "navigation.top", "toc.follow", "search.highlight", "content.code.copy"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

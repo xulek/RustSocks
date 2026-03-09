@@ -1,0 +1,2865 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="High-performance SOCKS5 proxy with ACLs, sessions, metrics, and a modern web dashboard.">
+      
+      
+      
+        <link rel="canonical" href="https://xulek.github.io/RustSocks/config/rustsocks/">
+      
+      
+        <link rel="prev" href="../../guides/smtp-configuration/">
+      
+      
+        <link rel="next" href="../acl/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.4">
+    
+    
+      
+        <title>rustsocks.toml - RustSocks Documentation</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=IBM+Plex+Sans:300,300i,400,400i,700,700i%7CIBM+Plex+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"IBM Plex Sans";--md-code-font:"IBM Plex Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="blue-grey" data-md-color-accent="cyan">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#rustsockstoml-reference" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="RustSocks Documentation" class="md-header__button md-logo" aria-label="RustSocks Documentation" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            RustSocks Documentation
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              rustsocks.toml
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="blue-grey" data-md-color-accent="cyan"  aria-hidden="true"  type="radio" name="__palette" id="__palette_0">
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/xulek/RustSocks" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    xulek/RustSocks
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../usage/quick-start/" class="md-tabs__link">
+          
+  
+  
+  Getting Started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../ui/overview/" class="md-tabs__link">
+          
+  
+  
+  UI & Dashboard
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="./" class="md-tabs__link">
+          
+  
+  
+  Configuration
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../usage/examples/" class="md-tabs__link">
+          
+  
+  
+  Usage & Examples
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../guides/web-dashboard/" class="md-tabs__link">
+          
+  
+  
+  Guides
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../references/project-readme/" class="md-tabs__link">
+          
+  
+  
+  References
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../technical/architecture/" class="md-tabs__link">
+          
+  
+  
+  Technical
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="RustSocks Documentation" class="md-nav__button md-logo" aria-label="RustSocks Documentation" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    RustSocks Documentation
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/xulek/RustSocks" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    xulek/RustSocks
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/quick-start/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quick Start
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/docker/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker Deployment
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    UI & Dashboard
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    UI & Dashboard
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../ui/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/dashboard-authentication/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Authentication
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/smtp-configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SMTP Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Configuration
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    rustsocks.toml
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    rustsocks.toml
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#file-structure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        File Structure
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#minimal-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Minimal Example
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#server" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        [server]
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="[server]">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#servertls" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        [server.tls]
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#serverpool" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        [server.pool]
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#auth" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        [auth]
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="[auth]">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#authusers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        [[auth.users]]
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#authpam" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        [auth.pam]
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#authgssapi" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        [auth.gssapi]
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#logging" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        [logging]
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#acl" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        [acl]
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sessions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        [sessions]
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="[sessions]">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#sessionsdashboard_auth" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        [sessions.dashboard_auth]
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#metrics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        [metrics]
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#telemetry" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        [telemetry]
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#qos" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        [qos]
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="[qos]">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#qoshtb" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        [qos.htb]
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#qosconnection_limits" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        [qos.connection_limits]
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cli-overrides" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CLI Overrides
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../acl/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    acl.toml
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Usage & Examples
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Usage & Examples
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/examples/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Common Scenarios
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/web-dashboard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Web Dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/building-with-base-path/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Base Path Deployment
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/ldap-groups/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LDAP Groups
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/active-directory/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Active Directory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    References
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    References
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../references/project-readme/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Project README
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../references/claude/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Developer Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../references/dashboard-readme/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dashboard README
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../references/loadtests-manual/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Load Testing Manual
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Technical
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Technical
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../technical/architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../technical/acl-engine/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ACL Engine
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../technical/connection-pool/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Connection Pool
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../technical/protocol/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Protocol & TLS
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../technical/pam-authentication/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PAM Authentication
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../technical/session-management/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Session Management
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#file-structure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        File Structure
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#minimal-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Minimal Example
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#server" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        [server]
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="[server]">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#servertls" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        [server.tls]
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#serverpool" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        [server.pool]
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#auth" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        [auth]
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="[auth]">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#authusers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        [[auth.users]]
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#authpam" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        [auth.pam]
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#authgssapi" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        [auth.gssapi]
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#logging" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        [logging]
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#acl" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        [acl]
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sessions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        [sessions]
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="[sessions]">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#sessionsdashboard_auth" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        [sessions.dashboard_auth]
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#metrics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        [metrics]
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#telemetry" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        [telemetry]
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#qos" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        [qos]
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="[qos]">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#qoshtb" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        [qos.htb]
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#qosconnection_limits" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        [qos.connection_limits]
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cli-overrides" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CLI Overrides
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="rustsockstoml-reference">rustsocks.toml Reference<a class="headerlink" href="#rustsockstoml-reference" title="Permanent link">&para;</a></h1>
+<p>This document describes every supported option in the main configuration file.</p>
+<p>RustSocks loads configuration from a TOML file passed via <code>--config</code>. When no file is provided, defaults are used.</p>
+<h2 id="file-structure">File Structure<a class="headerlink" href="#file-structure" title="Permanent link">&para;</a></h2>
+<p>The file is grouped into blocks:</p>
+<ul>
+<li><code>[server]</code> core listener settings</li>
+<li><code>[server.tls]</code> TLS configuration</li>
+<li><code>[server.pool]</code> connection pooling</li>
+<li><code>[auth]</code> authentication strategy</li>
+<li><code>[logging]</code> log format and level</li>
+<li><code>[acl]</code> ACL system and hot reload</li>
+<li><code>[sessions]</code> session tracking + API/dashboard</li>
+<li><code>[sessions.dashboard_auth]</code> dashboard authentication</li>
+<li><code>[metrics]</code> metrics retention and storage</li>
+<li><code>[telemetry]</code> operational event feed</li>
+<li><code>[qos]</code> rate limiting and connection limits</li>
+</ul>
+<h2 id="minimal-example">Minimal Example<a class="headerlink" href="#minimal-example" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><span class="k">[server]</span>
+<span class="n">bind_address</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;127.0.0.1&quot;</span>
+<span class="n">bind_port</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1080</span>
+
+<span class="k">[auth]</span>
+<span class="n">client_method</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;none&quot;</span>
+<span class="n">socks_method</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;none&quot;</span>
+</code></pre></div>
+<p>For a full example, see <code>docs/examples/rustsocks.example.toml</code>.</p>
+<h2 id="server">[server]<a class="headerlink" href="#server" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>bind_address</code></td>
+<td>string</td>
+<td><code>127.0.0.1</code></td>
+<td>Address to bind the SOCKS5 listener.</td>
+</tr>
+<tr>
+<td><code>bind_port</code></td>
+<td>integer</td>
+<td><code>1080</code></td>
+<td>Port to bind the SOCKS5 listener.</td>
+</tr>
+<tr>
+<td><code>max_connections</code></td>
+<td>integer</td>
+<td><code>1000</code></td>
+<td>Maximum concurrent connections.</td>
+</tr>
+<tr>
+<td><code>handshake_timeout_ms</code></td>
+<td>integer</td>
+<td><code>10000</code></td>
+<td>Timeout for SOCKS5 handshake.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="servertls">[server.tls]<a class="headerlink" href="#servertls" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>enabled</code></td>
+<td>bool</td>
+<td><code>false</code></td>
+<td>Enable TLS wrapping for incoming connections.</td>
+</tr>
+<tr>
+<td><code>certificate_path</code></td>
+<td>string</td>
+<td>none</td>
+<td>Server certificate path.</td>
+</tr>
+<tr>
+<td><code>private_key_path</code></td>
+<td>string</td>
+<td>none</td>
+<td>Server private key path.</td>
+</tr>
+<tr>
+<td><code>key_password</code></td>
+<td>string</td>
+<td>none</td>
+<td>Password for encrypted private key.</td>
+</tr>
+<tr>
+<td><code>require_client_auth</code></td>
+<td>bool</td>
+<td><code>false</code></td>
+<td>Require client certificate authentication (mTLS).</td>
+</tr>
+<tr>
+<td><code>client_ca_path</code></td>
+<td>string</td>
+<td>none</td>
+<td>CA certificate to validate client certs.</td>
+</tr>
+<tr>
+<td><code>alpn_protocols</code></td>
+<td>array</td>
+<td><code>[]</code></td>
+<td>ALPN protocols (optional).</td>
+</tr>
+<tr>
+<td><code>min_protocol_version</code></td>
+<td>string</td>
+<td>none</td>
+<td>Minimum TLS version, e.g. <code>TLS13</code>.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="serverpool">[server.pool]<a class="headerlink" href="#serverpool" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>enabled</code></td>
+<td>bool</td>
+<td><code>false</code></td>
+<td>Enable outbound connection pooling.</td>
+</tr>
+<tr>
+<td><code>max_idle_per_dest</code></td>
+<td>integer</td>
+<td><code>4</code></td>
+<td>Max idle connections per destination.</td>
+</tr>
+<tr>
+<td><code>max_total_idle</code></td>
+<td>integer</td>
+<td><code>100</code></td>
+<td>Max idle connections across all destinations.</td>
+</tr>
+<tr>
+<td><code>idle_timeout_secs</code></td>
+<td>integer</td>
+<td><code>90</code></td>
+<td>Time before idle pooled connection expires.</td>
+</tr>
+<tr>
+<td><code>connect_timeout_ms</code></td>
+<td>integer</td>
+<td><code>5000</code></td>
+<td>Connect timeout for pool creates.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="auth">[auth]<a class="headerlink" href="#auth" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>client_method</code></td>
+<td>string</td>
+<td><code>none</code></td>
+<td>Client authentication method: <code>none</code>, <code>pam.address</code>.</td>
+</tr>
+<tr>
+<td><code>socks_method</code></td>
+<td>string</td>
+<td><code>none</code></td>
+<td>SOCKS authentication method: <code>none</code>, <code>userpass</code>, <code>pam.address</code>, <code>pam.username</code>, <code>gssapi</code>.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="authusers">[[auth.users]]<a class="headerlink" href="#authusers" title="Permanent link">&para;</a></h3>
+<p>Used only when <code>socks_method = "userpass"</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>username</code></td>
+<td>string</td>
+<td>Username for SOCKS auth.</td>
+</tr>
+<tr>
+<td><code>password</code></td>
+<td>string</td>
+<td>Password for SOCKS auth.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="authpam">[auth.pam]<a class="headerlink" href="#authpam" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>username_service</code></td>
+<td>string</td>
+<td><code>rustsocks</code></td>
+<td>PAM service for username authentication.</td>
+</tr>
+<tr>
+<td><code>address_service</code></td>
+<td>string</td>
+<td><code>rustsocks-client</code></td>
+<td>PAM service for address authentication.</td>
+</tr>
+<tr>
+<td><code>default_user</code></td>
+<td>string</td>
+<td><code>rhostusr</code></td>
+<td>Default user for PAM address-based auth.</td>
+</tr>
+<tr>
+<td><code>default_ruser</code></td>
+<td>string</td>
+<td><code>rhostusr</code></td>
+<td>Default remote user for PAM address-based auth.</td>
+</tr>
+<tr>
+<td><code>verbose</code></td>
+<td>bool</td>
+<td><code>false</code></td>
+<td>Enable PAM verbose logging.</td>
+</tr>
+<tr>
+<td><code>verify_service</code></td>
+<td>bool</td>
+<td><code>false</code></td>
+<td>Verify PAM service exists on startup.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="authgssapi">[auth.gssapi]<a class="headerlink" href="#authgssapi" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>service_name</code></td>
+<td>string</td>
+<td><code>socks</code></td>
+<td>GSSAPI service name.</td>
+</tr>
+<tr>
+<td><code>keytab_path</code></td>
+<td>string</td>
+<td>none</td>
+<td>Optional keytab path.</td>
+</tr>
+<tr>
+<td><code>protection_level</code></td>
+<td>string</td>
+<td><code>integrity</code></td>
+<td><code>integrity</code>, <code>confidentiality</code>, or <code>selective</code>.</td>
+</tr>
+<tr>
+<td><code>verbose</code></td>
+<td>bool</td>
+<td><code>false</code></td>
+<td>Enable GSSAPI verbose logging.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Note</strong>: GSSAPI authentication requires building with the <code>gssapi</code> feature (e.g., <code>cargo build --release --features gssapi</code> or <code>--all-features</code>) and is supported on Unix systems.</p>
+<h2 id="logging">[logging]<a class="headerlink" href="#logging" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>level</code></td>
+<td>string</td>
+<td><code>info</code></td>
+<td>Log level: <code>trace</code>, <code>debug</code>, <code>info</code>, <code>warn</code>, <code>error</code>.</td>
+</tr>
+<tr>
+<td><code>format</code></td>
+<td>string</td>
+<td><code>pretty</code></td>
+<td><code>pretty</code> or <code>json</code>.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="acl">[acl]<a class="headerlink" href="#acl" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>enabled</code></td>
+<td>bool</td>
+<td><code>false</code></td>
+<td>Enable ACL enforcement.</td>
+</tr>
+<tr>
+<td><code>config_file</code></td>
+<td>string</td>
+<td>none</td>
+<td>Path to <code>acl.toml</code>.</td>
+</tr>
+<tr>
+<td><code>watch</code></td>
+<td>bool</td>
+<td><code>false</code></td>
+<td>Hot-reload ACL config on changes.</td>
+</tr>
+<tr>
+<td><code>anonymous_user</code></td>
+<td>string</td>
+<td><code>anonymous</code></td>
+<td>Fallback username for unauthenticated clients.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="sessions">[sessions]<a class="headerlink" href="#sessions" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>enabled</code></td>
+<td>bool</td>
+<td><code>false</code></td>
+<td>Enable session tracking.</td>
+</tr>
+<tr>
+<td><code>storage</code></td>
+<td>string</td>
+<td><code>memory</code></td>
+<td><code>memory</code>, <code>sqlite</code>, <code>mariadb</code>, <code>mysql</code>.</td>
+</tr>
+<tr>
+<td><code>database_url</code></td>
+<td>string</td>
+<td>none</td>
+<td>DB URL required for <code>sqlite</code>/<code>mariadb</code>/<code>mysql</code> when sessions are enabled.</td>
+</tr>
+<tr>
+<td><code>batch_size</code></td>
+<td>integer</td>
+<td><code>100</code></td>
+<td>Batch size for session writes.</td>
+</tr>
+<tr>
+<td><code>batch_interval_ms</code></td>
+<td>integer</td>
+<td><code>1000</code></td>
+<td>Max wait before flush.</td>
+</tr>
+<tr>
+<td><code>retention_days</code></td>
+<td>integer</td>
+<td><code>90</code></td>
+<td>Retention for session history.</td>
+</tr>
+<tr>
+<td><code>cleanup_interval_hours</code></td>
+<td>integer</td>
+<td><code>24</code></td>
+<td>Cleanup cadence for session history.</td>
+</tr>
+<tr>
+<td><code>traffic_update_packet_interval</code></td>
+<td>integer</td>
+<td><code>10</code></td>
+<td>Update frequency based on packets.</td>
+</tr>
+<tr>
+<td><code>traffic_queue_capacity</code></td>
+<td>integer</td>
+<td><code>10000</code></td>
+<td>Buffer size for traffic updates.</td>
+</tr>
+<tr>
+<td><code>stats_window_hours</code></td>
+<td>integer</td>
+<td><code>24</code></td>
+<td>Window for dashboard stats.</td>
+</tr>
+<tr>
+<td><code>stats_api_enabled</code></td>
+<td>bool</td>
+<td><code>false</code></td>
+<td>Enable API + dashboard server.</td>
+</tr>
+<tr>
+<td><code>stats_api_bind_address</code></td>
+<td>string</td>
+<td><code>127.0.0.1</code></td>
+<td>API bind address.</td>
+</tr>
+<tr>
+<td><code>stats_api_port</code></td>
+<td>integer</td>
+<td><code>9090</code></td>
+<td>API port.</td>
+</tr>
+<tr>
+<td><code>api_token</code></td>
+<td>string</td>
+<td>none</td>
+<td>Optional token for <code>/api/*</code>; also required to encrypt SMTP passwords stored in the database.</td>
+</tr>
+<tr>
+<td><code>swagger_enabled</code></td>
+<td>bool</td>
+<td><code>true</code></td>
+<td>Enable Swagger UI at <code>/swagger-ui/</code>.</td>
+</tr>
+<tr>
+<td><code>dashboard_enabled</code></td>
+<td>bool</td>
+<td><code>false</code></td>
+<td>Serve dashboard UI.</td>
+</tr>
+<tr>
+<td><code>base_path</code></td>
+<td>string</td>
+<td><code>/</code></td>
+<td>URL prefix for all routes.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Note</strong>: Database-backed session storage (<code>sqlite</code>, <code>mariadb</code>, <code>mysql</code>) requires the <code>database</code> feature at build time.</p>
+<h3 id="sessionsdashboard_auth">[sessions.dashboard_auth]<a class="headerlink" href="#sessionsdashboard_auth" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>enabled</code></td>
+<td>bool</td>
+<td><code>false</code></td>
+<td>Enable dashboard Basic Auth.</td>
+</tr>
+<tr>
+<td><code>users</code></td>
+<td>array</td>
+<td><code>[]</code></td>
+<td>Users list (same fields as <code>auth.users</code>).</td>
+</tr>
+<tr>
+<td><code>altcha_enabled</code></td>
+<td>bool</td>
+<td><code>true</code></td>
+<td>Enable Altcha proof-of-work challenge.</td>
+</tr>
+<tr>
+<td><code>altcha_challenge_url</code></td>
+<td>string</td>
+<td>none</td>
+<td>External Altcha endpoint (optional).</td>
+</tr>
+<tr>
+<td><code>cookie_secure</code></td>
+<td>bool</td>
+<td><code>false</code></td>
+<td>Set cookies as Secure (HTTPS).</td>
+</tr>
+<tr>
+<td><code>session_secret</code></td>
+<td>string</td>
+<td>auto</td>
+<td>Random secret generated at startup if not set.</td>
+</tr>
+<tr>
+<td><code>session_duration_hours</code></td>
+<td>integer</td>
+<td><code>24</code></td>
+<td>Session lifetime for dashboard auth.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="metrics">[metrics]<a class="headerlink" href="#metrics" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>enabled</code></td>
+<td>bool</td>
+<td><code>true</code></td>
+<td>Enable metrics collection.</td>
+</tr>
+<tr>
+<td><code>storage</code></td>
+<td>string</td>
+<td><code>memory</code></td>
+<td><code>memory</code> or <code>sqlite</code> (uses the sessions database when available).</td>
+</tr>
+<tr>
+<td><code>retention_hours</code></td>
+<td>integer</td>
+<td><code>24</code></td>
+<td>How long to keep metrics history.</td>
+</tr>
+<tr>
+<td><code>cleanup_interval_hours</code></td>
+<td>integer</td>
+<td><code>6</code></td>
+<td>Cleanup cadence for metrics store.</td>
+</tr>
+<tr>
+<td><code>collection_interval_secs</code></td>
+<td>integer</td>
+<td><code>5</code></td>
+<td>Metrics sampling interval.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Notes</strong>:
+- The <code>/metrics</code> endpoint is served by the stats API server, so <code>sessions.stats_api_enabled</code> must be <code>true</code>.
+- When <code>storage = "sqlite"</code>, metrics persistence requires sessions storage configured with a database URL.</p>
+<h2 id="telemetry">[telemetry]<a class="headerlink" href="#telemetry" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>enabled</code></td>
+<td>bool</td>
+<td><code>true</code></td>
+<td>Enable operational telemetry feed.</td>
+</tr>
+<tr>
+<td><code>max_events</code></td>
+<td>integer</td>
+<td><code>256</code></td>
+<td>Max events kept in memory.</td>
+</tr>
+<tr>
+<td><code>retention_hours</code></td>
+<td>integer</td>
+<td><code>6</code></td>
+<td>Age limit for telemetry events.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="qos">[qos]<a class="headerlink" href="#qos" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>enabled</code></td>
+<td>bool</td>
+<td><code>false</code></td>
+<td>Enable QoS / rate limiting.</td>
+</tr>
+<tr>
+<td><code>algorithm</code></td>
+<td>string</td>
+<td><code>htb</code></td>
+<td>QoS algorithm (<code>htb</code>).</td>
+</tr>
+</tbody>
+</table>
+<h3 id="qoshtb">[qos.htb]<a class="headerlink" href="#qoshtb" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>global_bandwidth_bytes_per_sec</code></td>
+<td>integer</td>
+<td><code>125000000</code></td>
+<td>Global bandwidth cap (1 Gbps).</td>
+</tr>
+<tr>
+<td><code>guaranteed_bandwidth_bytes_per_sec</code></td>
+<td>integer</td>
+<td><code>131072</code></td>
+<td>Guaranteed per-user minimum (1 Mbps).</td>
+</tr>
+<tr>
+<td><code>max_bandwidth_bytes_per_sec</code></td>
+<td>integer</td>
+<td><code>12500000</code></td>
+<td>Max per-user bandwidth (100 Mbps).</td>
+</tr>
+<tr>
+<td><code>burst_size_bytes</code></td>
+<td>integer</td>
+<td><code>1048576</code></td>
+<td>Burst size in bytes (1 MB).</td>
+</tr>
+<tr>
+<td><code>refill_interval_ms</code></td>
+<td>integer</td>
+<td><code>50</code></td>
+<td>Token refill interval.</td>
+</tr>
+<tr>
+<td><code>fair_sharing_enabled</code></td>
+<td>bool</td>
+<td><code>true</code></td>
+<td>Enable fair sharing between users.</td>
+</tr>
+<tr>
+<td><code>rebalance_interval_ms</code></td>
+<td>integer</td>
+<td><code>100</code></td>
+<td>Rebalance cadence.</td>
+</tr>
+<tr>
+<td><code>idle_timeout_secs</code></td>
+<td>integer</td>
+<td><code>5</code></td>
+<td>Idle threshold to mark user inactive.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="qosconnection_limits">[qos.connection_limits]<a class="headerlink" href="#qosconnection_limits" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>max_connections_per_user</code></td>
+<td>integer</td>
+<td><code>20</code></td>
+<td>Per-user connection limit.</td>
+</tr>
+<tr>
+<td><code>max_connections_global</code></td>
+<td>integer</td>
+<td><code>10000</code></td>
+<td>Global connection limit.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="cli-overrides">CLI Overrides<a class="headerlink" href="#cli-overrides" title="Permanent link">&para;</a></h2>
+<ul>
+<li><code>--bind</code> overrides <code>[server].bind_address</code></li>
+<li><code>--port</code> overrides <code>[server].bind_port</code></li>
+<li><code>--log-level</code> overrides <code>[logging].level</code></li>
+</ul>
+<p>See <code>rustsocks --help</code> for the full CLI usage.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.instant", "navigation.tabs", "navigation.sections", "navigation.expand", "navigation.top", "toc.follow", "search.highlight", "content.code.copy"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

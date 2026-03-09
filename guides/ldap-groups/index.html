@@ -1,0 +1,3202 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="High-performance SOCKS5 proxy with ACLs, sessions, metrics, and a modern web dashboard.">
+      
+      
+      
+        <link rel="canonical" href="https://xulek.github.io/RustSocks/guides/ldap-groups/">
+      
+      
+        <link rel="prev" href="../building-with-base-path/">
+      
+      
+        <link rel="next" href="../active-directory/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.4">
+    
+    
+      
+        <title>LDAP Groups - RustSocks Documentation</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=IBM+Plex+Sans:300,300i,400,400i,700,700i%7CIBM+Plex+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"IBM Plex Sans";--md-code-font:"IBM Plex Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="blue-grey" data-md-color-accent="cyan">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#ldap-groups-integration-complete-guide" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="RustSocks Documentation" class="md-header__button md-logo" aria-label="RustSocks Documentation" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            RustSocks Documentation
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              LDAP Groups
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="blue-grey" data-md-color-accent="cyan"  aria-hidden="true"  type="radio" name="__palette" id="__palette_0">
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/xulek/RustSocks" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    xulek/RustSocks
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../usage/quick-start/" class="md-tabs__link">
+          
+  
+  
+  Getting Started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../ui/overview/" class="md-tabs__link">
+          
+  
+  
+  UI & Dashboard
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../config/rustsocks/" class="md-tabs__link">
+          
+  
+  
+  Configuration
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../usage/examples/" class="md-tabs__link">
+          
+  
+  
+  Usage & Examples
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../web-dashboard/" class="md-tabs__link">
+          
+  
+  
+  Guides
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../references/project-readme/" class="md-tabs__link">
+          
+  
+  
+  References
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../technical/architecture/" class="md-tabs__link">
+          
+  
+  
+  Technical
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="RustSocks Documentation" class="md-nav__button md-logo" aria-label="RustSocks Documentation" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    RustSocks Documentation
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/xulek/RustSocks" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    xulek/RustSocks
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/quick-start/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quick Start
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/docker/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker Deployment
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    UI & Dashboard
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    UI & Dashboard
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../ui/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dashboard-authentication/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Authentication
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../smtp-configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SMTP Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Configuration
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../config/rustsocks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    rustsocks.toml
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../config/acl/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    acl.toml
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Usage & Examples
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Usage & Examples
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/examples/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Common Scenarios
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../web-dashboard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Web Dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../building-with-base-path/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Base Path Deployment
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LDAP Groups
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LDAP Groups
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Overview
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-it-works" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How It Works
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="How It Works">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-user-authentication-pam" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. User Authentication (PAM)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-ldap-group-resolution-nsssssd" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. LDAP Group Resolution (NSS/SSSD)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-acl-group-filtering" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. ACL Group Filtering
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-rule-application" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Rule Application
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Configuration">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#rustsockstoml" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        rustsocks.toml
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#acltoml-simple-no-user-mappings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        acl.toml (Simple - No User Mappings!)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#example-scenarios" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Scenarios
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Example Scenarios">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#scenario-1-user-with-multiple-ldap-groups" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scenario 1: User with Multiple LDAP Groups
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#scenario-2-user-with-no-matching-groups" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scenario 2: User with No Matching Groups
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#scenario-3-case-insensitive-matching" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scenario 3: Case-Insensitive Matching
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#scenario-4-user-in-multiple-defined-groups" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scenario 4: User in Multiple Defined Groups
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#system-requirements" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        System Requirements
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="System Requirements">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-nsssssd-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. NSS/SSSD Configuration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-pam-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. PAM Configuration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-etcnsswitchconf" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. /etc/nsswitch.conf
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#deployment-steps" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Deployment Steps
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Deployment Steps">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-install-dependencies" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Install Dependencies
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-configure-sssd-for-ldap" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Configure SSSD for LDAP
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-configure-pam-service" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Configure PAM Service
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-configure-rustsocks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Configure RustSocks
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5-build-and-run" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Build and Run
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#testing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Testing
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Testing">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-test-ldap-group-resolution" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Test LDAP Group Resolution
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-test-acl-with-mock-ldap-groups" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Test ACL with Mock LDAP Groups
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-test-real-ldap-integration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Test Real LDAP Integration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-test-end-to-end" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Test End-to-End
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Troubleshooting
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Troubleshooting">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#problem-groups-not-found-via-getgrouplist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Problem: Groups not found via getgrouplist()
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#problem-pam-authentication-fails" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Problem: PAM authentication fails
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#problem-acl-doesnt-match-groups" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Problem: ACL doesn't match groups
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#performance-considerations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Performance Considerations
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Performance Considerations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#getgrouplist-overhead" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        getgrouplist() Overhead
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#acl-evaluation-overhead" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ACL Evaluation Overhead
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#security-best-practices" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Security Best Practices
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#architecture-diagram" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Architecture Diagram
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#faq" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        FAQ
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="FAQ">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#q-do-i-need-to-define-all-ldap-groups-in-acl-config" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Q: Do I need to define ALL LDAP groups in ACL config?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#q-what-if-user-has-1000-ldap-groups" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Q: What if user has 1000+ LDAP groups?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#q-are-group-names-case-sensitive" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Q: Are group names case-sensitive?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#q-can-i-use-per-user-overrides" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Q: Can I use per-user overrides?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#q-does-this-work-without-ldap" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Q: Does this work without LDAP?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#q-what-happens-if-ldap-is-down" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Q: What happens if LDAP is down?
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#summary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Summary
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../active-directory/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Active Directory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    References
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    References
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../references/project-readme/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Project README
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../references/claude/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Developer Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../references/dashboard-readme/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dashboard README
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../references/loadtests-manual/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Load Testing Manual
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Technical
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Technical
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../technical/architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../technical/acl-engine/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ACL Engine
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../technical/connection-pool/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Connection Pool
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../technical/protocol/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Protocol & TLS
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../technical/pam-authentication/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PAM Authentication
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../technical/session-management/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Session Management
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Overview
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-it-works" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How It Works
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="How It Works">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-user-authentication-pam" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. User Authentication (PAM)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-ldap-group-resolution-nsssssd" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. LDAP Group Resolution (NSS/SSSD)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-acl-group-filtering" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. ACL Group Filtering
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-rule-application" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Rule Application
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Configuration">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#rustsockstoml" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        rustsocks.toml
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#acltoml-simple-no-user-mappings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        acl.toml (Simple - No User Mappings!)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#example-scenarios" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Scenarios
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Example Scenarios">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#scenario-1-user-with-multiple-ldap-groups" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scenario 1: User with Multiple LDAP Groups
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#scenario-2-user-with-no-matching-groups" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scenario 2: User with No Matching Groups
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#scenario-3-case-insensitive-matching" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scenario 3: Case-Insensitive Matching
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#scenario-4-user-in-multiple-defined-groups" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scenario 4: User in Multiple Defined Groups
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#system-requirements" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        System Requirements
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="System Requirements">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-nsssssd-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. NSS/SSSD Configuration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-pam-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. PAM Configuration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-etcnsswitchconf" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. /etc/nsswitch.conf
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#deployment-steps" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Deployment Steps
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Deployment Steps">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-install-dependencies" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Install Dependencies
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-configure-sssd-for-ldap" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Configure SSSD for LDAP
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-configure-pam-service" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Configure PAM Service
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-configure-rustsocks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Configure RustSocks
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5-build-and-run" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Build and Run
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#testing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Testing
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Testing">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-test-ldap-group-resolution" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Test LDAP Group Resolution
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-test-acl-with-mock-ldap-groups" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Test ACL with Mock LDAP Groups
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-test-real-ldap-integration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Test Real LDAP Integration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-test-end-to-end" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Test End-to-End
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Troubleshooting
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Troubleshooting">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#problem-groups-not-found-via-getgrouplist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Problem: Groups not found via getgrouplist()
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#problem-pam-authentication-fails" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Problem: PAM authentication fails
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#problem-acl-doesnt-match-groups" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Problem: ACL doesn't match groups
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#performance-considerations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Performance Considerations
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Performance Considerations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#getgrouplist-overhead" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        getgrouplist() Overhead
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#acl-evaluation-overhead" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ACL Evaluation Overhead
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#security-best-practices" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Security Best Practices
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#architecture-diagram" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Architecture Diagram
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#faq" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        FAQ
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="FAQ">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#q-do-i-need-to-define-all-ldap-groups-in-acl-config" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Q: Do I need to define ALL LDAP groups in ACL config?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#q-what-if-user-has-1000-ldap-groups" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Q: What if user has 1000+ LDAP groups?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#q-are-group-names-case-sensitive" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Q: Are group names case-sensitive?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#q-can-i-use-per-user-overrides" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Q: Can I use per-user overrides?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#q-does-this-work-without-ldap" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Q: Does this work without LDAP?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#q-what-happens-if-ldap-is-down" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Q: What happens if LDAP is down?
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#summary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Summary
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="ldap-groups-integration-complete-guide">LDAP Groups Integration - Complete Guide<a class="headerlink" href="#ldap-groups-integration-complete-guide" title="Permanent link">&para;</a></h1>
+<h2 id="overview">Overview<a class="headerlink" href="#overview" title="Permanent link">&para;</a></h2>
+<p>RustSocks now supports <strong>dynamic LDAP group resolution</strong>. This allows ACL rules to be applied based on user's LDAP groups without manual synchronization.</p>
+<p><strong>Key Feature:</strong> ACL only checks groups <strong>defined in ACL config</strong> - even if user has thousands of LDAP groups, only the relevant ones are evaluated (case-insensitive).</p>
+<hr />
+<h2 id="how-it-works">How It Works<a class="headerlink" href="#how-it-works" title="Permanent link">&para;</a></h2>
+<h3 id="1-user-authentication-pam">1. User Authentication (PAM)<a class="headerlink" href="#1-user-authentication-pam" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>User &quot;alice&quot; → PAM authentication (pam_mysql.so) → Success
+</code></pre></div>
+<h3 id="2-ldap-group-resolution-nsssssd">2. LDAP Group Resolution (NSS/SSSD)<a class="headerlink" href="#2-ldap-group-resolution-nsssssd" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>System fetches ALL user&#39;s groups from LDAP via getgrouplist():
+[&quot;alice&quot;, &quot;developers&quot;, &quot;engineering&quot;, &quot;hr&quot;, &quot;team_foo&quot;, &quot;team_bar&quot;, ...]
+</code></pre></div>
+<h3 id="3-acl-group-filtering">3. ACL Group Filtering<a class="headerlink" href="#3-acl-group-filtering" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>ACL config defines ONLY:
+  [[groups]]
+  name = &quot;developers&quot;
+
+ACL checks: Is &quot;developers&quot; in user&#39;s LDAP groups? → YES
+ACL ignores: engineering, hr, team_foo, team_bar, ... (not in ACL config)
+</code></pre></div>
+<h3 id="4-rule-application">4. Rule Application<a class="headerlink" href="#4-rule-application" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>Apply rules from &quot;developers&quot; group → ALLOW/BLOCK connection
+</code></pre></div>
+<hr />
+<h2 id="configuration">Configuration<a class="headerlink" href="#configuration" title="Permanent link">&para;</a></h2>
+<h3 id="rustsockstoml">rustsocks.toml<a class="headerlink" href="#rustsockstoml" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><span class="k">[server]</span>
+<span class="n">bind_address</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;0.0.0.0&quot;</span>
+<span class="n">bind_port</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1080</span>
+
+<span class="k">[auth]</span>
+<span class="n">client_method</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;none&quot;</span><span class="w">           </span><span class="c1"># No auth before SOCKS</span>
+<span class="n">socks_method</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;pam.username&quot;</span><span class="w">    </span><span class="c1"># PAM username/password auth</span>
+
+<span class="k">[auth.pam]</span>
+<span class="n">username_service</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;sockd&quot;</span><span class="w">       </span><span class="c1"># Your PAM service (e.g., pam_mysql.so)</span>
+<span class="n">address_service</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;rustsocks-client&quot;</span>
+<span class="n">default_user</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;rhostusr&quot;</span>
+<span class="n">verbose</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+<span class="n">verify_service</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+
+<span class="k">[acl]</span>
+<span class="n">enabled</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+<span class="n">config_file</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;config/acl.toml&quot;</span>
+<span class="n">watch</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+<span class="n">anonymous_user</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;anonymous&quot;</span>
+</code></pre></div>
+<h3 id="acltoml-simple-no-user-mappings">acl.toml (Simple - No User Mappings!)<a class="headerlink" href="#acltoml-simple-no-user-mappings" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><span class="k">[global]</span>
+<span class="n">default_policy</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;block&quot;</span><span class="w">  </span><span class="c1"># Block if user has no matching groups</span>
+
+<span class="c1"># Define ONLY the groups you care about (not all LDAP groups!)</span>
+<span class="k">[[groups]]</span>
+<span class="n">name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;developers&quot;</span><span class="w">  </span><span class="c1"># Case-insensitive: &quot;Developers&quot;, &quot;DEVELOPERS&quot; also match</span>
+
+<span class="w">  </span><span class="k">[[groups.rules]]</span>
+<span class="w">  </span><span class="n">action</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;allow&quot;</span>
+<span class="w">  </span><span class="n">description</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;Developers access to internal dev servers&quot;</span>
+<span class="w">  </span><span class="n">destinations</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;*.dev.company.com&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;10.0.0.0/8&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;192.168.0.0/16&quot;</span><span class="p">]</span>
+<span class="w">  </span><span class="n">ports</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;*&quot;</span><span class="p">]</span>
+<span class="w">  </span><span class="n">protocols</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;tcp&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;udp&quot;</span><span class="p">]</span>
+<span class="w">  </span><span class="n">priority</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">100</span>
+
+<span class="w">  </span><span class="k">[[groups.rules]]</span>
+<span class="w">  </span><span class="n">action</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;block&quot;</span>
+<span class="w">  </span><span class="n">description</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;Block developers from production&quot;</span>
+<span class="w">  </span><span class="n">destinations</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;*.prod.company.com&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;172.16.0.0/12&quot;</span><span class="p">]</span>
+<span class="w">  </span><span class="n">ports</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;*&quot;</span><span class="p">]</span>
+<span class="w">  </span><span class="n">protocols</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;tcp&quot;</span><span class="p">]</span>
+<span class="w">  </span><span class="n">priority</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">200</span><span class="w">  </span><span class="c1"># Higher priority = checked first</span>
+
+<span class="k">[[groups]]</span>
+<span class="n">name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;admins&quot;</span>
+
+<span class="w">  </span><span class="k">[[groups.rules]]</span>
+<span class="w">  </span><span class="n">action</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;allow&quot;</span>
+<span class="w">  </span><span class="n">description</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;Admins full access&quot;</span>
+<span class="w">  </span><span class="n">destinations</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;*&quot;</span><span class="p">]</span>
+<span class="w">  </span><span class="n">ports</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;*&quot;</span><span class="p">]</span>
+<span class="w">  </span><span class="n">protocols</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;tcp&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;udp&quot;</span><span class="p">]</span>
+<span class="w">  </span><span class="n">priority</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">100</span>
+
+<span class="c1"># Optional: Per-user overrides (if needed)</span>
+<span class="k">[[users]]</span>
+<span class="n">username</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;alice&quot;</span>
+<span class="c1"># No need to specify groups - they come from LDAP automatically!</span>
+
+<span class="w">  </span><span class="k">[[users.rules]]</span>
+<span class="w">  </span><span class="n">action</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;block&quot;</span>
+<span class="w">  </span><span class="n">description</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;Alice blocked from specific admin panel&quot;</span>
+<span class="w">  </span><span class="n">destinations</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;admin.company.com&quot;</span><span class="p">]</span>
+<span class="w">  </span><span class="n">ports</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;*&quot;</span><span class="p">]</span>
+<span class="w">  </span><span class="n">protocols</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;tcp&quot;</span><span class="p">]</span>
+<span class="w">  </span><span class="n">priority</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1000</span><span class="w">  </span><span class="c1"># Overrides group rules</span>
+</code></pre></div>
+<hr />
+<h2 id="example-scenarios">Example Scenarios<a class="headerlink" href="#example-scenarios" title="Permanent link">&para;</a></h2>
+<h3 id="scenario-1-user-with-multiple-ldap-groups">Scenario 1: User with Multiple LDAP Groups<a class="headerlink" href="#scenario-1-user-with-multiple-ldap-groups" title="Permanent link">&para;</a></h3>
+<p><strong>LDAP groups for user "alice":</strong>
+<div class="highlight"><pre><span></span><code>[&quot;alice&quot;, &quot;developers&quot;, &quot;engineering&quot;, &quot;hr&quot;, &quot;team_marketing&quot;, ...]
+</code></pre></div></p>
+<p><strong>ACL config defines:</strong>
+<div class="highlight"><pre><span></span><code><span class="k">[[groups]]</span>
+<span class="n">name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;developers&quot;</span><span class="w">  </span><span class="c1"># ← Only this one</span>
+</code></pre></div></p>
+<p><strong>Result:</strong>
+- ACL checks if "developers" is in alice's groups → <strong>YES</strong>
+- Applies "developers" rules
+- Ignores: engineering, hr, team_marketing, ... (not in ACL)</p>
+<p><strong>Connection test:</strong>
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-x<span class="w"> </span>socks5://alice:password@127.0.0.1:1080<span class="w"> </span>http://api.dev.company.com
+</code></pre></div></p>
+<p><strong>Logs:</strong>
+<div class="highlight"><pre><span></span><code>INFO PAM authentication successful user=alice
+INFO User authenticated with groups from LDAP user=alice group_count=50
+DEBUG Matched LDAP group to ACL group (case-insensitive) ldap_group=developers acl_group=developers
+INFO ACL allowed connection user=alice rule=&quot;Developers access to internal dev servers&quot;
+</code></pre></div></p>
+<hr />
+<h3 id="scenario-2-user-with-no-matching-groups">Scenario 2: User with No Matching Groups<a class="headerlink" href="#scenario-2-user-with-no-matching-groups" title="Permanent link">&para;</a></h3>
+<p><strong>LDAP groups for user "bob":</strong>
+<div class="highlight"><pre><span></span><code>[&quot;bob&quot;, &quot;hr&quot;, &quot;finance&quot;, &quot;team_sales&quot;]
+</code></pre></div></p>
+<p><strong>ACL config defines:</strong>
+<div class="highlight"><pre><span></span><code><span class="k">[[groups]]</span>
+<span class="n">name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;developers&quot;</span>
+<span class="k">[[groups]]</span>
+<span class="n">name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;admins&quot;</span>
+</code></pre></div></p>
+<p><strong>Result:</strong>
+- ACL checks: "hr" in ACL? → NO
+- ACL checks: "finance" in ACL? → NO
+- ACL checks: "team_sales" in ACL? → NO
+- No groups match → Apply <code>default_policy = "block"</code></p>
+<p><strong>Connection test:</strong>
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-x<span class="w"> </span>socks5://bob:password@127.0.0.1:1080<span class="w"> </span>http://api.dev.company.com
+</code></pre></div></p>
+<p><strong>Logs:</strong>
+<div class="highlight"><pre><span></span><code>INFO PAM authentication successful user=bob
+DEBUG User groups from LDAP: [&quot;bob&quot;, &quot;hr&quot;, &quot;finance&quot;, &quot;team_sales&quot;]
+WARN No ACL rules matched for user groups, applying default policy
+INFO ACL blocked connection user=bob rule=&quot;Default policy (no matching groups)&quot;
+</code></pre></div></p>
+<hr />
+<h3 id="scenario-3-case-insensitive-matching">Scenario 3: Case-Insensitive Matching<a class="headerlink" href="#scenario-3-case-insensitive-matching" title="Permanent link">&para;</a></h3>
+<p><strong>LDAP groups:</strong> <code>["Developers"]</code> (capital D)
+<strong>ACL config:</strong> <code>name = "developers"</code> (lowercase)</p>
+<p><strong>Result:</strong> ✅ <strong>MATCH</strong> (case-insensitive)</p>
+<hr />
+<h3 id="scenario-4-user-in-multiple-defined-groups">Scenario 4: User in Multiple Defined Groups<a class="headerlink" href="#scenario-4-user-in-multiple-defined-groups" title="Permanent link">&para;</a></h3>
+<p><strong>LDAP groups:</strong> <code>["charlie", "developers", "admins"]</code>
+<strong>ACL config:</strong> Both "developers" and "admins" defined</p>
+<p><strong>Result:</strong>
+- Both groups' rules are collected
+- Rules sorted by priority (BLOCK first, then higher priority)
+- First matching rule wins</p>
+<hr />
+<h2 id="system-requirements">System Requirements<a class="headerlink" href="#system-requirements" title="Permanent link">&para;</a></h2>
+<h3 id="1-nsssssd-configuration">1. NSS/SSSD Configuration<a class="headerlink" href="#1-nsssssd-configuration" title="Permanent link">&para;</a></h3>
+<p>Your system must have LDAP configured via NSS/SSSD:</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># Test if LDAP users are visible</span>
+getent<span class="w"> </span>passwd<span class="w"> </span>alice
+
+<span class="c1"># Test if LDAP groups are visible</span>
+getent<span class="w"> </span>group<span class="w"> </span>developers
+
+<span class="c1"># Test group membership</span>
+id<span class="w"> </span>alice
+<span class="c1"># Output: uid=1001(alice) gid=1001(alice) groups=1001(alice),2001(developers),2002(engineering)</span>
+</code></pre></div>
+<h3 id="2-pam-configuration">2. PAM Configuration<a class="headerlink" href="#2-pam-configuration" title="Permanent link">&para;</a></h3>
+<p>Requires <code>/etc/pam.d/sockd</code> (or your custom service):</p>
+<div class="highlight"><pre><span></span><code>#%PAM-1.0
+auth required /usr/local/lib64/security/pam_mysql.so config_file=/opt/nsnras/config/pam-mysql.conf
+account sufficient /lib64/security/pam_sss.so
+account required /lib64/security/pam_unix_acct.so
+</code></pre></div>
+<h3 id="3-etcnsswitchconf">3. /etc/nsswitch.conf<a class="headerlink" href="#3-etcnsswitchconf" title="Permanent link">&para;</a></h3>
+<p>Ensure SSSD is enabled for group lookups:</p>
+<div class="highlight"><pre><span></span><code>passwd:     files sss
+group:      files sss
+shadow:     files sss
+</code></pre></div>
+<hr />
+<h2 id="deployment-steps">Deployment Steps<a class="headerlink" href="#deployment-steps" title="Permanent link">&para;</a></h2>
+<h3 id="1-install-dependencies">1. Install Dependencies<a class="headerlink" href="#1-install-dependencies" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><span class="c1"># Development headers (if building from source)</span>
+sudo<span class="w"> </span>apt-get<span class="w"> </span>install<span class="w"> </span>libpam0g-dev<span class="w">  </span><span class="c1"># Debian/Ubuntu</span>
+sudo<span class="w"> </span>dnf<span class="w"> </span>install<span class="w"> </span>pam-devel<span class="w"> </span>gcc<span class="w"> </span>nodejs<span class="w"> </span>rust<span class="w"> </span>cargo<span class="w">  </span><span class="c1"># RHEL/CentOS</span>
+
+<span class="c1"># SSSD (if not already installed)</span>
+sudo<span class="w"> </span>apt-get<span class="w"> </span>install<span class="w"> </span>sssd<span class="w"> </span>sssd-tools
+</code></pre></div>
+<h3 id="2-configure-sssd-for-ldap">2. Configure SSSD for LDAP<a class="headerlink" href="#2-configure-sssd-for-ldap" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><span class="c1"># Example /etc/sssd/sssd.conf</span>
+<span class="o">[</span>sssd<span class="o">]</span>
+<span class="nv">config_file_version</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="m">2</span>
+<span class="nv">services</span><span class="w"> </span><span class="o">=</span><span class="w"> </span>nss,<span class="w"> </span>pam
+<span class="nv">domains</span><span class="w"> </span><span class="o">=</span><span class="w"> </span>LDAP
+
+<span class="o">[</span>domain/LDAP<span class="o">]</span>
+<span class="nv">id_provider</span><span class="w"> </span><span class="o">=</span><span class="w"> </span>ldap
+<span class="nv">auth_provider</span><span class="w"> </span><span class="o">=</span><span class="w"> </span>ldap
+<span class="nv">ldap_uri</span><span class="w"> </span><span class="o">=</span><span class="w"> </span>ldap://ldap.company.com
+<span class="nv">ldap_search_base</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">dc</span><span class="o">=</span>company,dc<span class="o">=</span>com
+
+<span class="c1"># Restart SSSD</span>
+sudo<span class="w"> </span>systemctl<span class="w"> </span>restart<span class="w"> </span>sssd
+</code></pre></div>
+<h3 id="3-configure-pam-service">3. Configure PAM Service<a class="headerlink" href="#3-configure-pam-service" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><span class="c1"># Copy your PAM service file</span>
+sudo<span class="w"> </span>cp<span class="w"> </span>/path/to/sockd<span class="w"> </span>/etc/pam.d/sockd
+sudo<span class="w"> </span>chmod<span class="w"> </span><span class="m">644</span><span class="w"> </span>/etc/pam.d/sockd
+</code></pre></div>
+<h3 id="4-configure-rustsocks">4. Configure RustSocks<a class="headerlink" href="#4-configure-rustsocks" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><span class="c1"># Edit configs</span>
+vim<span class="w"> </span>config/rustsocks.toml<span class="w">  </span><span class="c1"># Set socks_method = &quot;pam.username&quot;, username_service = &quot;sockd&quot;</span>
+vim<span class="w"> </span>config/acl.toml<span class="w">        </span><span class="c1"># Define your LDAP groups (ONLY the ones you need)</span>
+</code></pre></div>
+<h3 id="5-build-and-run">5. Build and Run<a class="headerlink" href="#5-build-and-run" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>cargo<span class="w"> </span>build<span class="w"> </span>--release
+
+<span class="c1"># Run (may need sudo for PAM)</span>
+sudo<span class="w"> </span>./target/release/rustsocks<span class="w"> </span>--config<span class="w"> </span>config/rustsocks.toml
+</code></pre></div>
+<hr />
+<h2 id="testing">Testing<a class="headerlink" href="#testing" title="Permanent link">&para;</a></h2>
+<h3 id="1-test-ldap-group-resolution">1. Test LDAP Group Resolution<a class="headerlink" href="#1-test-ldap-group-resolution" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><span class="c1"># Run unit tests (no LDAP required)</span>
+cargo<span class="w"> </span><span class="nb">test</span><span class="w"> </span>--all-features<span class="w"> </span>--lib<span class="w"> </span>groups
+
+<span class="c1"># Expected: 3 tests passed (including mock tests)</span>
+</code></pre></div>
+<h3 id="2-test-acl-with-mock-ldap-groups">2. Test ACL with Mock LDAP Groups<a class="headerlink" href="#2-test-acl-with-mock-ldap-groups" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><span class="c1"># Integration tests use mock groups</span>
+cargo<span class="w"> </span><span class="nb">test</span><span class="w"> </span>--all-features<span class="w"> </span>--test<span class="w"> </span>ldap_groups
+
+<span class="c1"># Expected: 7 tests passed</span>
+<span class="c1"># - test_ldap_groups_only_defined_groups_are_checked</span>
+<span class="c1"># - test_ldap_groups_no_matching_groups_uses_default_policy</span>
+<span class="c1"># - test_ldap_groups_case_insensitive_matching</span>
+<span class="c1"># - test_ldap_groups_multiple_matching_groups</span>
+<span class="c1"># - test_ldap_groups_with_per_user_override</span>
+<span class="c1"># - test_ldap_groups_empty_groups_list</span>
+<span class="c1"># - test_ldap_groups_mixed_case_variations</span>
+</code></pre></div>
+<h3 id="3-test-real-ldap-integration">3. Test Real LDAP Integration<a class="headerlink" href="#3-test-real-ldap-integration" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><span class="c1"># Requires real LDAP user &quot;alice&quot; in group &quot;developers&quot;</span>
+cargo<span class="w"> </span><span class="nb">test</span><span class="w"> </span>--all-features<span class="w"> </span>--lib<span class="w"> </span>groups::tests::test_get_user_groups_current_user<span class="w"> </span>--<span class="w"> </span>--ignored
+</code></pre></div>
+<h3 id="4-test-end-to-end">4. Test End-to-End<a class="headerlink" href="#4-test-end-to-end" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><span class="c1"># Start server</span>
+sudo<span class="w"> </span>./target/release/rustsocks<span class="w"> </span>--config<span class="w"> </span>config/rustsocks.toml
+
+<span class="c1"># In another terminal, test with real LDAP user</span>
+curl<span class="w"> </span>-x<span class="w"> </span>socks5://alice:password@127.0.0.1:1080<span class="w"> </span>-v<span class="w"> </span>http://api.dev.company.com
+
+<span class="c1"># Check logs for:</span>
+<span class="c1"># - PAM authentication successful</span>
+<span class="c1"># - User authenticated with groups from LDAP</span>
+<span class="c1"># - Matched LDAP group to ACL group</span>
+<span class="c1"># - ACL allowed/blocked connection</span>
+</code></pre></div>
+<hr />
+<h2 id="troubleshooting">Troubleshooting<a class="headerlink" href="#troubleshooting" title="Permanent link">&para;</a></h2>
+<h3 id="problem-groups-not-found-via-getgrouplist">Problem: Groups not found via getgrouplist()<a class="headerlink" href="#problem-groups-not-found-via-getgrouplist" title="Permanent link">&para;</a></h3>
+<p><strong>Symptoms:</strong>
+<div class="highlight"><pre><span></span><code>WARN Failed to retrieve user groups from system, using empty list
+</code></pre></div></p>
+<p><strong>Solution:</strong>
+<div class="highlight"><pre><span></span><code><span class="c1"># Check SSSD status</span>
+sudo<span class="w"> </span>systemctl<span class="w"> </span>status<span class="w"> </span>sssd
+
+<span class="c1"># Check if LDAP groups are visible</span>
+getent<span class="w"> </span>group<span class="w"> </span>developers
+
+<span class="c1"># Check user&#39;s groups</span>
+id<span class="w"> </span>username
+
+<span class="c1"># Restart SSSD</span>
+sudo<span class="w"> </span>systemctl<span class="w"> </span>restart<span class="w"> </span>sssd
+
+<span class="c1"># Check SSSD logs</span>
+sudo<span class="w"> </span>tail<span class="w"> </span>-f<span class="w"> </span>/var/log/sssd/sssd_LDAP.log
+</code></pre></div></p>
+<h3 id="problem-pam-authentication-fails">Problem: PAM authentication fails<a class="headerlink" href="#problem-pam-authentication-fails" title="Permanent link">&para;</a></h3>
+<p><strong>Symptoms:</strong>
+<div class="highlight"><pre><span></span><code>WARN PAM authentication failed user=alice error=AuthFailed
+</code></pre></div></p>
+<p><strong>Solution:</strong>
+<div class="highlight"><pre><span></span><code><span class="c1"># Test PAM manually</span>
+pamtester<span class="w"> </span>sockd<span class="w"> </span>alice<span class="w"> </span>authenticate
+
+<span class="c1"># Check PAM service file</span>
+ls<span class="w"> </span>-la<span class="w"> </span>/etc/pam.d/sockd
+
+<span class="c1"># Check PAM logs</span>
+sudo<span class="w"> </span>tail<span class="w"> </span>-f<span class="w"> </span>/var/log/auth.log<span class="w">  </span><span class="c1"># Debian/Ubuntu</span>
+sudo<span class="w"> </span>tail<span class="w"> </span>-f<span class="w"> </span>/var/log/secure<span class="w">    </span><span class="c1"># RHEL/CentOS</span>
+</code></pre></div></p>
+<h3 id="problem-acl-doesnt-match-groups">Problem: ACL doesn't match groups<a class="headerlink" href="#problem-acl-doesnt-match-groups" title="Permanent link">&para;</a></h3>
+<p><strong>Symptoms:</strong>
+<div class="highlight"><pre><span></span><code>DEBUG User groups from LDAP: [&quot;developers&quot;, &quot;engineering&quot;]
+WARN No ACL rules matched for user groups
+</code></pre></div></p>
+<p><strong>Solution:</strong>
+<div class="highlight"><pre><span></span><code><span class="c1"># Check ACL config</span>
+cat<span class="w"> </span>config/acl.toml<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-A<span class="w"> </span><span class="m">5</span><span class="w"> </span><span class="s2">&quot;\[\[groups\]\]&quot;</span>
+
+<span class="c1"># Ensure group names match (case-insensitive)</span>
+<span class="c1"># LDAP: &quot;Developers&quot; = ACL: &quot;developers&quot; ✅</span>
+<span class="c1"># LDAP: &quot;developers&quot; ≠ ACL: &quot;devs&quot; ❌</span>
+
+<span class="c1"># Reload ACL (if hot reload enabled)</span>
+curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span>http://127.0.0.1:9090/api/admin/reload-acl
+</code></pre></div></p>
+<hr />
+<h2 id="performance-considerations">Performance Considerations<a class="headerlink" href="#performance-considerations" title="Permanent link">&para;</a></h2>
+<h3 id="getgrouplist-overhead">getgrouplist() Overhead<a class="headerlink" href="#getgrouplist-overhead" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Called once per authentication</strong> (cached during session)</li>
+<li>Typical latency: <strong>1-5ms</strong> for local NSS cache</li>
+<li>Up to <strong>50-100ms</strong> if LDAP lookup required</li>
+<li><strong>Recommendation</strong>: Ensure SSSD caching is enabled</li>
+</ul>
+<h3 id="acl-evaluation-overhead">ACL Evaluation Overhead<a class="headerlink" href="#acl-evaluation-overhead" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Filtering 1000 LDAP groups:</strong> &lt;1ms (only checks defined groups)</li>
+<li><strong>Evaluating 10 ACL rules:</strong> &lt;1ms</li>
+<li><strong>Total overhead:</strong> ~5-10ms per connection (acceptable)</li>
+</ul>
+<hr />
+<h2 id="security-best-practices">Security Best Practices<a class="headerlink" href="#security-best-practices" title="Permanent link">&para;</a></h2>
+<ol>
+<li><strong>Use TLS for SOCKS5 traffic</strong> - Password transmitted in clear-text</li>
+<li><strong>Restrict PAM service</strong> - Only allow trusted modules</li>
+<li><strong>Monitor failed authentications</strong> - Watch <code>/var/log/auth.log</code></li>
+<li><strong>Use BLOCK as default policy</strong> - Deny by default, allow explicitly</li>
+<li><strong>Regular ACL audits</strong> - Review group access periodically</li>
+<li><strong>SSSD caching</strong> - Reduce LDAP query load</li>
+</ol>
+<hr />
+<h2 id="architecture-diagram">Architecture Diagram<a class="headerlink" href="#architecture-diagram" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>┌─────────────────────────────────────────────────────────────────┐
+│  SOCKS5 Client                                                  │
+│  curl -x socks5://alice:password@proxy:1080 http://dest.com    │
+└──────────────────────┬──────────────────────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  RustSocks Server (handler.rs)                                   │
+│  ┌─────────────────────────────────────────────────────────────┐│
+│  │ 1. SOCKS5 Handshake                                         ││
+│  │ 2. Authentication (PAM)                                     ││
+│  │    └─&gt; AuthManager::authenticate()                          ││
+│  └────────────────────┬────────────────────────────────────────┘│
+│                       │                                          │
+│                       ▼                                          │
+│  ┌─────────────────────────────────────────────────────────────┐│
+│  │ groups.rs: get_user_groups(&quot;alice&quot;)                         ││
+│  │    ├─&gt; getgrouplist() syscall                               ││
+│  │    └─&gt; Returns: [&quot;alice&quot;, &quot;developers&quot;, &quot;engineering&quot;, ...] ││
+│  └────────────────────┬────────────────────────────────────────┘│
+│                       │                                          │
+│                       ▼                                          │
+│  ┌─────────────────────────────────────────────────────────────┐│
+│  │ ACL Engine: evaluate_with_groups()                          ││
+│  │    ├─&gt; Filter LDAP groups (only &quot;developers&quot; defined)       ││
+│  │    ├─&gt; Collect rules from &quot;developers&quot; group                ││
+│  │    ├─&gt; Sort rules (BLOCK first, then by priority)           ││
+│  │    └─&gt; Match destination/port/protocol → ALLOW/BLOCK        ││
+│  └────────────────────┬────────────────────────────────────────┘│
+│                       │                                          │
+│                       ▼                                          │
+│  ┌─────────────────────────────────────────────────────────────┐│
+│  │ 3. Connect to destination (if ALLOWED)                       ││
+│  │ 4. Proxy data                                                ││
+│  └─────────────────────────────────────────────────────────────┘│
+└─────────────────────────────────────────────────────────────────┘
+                       ▲
+                       │
+┌──────────────────────┴──────────────────────────────────────────┐
+│  External Systems                                                │
+│  ┌───────────────┐  ┌─────────────┐  ┌──────────────────────┐  │
+│  │ /etc/pam.d/   │  │ NSS/SSSD    │  │ LDAP Server          │  │
+│  │ sockd         │  │ (getgrouplist)│ │ ldap.company.com     │  │
+│  │ (pam_mysql.so)│  │             │  │ - Users              │  │
+│  │               │  │             │  │ - Groups             │  │
+│  └───────────────┘  └─────────────┘  └──────────────────────┘  │
+└─────────────────────────────────────────────────────────────────┘
+</code></pre></div>
+<hr />
+<h2 id="faq">FAQ<a class="headerlink" href="#faq" title="Permanent link">&para;</a></h2>
+<h3 id="q-do-i-need-to-define-all-ldap-groups-in-acl-config">Q: Do I need to define ALL LDAP groups in ACL config?<a class="headerlink" href="#q-do-i-need-to-define-all-ldap-groups-in-acl-config" title="Permanent link">&para;</a></h3>
+<p><strong>A:</strong> NO! Only define groups you want to grant/block access to. Other groups are ignored.</p>
+<h3 id="q-what-if-user-has-1000-ldap-groups">Q: What if user has 1000+ LDAP groups?<a class="headerlink" href="#q-what-if-user-has-1000-ldap-groups" title="Permanent link">&para;</a></h3>
+<p><strong>A:</strong> No problem. ACL only checks groups defined in config. Performance impact is minimal (&lt;1ms filtering).</p>
+<h3 id="q-are-group-names-case-sensitive">Q: Are group names case-sensitive?<a class="headerlink" href="#q-are-group-names-case-sensitive" title="Permanent link">&para;</a></h3>
+<p><strong>A:</strong> NO. "developers" = "Developers" = "DEVELOPERS" (case-insensitive matching).</p>
+<h3 id="q-can-i-use-per-user-overrides">Q: Can I use per-user overrides?<a class="headerlink" href="#q-can-i-use-per-user-overrides" title="Permanent link">&para;</a></h3>
+<p><strong>A:</strong> YES. Define <code>[[users]]</code> with custom rules. They override group rules (higher priority).</p>
+<h3 id="q-does-this-work-without-ldap">Q: Does this work without LDAP?<a class="headerlink" href="#q-does-this-work-without-ldap" title="Permanent link">&para;</a></h3>
+<p><strong>A:</strong> YES. Works with any NSS-compatible system (LDAP, NIS, local files, etc.). Just needs <code>getgrouplist()</code>.</p>
+<h3 id="q-what-happens-if-ldap-is-down">Q: What happens if LDAP is down?<a class="headerlink" href="#q-what-happens-if-ldap-is-down" title="Permanent link">&para;</a></h3>
+<p><strong>A:</strong> <code>get_user_groups()</code> fails → empty groups list → default_policy applies (usually BLOCK).</p>
+<hr />
+<h2 id="summary">Summary<a class="headerlink" href="#summary" title="Permanent link">&para;</a></h2>
+<p>✅ <strong>Zero manual synchronization</strong> - Groups fetched automatically from LDAP
+✅ <strong>Efficient</strong> - Only checks groups defined in ACL config
+✅ <strong>Case-insensitive</strong> - Works regardless of case in LDAP
+✅ <strong>Flexible</strong> - Supports per-user overrides
+✅ <strong>Secure</strong> - Default BLOCK policy for unmatched groups
+✅ <strong>Production-ready</strong> - Comprehensive error handling and logging</p>
+<p><strong>Ready to deploy!</strong> 🚀</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.instant", "navigation.tabs", "navigation.sections", "navigation.expand", "navigation.top", "toc.follow", "search.highlight", "content.code.copy"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

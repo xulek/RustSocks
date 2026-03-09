@@ -1,0 +1,2321 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="High-performance SOCKS5 proxy with ACLs, sessions, metrics, and a modern web dashboard.">
+      
+      
+      
+        <link rel="canonical" href="https://xulek.github.io/RustSocks/technical/acl-engine/">
+      
+      
+        <link rel="prev" href="../architecture/">
+      
+      
+        <link rel="next" href="../connection-pool/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.4">
+    
+    
+      
+        <title>ACL Engine - RustSocks Documentation</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=IBM+Plex+Sans:300,300i,400,400i,700,700i%7CIBM+Plex+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"IBM Plex Sans";--md-code-font:"IBM Plex Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="blue-grey" data-md-color-accent="cyan">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#acl-engine-implementation-guide" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="RustSocks Documentation" class="md-header__button md-logo" aria-label="RustSocks Documentation" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            RustSocks Documentation
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              ACL Engine
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="blue-grey" data-md-color-accent="cyan"  aria-hidden="true"  type="radio" name="__palette" id="__palette_0">
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/xulek/RustSocks" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    xulek/RustSocks
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../usage/quick-start/" class="md-tabs__link">
+          
+  
+  
+  Getting Started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../ui/overview/" class="md-tabs__link">
+          
+  
+  
+  UI & Dashboard
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../config/rustsocks/" class="md-tabs__link">
+          
+  
+  
+  Configuration
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../usage/examples/" class="md-tabs__link">
+          
+  
+  
+  Usage & Examples
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../guides/web-dashboard/" class="md-tabs__link">
+          
+  
+  
+  Guides
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../references/project-readme/" class="md-tabs__link">
+          
+  
+  
+  References
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../architecture/" class="md-tabs__link">
+          
+  
+  
+  Technical
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="RustSocks Documentation" class="md-nav__button md-logo" aria-label="RustSocks Documentation" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    RustSocks Documentation
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/xulek/RustSocks" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    xulek/RustSocks
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/quick-start/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quick Start
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/docker/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker Deployment
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    UI & Dashboard
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    UI & Dashboard
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../ui/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/dashboard-authentication/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Authentication
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/smtp-configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SMTP Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Configuration
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../config/rustsocks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    rustsocks.toml
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../config/acl/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    acl.toml
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Usage & Examples
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Usage & Examples
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/examples/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Common Scenarios
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/web-dashboard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Web Dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/building-with-base-path/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Base Path Deployment
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/ldap-groups/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LDAP Groups
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/active-directory/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Active Directory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    References
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    References
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../references/project-readme/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Project README
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../references/claude/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Developer Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../references/dashboard-readme/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dashboard README
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../references/loadtests-manual/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Load Testing Manual
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Technical
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Technical
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ACL Engine
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ACL Engine
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#core-structures" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Core Structures
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#matching-logic" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Matching Logic
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#acl-engine" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ACL Engine
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#hot-reload-mechanism" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Hot Reload Mechanism
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#integration-with-connection-handler" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Integration with Connection Handler
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#rest-api-endpoints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        REST API Endpoints
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#performance-characteristics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Performance Characteristics
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuration-best-practices" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration Best Practices
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#monitoring-observability" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Monitoring &amp; Observability
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#summary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Summary
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../connection-pool/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Connection Pool
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../protocol/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Protocol & TLS
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../pam-authentication/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PAM Authentication
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../session-management/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Session Management
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#core-structures" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Core Structures
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#matching-logic" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Matching Logic
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#acl-engine" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ACL Engine
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#hot-reload-mechanism" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Hot Reload Mechanism
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#integration-with-connection-handler" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Integration with Connection Handler
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#rest-api-endpoints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        REST API Endpoints
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#performance-characteristics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Performance Characteristics
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuration-best-practices" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration Best Practices
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#monitoring-observability" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Monitoring &amp; Observability
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#summary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Summary
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="acl-engine-implementation-guide">ACL Engine - Implementation Guide<a class="headerlink" href="#acl-engine-implementation-guide" title="Permanent link">&para;</a></h1>
+<p>This document explains the ACL (Access Control List) engine implementation in RustSocks for fine-grained access control based on users, groups, IP addresses, domains, and ports.</p>
+<h2 id="core-structures">Core Structures<a class="headerlink" href="#core-structures" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><span class="c1">// src/acl/types.rs</span>
+
+<span class="k">use</span><span class="w"> </span><span class="n">ipnet</span><span class="p">::</span><span class="n">IpNet</span><span class="p">;</span>
+<span class="k">use</span><span class="w"> </span><span class="n">std</span><span class="p">::</span><span class="n">net</span><span class="p">::</span><span class="n">IpAddr</span><span class="p">;</span>
+<span class="k">use</span><span class="w"> </span><span class="n">serde</span><span class="p">::{</span><span class="n">Deserialize</span><span class="p">,</span><span class="w"> </span><span class="n">Serialize</span><span class="p">};</span>
+
+<span class="cp">#[derive(Debug, Clone, Serialize, Deserialize)]</span>
+<span class="k">pub</span><span class="w"> </span><span class="k">enum</span><span class="w"> </span><span class="nc">Action</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">Allow</span><span class="p">,</span>
+<span class="w">    </span><span class="n">Block</span><span class="p">,</span>
+<span class="p">}</span>
+
+<span class="cp">#[derive(Debug, Clone, Serialize, Deserialize)]</span>
+<span class="k">pub</span><span class="w"> </span><span class="k">enum</span><span class="w"> </span><span class="nc">Protocol</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">Tcp</span><span class="p">,</span>
+<span class="w">    </span><span class="n">Udp</span><span class="p">,</span>
+<span class="w">    </span><span class="n">Both</span><span class="p">,</span>
+<span class="p">}</span>
+
+<span class="cp">#[derive(Debug, Clone, Serialize, Deserialize)]</span>
+<span class="k">pub</span><span class="w"> </span><span class="k">struct</span><span class="w"> </span><span class="nc">AclRule</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">action</span><span class="p">:</span><span class="w"> </span><span class="nc">Action</span><span class="p">,</span>
+<span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">description</span><span class="p">:</span><span class="w"> </span><span class="nb">String</span><span class="p">,</span>
+<span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">destinations</span><span class="p">:</span><span class="w"> </span><span class="nb">Vec</span><span class="o">&lt;</span><span class="n">DestinationMatcher</span><span class="o">&gt;</span><span class="p">,</span>
+<span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">ports</span><span class="p">:</span><span class="w"> </span><span class="nb">Vec</span><span class="o">&lt;</span><span class="n">PortMatcher</span><span class="o">&gt;</span><span class="p">,</span>
+<span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">protocols</span><span class="p">:</span><span class="w"> </span><span class="nb">Vec</span><span class="o">&lt;</span><span class="n">Protocol</span><span class="o">&gt;</span><span class="p">,</span>
+<span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">priority</span><span class="p">:</span><span class="w"> </span><span class="kt">u32</span><span class="p">,</span>
+<span class="p">}</span>
+
+<span class="cp">#[derive(Debug, Clone, Serialize, Deserialize)]</span>
+<span class="cp">#[serde(untagged)]</span>
+<span class="k">pub</span><span class="w"> </span><span class="k">enum</span><span class="w"> </span><span class="nc">DestinationMatcher</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">Ip</span><span class="p">(</span><span class="n">IpAddr</span><span class="p">),</span>
+<span class="w">    </span><span class="n">Cidr</span><span class="p">(</span><span class="n">IpNet</span><span class="p">),</span>
+<span class="w">    </span><span class="n">Domain</span><span class="p">(</span><span class="nb">String</span><span class="p">),</span>
+<span class="w">    </span><span class="n">DomainWildcard</span><span class="p">(</span><span class="nb">String</span><span class="p">),</span><span class="w"> </span><span class="c1">// Format: &quot;*.example.com&quot;</span>
+<span class="p">}</span>
+
+<span class="cp">#[derive(Debug, Clone, Serialize, Deserialize)]</span>
+<span class="cp">#[serde(untagged)]</span>
+<span class="k">pub</span><span class="w"> </span><span class="k">enum</span><span class="w"> </span><span class="nc">PortMatcher</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">Single</span><span class="p">(</span><span class="kt">u16</span><span class="p">),</span>
+<span class="w">    </span><span class="n">Range</span><span class="p">(</span><span class="kt">u16</span><span class="p">,</span><span class="w"> </span><span class="kt">u16</span><span class="p">),</span>
+<span class="w">    </span><span class="n">Multiple</span><span class="p">(</span><span class="nb">Vec</span><span class="o">&lt;</span><span class="kt">u16</span><span class="o">&gt;</span><span class="p">),</span>
+<span class="w">    </span><span class="n">Any</span><span class="p">,</span><span class="w"> </span><span class="c1">// &quot;*&quot;</span>
+<span class="p">}</span>
+
+<span class="cp">#[derive(Debug, Clone, Serialize, Deserialize)]</span>
+<span class="k">pub</span><span class="w"> </span><span class="k">struct</span><span class="w"> </span><span class="nc">UserAcl</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">username</span><span class="p">:</span><span class="w"> </span><span class="nb">String</span><span class="p">,</span>
+<span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">groups</span><span class="p">:</span><span class="w"> </span><span class="nb">Vec</span><span class="o">&lt;</span><span class="nb">String</span><span class="o">&gt;</span><span class="p">,</span>
+<span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">rules</span><span class="p">:</span><span class="w"> </span><span class="nb">Vec</span><span class="o">&lt;</span><span class="n">AclRule</span><span class="o">&gt;</span><span class="p">,</span>
+<span class="p">}</span>
+
+<span class="cp">#[derive(Debug, Clone, Serialize, Deserialize)]</span>
+<span class="k">pub</span><span class="w"> </span><span class="k">struct</span><span class="w"> </span><span class="nc">GroupAcl</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">name</span><span class="p">:</span><span class="w"> </span><span class="nb">String</span><span class="p">,</span>
+<span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">rules</span><span class="p">:</span><span class="w"> </span><span class="nb">Vec</span><span class="o">&lt;</span><span class="n">AclRule</span><span class="o">&gt;</span><span class="p">,</span>
+<span class="p">}</span>
+
+<span class="cp">#[derive(Debug, Clone, Serialize, Deserialize)]</span>
+<span class="k">pub</span><span class="w"> </span><span class="k">struct</span><span class="w"> </span><span class="nc">AclConfig</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">global</span><span class="p">:</span><span class="w"> </span><span class="nc">GlobalAclConfig</span><span class="p">,</span>
+<span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">users</span><span class="p">:</span><span class="w"> </span><span class="nb">Vec</span><span class="o">&lt;</span><span class="n">UserAcl</span><span class="o">&gt;</span><span class="p">,</span>
+<span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">groups</span><span class="p">:</span><span class="w"> </span><span class="nb">Vec</span><span class="o">&lt;</span><span class="n">GroupAcl</span><span class="o">&gt;</span><span class="p">,</span>
+<span class="p">}</span>
+
+<span class="cp">#[derive(Debug, Clone, Serialize, Deserialize)]</span>
+<span class="k">pub</span><span class="w"> </span><span class="k">struct</span><span class="w"> </span><span class="nc">GlobalAclConfig</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">default_policy</span><span class="p">:</span><span class="w"> </span><span class="nc">Action</span><span class="p">,</span>
+<span class="p">}</span>
+
+<span class="cp">#[derive(Debug, Clone, PartialEq)]</span>
+<span class="k">pub</span><span class="w"> </span><span class="k">enum</span><span class="w"> </span><span class="nc">AclDecision</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">Allow</span><span class="p">,</span>
+<span class="w">    </span><span class="n">Block</span><span class="p">,</span>
+<span class="p">}</span>
+</code></pre></div>
+<h2 id="matching-logic">Matching Logic<a class="headerlink" href="#matching-logic" title="Permanent link">&para;</a></h2>
+<p>The ACL engine supports multiple matching strategies:</p>
+<ul>
+<li><strong>IP exact match</strong>: Match specific IPv4 or IPv6 address</li>
+<li><strong>CIDR ranges</strong>: Match address blocks (e.g., <code>10.0.0.0/8</code>)</li>
+<li><strong>Domain exact match</strong>: Case-insensitive domain matching</li>
+<li><strong>Wildcard domains</strong>: Patterns like <code>*.example.com</code>, <code>api.*.com</code></li>
+<li><strong>Port ranges</strong>: <code>8000-9000</code>, single ports <code>443</code>, or any port <code>*</code></li>
+<li><strong>Protocol filtering</strong>: TCP, UDP, or both</li>
+</ul>
+<p><strong>Example ACL configuration (<code>config/acl.toml</code>):</strong></p>
+<div class="highlight"><pre><span></span><code><span class="k">[global]</span>
+<span class="n">default_policy</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;block&quot;</span><span class="w">  </span><span class="c1"># Block by default (whitelist approach)</span>
+
+<span class="k">[[users]]</span>
+<span class="n">username</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;alice&quot;</span>
+<span class="n">groups</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;developers&quot;</span><span class="p">]</span>
+
+<span class="w">  </span><span class="k">[[users.rules]]</span>
+<span class="w">  </span><span class="n">action</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;block&quot;</span>
+<span class="w">  </span><span class="n">description</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;Block admin panel&quot;</span>
+<span class="w">  </span><span class="n">destinations</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;admin.company.com&quot;</span><span class="p">]</span>
+<span class="w">  </span><span class="n">ports</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;*&quot;</span><span class="p">]</span>
+<span class="w">  </span><span class="n">protocols</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;tcp&quot;</span><span class="p">]</span>
+<span class="w">  </span><span class="n">priority</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1000</span>
+
+<span class="w">  </span><span class="k">[[users.rules]]</span>
+<span class="w">  </span><span class="n">action</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;allow&quot;</span>
+<span class="w">  </span><span class="n">description</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;Allow HTTPS anywhere&quot;</span>
+<span class="w">  </span><span class="n">destinations</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;0.0.0.0/0&quot;</span><span class="p">]</span>
+<span class="w">  </span><span class="n">ports</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;443&quot;</span><span class="p">]</span>
+<span class="w">  </span><span class="n">protocols</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;tcp&quot;</span><span class="p">]</span>
+<span class="w">  </span><span class="n">priority</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">100</span>
+
+<span class="k">[[groups]]</span>
+<span class="n">name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;developers&quot;</span>
+
+<span class="w">  </span><span class="k">[[groups.rules]]</span>
+<span class="w">  </span><span class="n">action</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;allow&quot;</span>
+<span class="w">  </span><span class="n">description</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;Dev servers&quot;</span>
+<span class="w">  </span><span class="n">destinations</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;*.dev.company.com&quot;</span><span class="p">]</span>
+<span class="w">  </span><span class="n">ports</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;*&quot;</span><span class="p">]</span>
+<span class="w">  </span><span class="n">protocols</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;both&quot;</span><span class="p">]</span>
+<span class="w">  </span><span class="n">priority</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">50</span>
+</code></pre></div>
+<h2 id="acl-engine">ACL Engine<a class="headerlink" href="#acl-engine" title="Permanent link">&para;</a></h2>
+<p>The ACL engine evaluates rules in priority order with BLOCK rules taking precedence:</p>
+<div class="highlight"><pre><span></span><code><span class="c1">// src/acl/engine.rs</span>
+
+<span class="k">use</span><span class="w"> </span><span class="k">super</span><span class="p">::</span><span class="n">types</span><span class="p">::</span><span class="o">*</span><span class="p">;</span>
+<span class="k">use</span><span class="w"> </span><span class="n">std</span><span class="p">::</span><span class="n">sync</span><span class="p">::</span><span class="n">Arc</span><span class="p">;</span>
+<span class="k">use</span><span class="w"> </span><span class="n">tokio</span><span class="p">::</span><span class="n">sync</span><span class="p">::</span><span class="n">RwLock</span><span class="p">;</span>
+
+<span class="k">pub</span><span class="w"> </span><span class="k">struct</span><span class="w"> </span><span class="nc">AclEngine</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">config</span><span class="p">:</span><span class="w"> </span><span class="nc">Arc</span><span class="o">&lt;</span><span class="n">RwLock</span><span class="o">&lt;</span><span class="n">AclConfig</span><span class="o">&gt;&gt;</span><span class="p">,</span>
+<span class="p">}</span>
+
+<span class="k">impl</span><span class="w"> </span><span class="n">AclEngine</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="k">fn</span><span class="w"> </span><span class="nf">new</span><span class="p">(</span><span class="n">config</span><span class="p">:</span><span class="w"> </span><span class="nc">AclConfig</span><span class="p">)</span><span class="w"> </span><span class="p">-&gt;</span><span class="w"> </span><span class="nc">Self</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="bp">Self</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="n">config</span><span class="p">:</span><span class="w"> </span><span class="nc">Arc</span><span class="p">::</span><span class="n">new</span><span class="p">(</span><span class="n">RwLock</span><span class="p">::</span><span class="n">new</span><span class="p">(</span><span class="n">config</span><span class="p">)),</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">    </span><span class="p">}</span>
+
+<span class="w">    </span><span class="sd">/// Evaluate ACL for a connection attempt</span>
+<span class="w">    </span><span class="sd">/// Returns (Decision, matched_rule_description)</span>
+<span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="k">async</span><span class="w"> </span><span class="k">fn</span><span class="w"> </span><span class="nf">evaluate</span><span class="p">(</span>
+<span class="w">        </span><span class="o">&amp;</span><span class="bp">self</span><span class="p">,</span>
+<span class="w">        </span><span class="n">user</span><span class="p">:</span><span class="w"> </span><span class="kp">&amp;</span><span class="kt">str</span><span class="p">,</span>
+<span class="w">        </span><span class="n">dest</span><span class="p">:</span><span class="w"> </span><span class="kp">&amp;</span><span class="nc">Address</span><span class="p">,</span>
+<span class="w">        </span><span class="n">port</span><span class="p">:</span><span class="w"> </span><span class="kt">u16</span><span class="p">,</span>
+<span class="w">        </span><span class="n">protocol</span><span class="p">:</span><span class="w"> </span><span class="kp">&amp;</span><span class="nc">Protocol</span><span class="p">,</span>
+<span class="w">    </span><span class="p">)</span><span class="w"> </span><span class="p">-&gt;</span><span class="w"> </span><span class="p">(</span><span class="n">AclDecision</span><span class="p">,</span><span class="w"> </span><span class="nb">Option</span><span class="o">&lt;</span><span class="nb">String</span><span class="o">&gt;</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="kd">let</span><span class="w"> </span><span class="n">config</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="bp">self</span><span class="p">.</span><span class="n">config</span><span class="p">.</span><span class="n">read</span><span class="p">().</span><span class="k">await</span><span class="p">;</span>
+
+<span class="w">        </span><span class="c1">// 1. Collect all rules for this user (user rules + group rules)</span>
+<span class="w">        </span><span class="kd">let</span><span class="w"> </span><span class="k">mut</span><span class="w"> </span><span class="n">all_rules</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">Vec</span><span class="p">::</span><span class="n">new</span><span class="p">();</span>
+
+<span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="kd">let</span><span class="w"> </span><span class="nb">Some</span><span class="p">(</span><span class="n">user_acl</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">config</span><span class="p">.</span><span class="n">users</span><span class="p">.</span><span class="n">iter</span><span class="p">().</span><span class="n">find</span><span class="p">(</span><span class="o">|</span><span class="n">u</span><span class="o">|</span><span class="w"> </span><span class="n">u</span><span class="p">.</span><span class="n">username</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">user</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="c1">// Add user&#39;s direct rules</span>
+<span class="w">            </span><span class="n">all_rules</span><span class="p">.</span><span class="n">extend</span><span class="p">(</span><span class="n">user_acl</span><span class="p">.</span><span class="n">rules</span><span class="p">.</span><span class="n">iter</span><span class="p">().</span><span class="n">cloned</span><span class="p">());</span>
+
+<span class="w">            </span><span class="c1">// Add rules from user&#39;s groups</span>
+<span class="w">            </span><span class="k">for</span><span class="w"> </span><span class="n">group_name</span><span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="o">&amp;</span><span class="n">user_acl</span><span class="p">.</span><span class="n">groups</span><span class="w"> </span><span class="p">{</span>
+<span class="w">                </span><span class="k">if</span><span class="w"> </span><span class="kd">let</span><span class="w"> </span><span class="nb">Some</span><span class="p">(</span><span class="n">group</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">config</span><span class="p">.</span><span class="n">groups</span><span class="p">.</span><span class="n">iter</span><span class="p">().</span><span class="n">find</span><span class="p">(</span><span class="o">|</span><span class="n">g</span><span class="o">|</span><span class="w"> </span><span class="n">g</span><span class="p">.</span><span class="n">name</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">group_name</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">                    </span><span class="n">all_rules</span><span class="p">.</span><span class="n">extend</span><span class="p">(</span><span class="n">group</span><span class="p">.</span><span class="n">rules</span><span class="p">.</span><span class="n">iter</span><span class="p">().</span><span class="n">cloned</span><span class="p">());</span>
+<span class="w">                </span><span class="p">}</span>
+<span class="w">            </span><span class="p">}</span>
+<span class="w">        </span><span class="p">}</span>
+
+<span class="w">        </span><span class="c1">// 2. Sort rules by priority</span>
+<span class="w">        </span><span class="c1">// BLOCK rules are evaluated before ALLOW rules (security first)</span>
+<span class="w">        </span><span class="n">all_rules</span><span class="p">.</span><span class="n">sort_by</span><span class="p">(</span><span class="o">|</span><span class="n">a</span><span class="p">,</span><span class="w"> </span><span class="n">b</span><span class="o">|</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="k">match</span><span class="w"> </span><span class="p">(</span><span class="o">&amp;</span><span class="n">a</span><span class="p">.</span><span class="n">action</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">b</span><span class="p">.</span><span class="n">action</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">                </span><span class="p">(</span><span class="n">Action</span><span class="p">::</span><span class="n">Block</span><span class="p">,</span><span class="w"> </span><span class="n">Action</span><span class="p">::</span><span class="n">Allow</span><span class="p">)</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="n">std</span><span class="p">::</span><span class="n">cmp</span><span class="p">::</span><span class="n">Ordering</span><span class="p">::</span><span class="n">Less</span><span class="p">,</span>
+<span class="w">                </span><span class="p">(</span><span class="n">Action</span><span class="p">::</span><span class="n">Allow</span><span class="p">,</span><span class="w"> </span><span class="n">Action</span><span class="p">::</span><span class="n">Block</span><span class="p">)</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="n">std</span><span class="p">::</span><span class="n">cmp</span><span class="p">::</span><span class="n">Ordering</span><span class="p">::</span><span class="n">Greater</span><span class="p">,</span>
+<span class="w">                </span><span class="n">_</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="n">b</span><span class="p">.</span><span class="n">priority</span><span class="p">.</span><span class="n">cmp</span><span class="p">(</span><span class="o">&amp;</span><span class="n">a</span><span class="p">.</span><span class="n">priority</span><span class="p">),</span>
+<span class="w">            </span><span class="p">}</span>
+<span class="w">        </span><span class="p">});</span>
+
+<span class="w">        </span><span class="c1">// 3. Evaluate rules in order until first match</span>
+<span class="w">        </span><span class="k">for</span><span class="w"> </span><span class="n">rule</span><span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="o">&amp;</span><span class="n">all_rules</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="k">if</span><span class="w"> </span><span class="n">rule</span><span class="p">.</span><span class="n">matches</span><span class="p">(</span><span class="n">dest</span><span class="p">,</span><span class="w"> </span><span class="n">port</span><span class="p">,</span><span class="w"> </span><span class="n">protocol</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">                </span><span class="kd">let</span><span class="w"> </span><span class="n">decision</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">match</span><span class="w"> </span><span class="n">rule</span><span class="p">.</span><span class="n">action</span><span class="w"> </span><span class="p">{</span>
+<span class="w">                    </span><span class="n">Action</span><span class="p">::</span><span class="n">Allow</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="n">AclDecision</span><span class="p">::</span><span class="n">Allow</span><span class="p">,</span>
+<span class="w">                    </span><span class="n">Action</span><span class="p">::</span><span class="n">Block</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="n">AclDecision</span><span class="p">::</span><span class="n">Block</span><span class="p">,</span>
+<span class="w">                </span><span class="p">};</span>
+<span class="w">                </span><span class="k">return</span><span class="w"> </span><span class="p">(</span><span class="n">decision</span><span class="p">,</span><span class="w"> </span><span class="nb">Some</span><span class="p">(</span><span class="n">rule</span><span class="p">.</span><span class="n">description</span><span class="p">.</span><span class="n">clone</span><span class="p">()));</span>
+<span class="w">            </span><span class="p">}</span>
+<span class="w">        </span><span class="p">}</span>
+
+<span class="w">        </span><span class="c1">// 4. No rule matched - apply default policy</span>
+<span class="w">        </span><span class="kd">let</span><span class="w"> </span><span class="n">decision</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">match</span><span class="w"> </span><span class="n">config</span><span class="p">.</span><span class="n">global</span><span class="p">.</span><span class="n">default_policy</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="n">Action</span><span class="p">::</span><span class="n">Allow</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="n">AclDecision</span><span class="p">::</span><span class="n">Allow</span><span class="p">,</span>
+<span class="w">            </span><span class="n">Action</span><span class="p">::</span><span class="n">Block</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="n">AclDecision</span><span class="p">::</span><span class="n">Block</span><span class="p">,</span>
+<span class="w">        </span><span class="p">};</span>
+
+<span class="w">        </span><span class="p">(</span><span class="n">decision</span><span class="p">,</span><span class="w"> </span><span class="nb">None</span><span class="p">)</span>
+<span class="w">    </span><span class="p">}</span>
+
+<span class="w">    </span><span class="sd">/// Hot reload ACL configuration</span>
+<span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="k">async</span><span class="w"> </span><span class="k">fn</span><span class="w"> </span><span class="nf">reload</span><span class="p">(</span><span class="o">&amp;</span><span class="bp">self</span><span class="p">,</span><span class="w"> </span><span class="n">new_config</span><span class="p">:</span><span class="w"> </span><span class="nc">AclConfig</span><span class="p">)</span><span class="w"> </span><span class="p">-&gt;</span><span class="w"> </span><span class="nb">Result</span><span class="o">&lt;</span><span class="p">(),</span><span class="w"> </span><span class="nb">String</span><span class="o">&gt;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="c1">// Validate config first</span>
+<span class="w">        </span><span class="n">new_config</span><span class="p">.</span><span class="n">validate</span><span class="p">()</span><span class="o">?</span><span class="p">;</span>
+
+<span class="w">        </span><span class="c1">// Atomic swap</span>
+<span class="w">        </span><span class="kd">let</span><span class="w"> </span><span class="k">mut</span><span class="w"> </span><span class="n">config</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="bp">self</span><span class="p">.</span><span class="n">config</span><span class="p">.</span><span class="n">write</span><span class="p">().</span><span class="k">await</span><span class="p">;</span>
+<span class="w">        </span><span class="o">*</span><span class="n">config</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">new_config</span><span class="p">;</span>
+
+<span class="w">        </span><span class="nb">Ok</span><span class="p">(())</span>
+<span class="w">    </span><span class="p">}</span>
+
+<span class="w">    </span><span class="sd">/// Get current config</span>
+<span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="k">async</span><span class="w"> </span><span class="k">fn</span><span class="w"> </span><span class="nf">get_config</span><span class="p">(</span><span class="o">&amp;</span><span class="bp">self</span><span class="p">)</span><span class="w"> </span><span class="p">-&gt;</span><span class="w"> </span><span class="nc">AclConfig</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="bp">self</span><span class="p">.</span><span class="n">config</span><span class="p">.</span><span class="n">read</span><span class="p">().</span><span class="k">await</span><span class="p">.</span><span class="n">clone</span><span class="p">()</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">}</span>
+
+<span class="k">impl</span><span class="w"> </span><span class="n">AclConfig</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="sd">/// Validate configuration</span>
+<span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="k">fn</span><span class="w"> </span><span class="nf">validate</span><span class="p">(</span><span class="o">&amp;</span><span class="bp">self</span><span class="p">)</span><span class="w"> </span><span class="p">-&gt;</span><span class="w"> </span><span class="nb">Result</span><span class="o">&lt;</span><span class="p">(),</span><span class="w"> </span><span class="nb">String</span><span class="o">&gt;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="c1">// Check for duplicate users</span>
+<span class="w">        </span><span class="kd">let</span><span class="w"> </span><span class="k">mut</span><span class="w"> </span><span class="n">seen_users</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">std</span><span class="p">::</span><span class="n">collections</span><span class="p">::</span><span class="n">HashSet</span><span class="p">::</span><span class="n">new</span><span class="p">();</span>
+<span class="w">        </span><span class="k">for</span><span class="w"> </span><span class="n">user</span><span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="o">&amp;</span><span class="bp">self</span><span class="p">.</span><span class="n">users</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="k">if</span><span class="w"> </span><span class="o">!</span><span class="n">seen_users</span><span class="p">.</span><span class="n">insert</span><span class="p">(</span><span class="o">&amp;</span><span class="n">user</span><span class="p">.</span><span class="n">username</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">                </span><span class="k">return</span><span class="w"> </span><span class="nb">Err</span><span class="p">(</span><span class="fm">format!</span><span class="p">(</span><span class="s">&quot;Duplicate user: {}&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">user</span><span class="p">.</span><span class="n">username</span><span class="p">));</span>
+<span class="w">            </span><span class="p">}</span>
+<span class="w">        </span><span class="p">}</span>
+
+<span class="w">        </span><span class="c1">// Check for duplicate groups</span>
+<span class="w">        </span><span class="kd">let</span><span class="w"> </span><span class="k">mut</span><span class="w"> </span><span class="n">seen_groups</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">std</span><span class="p">::</span><span class="n">collections</span><span class="p">::</span><span class="n">HashSet</span><span class="p">::</span><span class="n">new</span><span class="p">();</span>
+<span class="w">        </span><span class="k">for</span><span class="w"> </span><span class="n">group</span><span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="o">&amp;</span><span class="bp">self</span><span class="p">.</span><span class="n">groups</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="k">if</span><span class="w"> </span><span class="o">!</span><span class="n">seen_groups</span><span class="p">.</span><span class="n">insert</span><span class="p">(</span><span class="o">&amp;</span><span class="n">group</span><span class="p">.</span><span class="n">name</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">                </span><span class="k">return</span><span class="w"> </span><span class="nb">Err</span><span class="p">(</span><span class="fm">format!</span><span class="p">(</span><span class="s">&quot;Duplicate group: {}&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">group</span><span class="p">.</span><span class="n">name</span><span class="p">));</span>
+<span class="w">            </span><span class="p">}</span>
+<span class="w">        </span><span class="p">}</span>
+
+<span class="w">        </span><span class="c1">// Check that user groups exist</span>
+<span class="w">        </span><span class="k">for</span><span class="w"> </span><span class="n">user</span><span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="o">&amp;</span><span class="bp">self</span><span class="p">.</span><span class="n">users</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="k">for</span><span class="w"> </span><span class="n">group_name</span><span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="o">&amp;</span><span class="n">user</span><span class="p">.</span><span class="n">groups</span><span class="w"> </span><span class="p">{</span>
+<span class="w">                </span><span class="k">if</span><span class="w"> </span><span class="o">!</span><span class="bp">self</span><span class="p">.</span><span class="n">groups</span><span class="p">.</span><span class="n">iter</span><span class="p">().</span><span class="n">any</span><span class="p">(</span><span class="o">|</span><span class="n">g</span><span class="o">|</span><span class="w"> </span><span class="o">&amp;</span><span class="n">g</span><span class="p">.</span><span class="n">name</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">group_name</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">                    </span><span class="k">return</span><span class="w"> </span><span class="nb">Err</span><span class="p">(</span><span class="fm">format!</span><span class="p">(</span>
+<span class="w">                        </span><span class="s">&quot;User &#39;{}&#39; references non-existent group &#39;{}&#39;&quot;</span><span class="p">,</span>
+<span class="w">                        </span><span class="n">user</span><span class="p">.</span><span class="n">username</span><span class="p">,</span><span class="w"> </span><span class="n">group_name</span>
+<span class="w">                    </span><span class="p">));</span>
+<span class="w">                </span><span class="p">}</span>
+<span class="w">            </span><span class="p">}</span>
+<span class="w">        </span><span class="p">}</span>
+
+<span class="w">        </span><span class="nb">Ok</span><span class="p">(())</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+<h2 id="hot-reload-mechanism">Hot Reload Mechanism<a class="headerlink" href="#hot-reload-mechanism" title="Permanent link">&para;</a></h2>
+<p>The ACL engine supports zero-downtime configuration reloading via file watching:</p>
+<div class="highlight"><pre><span></span><code><span class="c1">// src/acl/watcher.rs</span>
+
+<span class="k">use</span><span class="w"> </span><span class="k">super</span><span class="p">::</span><span class="n">engine</span><span class="p">::</span><span class="n">AclEngine</span><span class="p">;</span>
+<span class="k">use</span><span class="w"> </span><span class="n">notify</span><span class="p">::{</span><span class="n">Watcher</span><span class="p">,</span><span class="w"> </span><span class="n">RecursiveMode</span><span class="p">,</span><span class="w"> </span><span class="n">Event</span><span class="p">,</span><span class="w"> </span><span class="n">EventKind</span><span class="p">};</span>
+<span class="k">use</span><span class="w"> </span><span class="n">std</span><span class="p">::</span><span class="n">path</span><span class="p">::</span><span class="n">PathBuf</span><span class="p">;</span>
+<span class="k">use</span><span class="w"> </span><span class="n">std</span><span class="p">::</span><span class="n">sync</span><span class="p">::</span><span class="n">Arc</span><span class="p">;</span>
+<span class="k">use</span><span class="w"> </span><span class="n">tokio</span><span class="p">::</span><span class="n">sync</span><span class="p">::</span><span class="n">mpsc</span><span class="p">;</span>
+
+<span class="k">pub</span><span class="w"> </span><span class="k">struct</span><span class="w"> </span><span class="nc">AclWatcher</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">acl_engine</span><span class="p">:</span><span class="w"> </span><span class="nc">Arc</span><span class="o">&lt;</span><span class="n">AclEngine</span><span class="o">&gt;</span><span class="p">,</span>
+<span class="w">    </span><span class="n">config_path</span><span class="p">:</span><span class="w"> </span><span class="nc">PathBuf</span><span class="p">,</span>
+<span class="p">}</span>
+
+<span class="k">impl</span><span class="w"> </span><span class="n">AclWatcher</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="k">fn</span><span class="w"> </span><span class="nf">new</span><span class="p">(</span><span class="n">acl_engine</span><span class="p">:</span><span class="w"> </span><span class="nc">Arc</span><span class="o">&lt;</span><span class="n">AclEngine</span><span class="o">&gt;</span><span class="p">,</span><span class="w"> </span><span class="n">config_path</span><span class="p">:</span><span class="w"> </span><span class="nc">PathBuf</span><span class="p">)</span><span class="w"> </span><span class="p">-&gt;</span><span class="w"> </span><span class="nc">Self</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="bp">Self</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">acl_engine</span><span class="p">,</span><span class="w"> </span><span class="n">config_path</span><span class="w"> </span><span class="p">}</span>
+<span class="w">    </span><span class="p">}</span>
+
+<span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="k">async</span><span class="w"> </span><span class="k">fn</span><span class="w"> </span><span class="nf">start</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span><span class="w"> </span><span class="p">-&gt;</span><span class="w"> </span><span class="nb">Result</span><span class="o">&lt;</span><span class="p">(),</span><span class="w"> </span><span class="nb">Box</span><span class="o">&lt;</span><span class="k">dyn</span><span class="w"> </span><span class="n">std</span><span class="p">::</span><span class="n">error</span><span class="p">::</span><span class="n">Error</span><span class="o">&gt;&gt;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="kd">let</span><span class="w"> </span><span class="p">(</span><span class="n">tx</span><span class="p">,</span><span class="w"> </span><span class="k">mut</span><span class="w"> </span><span class="n">rx</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">mpsc</span><span class="p">::</span><span class="n">channel</span><span class="p">(</span><span class="mi">10</span><span class="p">);</span>
+<span class="w">        </span><span class="kd">let</span><span class="w"> </span><span class="n">config_path</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="bp">self</span><span class="p">.</span><span class="n">config_path</span><span class="p">.</span><span class="n">clone</span><span class="p">();</span>
+
+<span class="w">        </span><span class="c1">// Create file watcher</span>
+<span class="w">        </span><span class="kd">let</span><span class="w"> </span><span class="k">mut</span><span class="w"> </span><span class="n">watcher</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">notify</span><span class="p">::</span><span class="n">recommended_watcher</span><span class="p">(</span><span class="k">move</span><span class="w"> </span><span class="o">|</span><span class="n">res</span><span class="p">:</span><span class="w"> </span><span class="nb">Result</span><span class="o">&lt;</span><span class="n">Event</span><span class="p">,</span><span class="w"> </span><span class="n">_</span><span class="o">&gt;|</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="k">if</span><span class="w"> </span><span class="kd">let</span><span class="w"> </span><span class="nb">Ok</span><span class="p">(</span><span class="n">event</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">res</span><span class="w"> </span><span class="p">{</span>
+<span class="w">                </span><span class="k">if</span><span class="w"> </span><span class="fm">matches!</span><span class="p">(</span><span class="n">event</span><span class="p">.</span><span class="n">kind</span><span class="p">,</span><span class="w"> </span><span class="n">EventKind</span><span class="p">::</span><span class="n">Modify</span><span class="p">(</span><span class="n">_</span><span class="p">)</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">EventKind</span><span class="p">::</span><span class="n">Create</span><span class="p">(</span><span class="n">_</span><span class="p">))</span><span class="w"> </span><span class="p">{</span>
+<span class="w">                    </span><span class="kd">let</span><span class="w"> </span><span class="n">_</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">tx</span><span class="p">.</span><span class="n">blocking_send</span><span class="p">(());</span>
+<span class="w">                </span><span class="p">}</span>
+<span class="w">            </span><span class="p">}</span>
+<span class="w">        </span><span class="p">})</span><span class="o">?</span><span class="p">;</span>
+
+<span class="w">        </span><span class="n">watcher</span><span class="p">.</span><span class="n">watch</span><span class="p">(</span><span class="o">&amp;</span><span class="n">config_path</span><span class="p">,</span><span class="w"> </span><span class="n">RecursiveMode</span><span class="p">::</span><span class="n">NonRecursive</span><span class="p">)</span><span class="o">?</span><span class="p">;</span>
+
+<span class="w">        </span><span class="c1">// Event loop</span>
+<span class="w">        </span><span class="n">tokio</span><span class="p">::</span><span class="n">spawn</span><span class="p">(</span><span class="k">async</span><span class="w"> </span><span class="k">move</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="kd">let</span><span class="w"> </span><span class="n">_watcher</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">watcher</span><span class="p">;</span>
+
+<span class="w">            </span><span class="k">while</span><span class="w"> </span><span class="n">rx</span><span class="p">.</span><span class="n">recv</span><span class="p">().</span><span class="k">await</span><span class="p">.</span><span class="n">is_some</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">                </span><span class="c1">// Small delay to ensure file is fully written</span>
+<span class="w">                </span><span class="n">tokio</span><span class="p">::</span><span class="n">time</span><span class="p">::</span><span class="n">sleep</span><span class="p">(</span><span class="n">std</span><span class="p">::</span><span class="n">time</span><span class="p">::</span><span class="n">Duration</span><span class="p">::</span><span class="n">from_millis</span><span class="p">(</span><span class="mi">100</span><span class="p">)).</span><span class="k">await</span><span class="p">;</span>
+
+<span class="w">                </span><span class="k">match</span><span class="w"> </span><span class="n">load_acl_config_sync</span><span class="p">(</span><span class="o">&amp;</span><span class="n">config_path</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">                    </span><span class="nb">Ok</span><span class="p">(</span><span class="n">new_config</span><span class="p">)</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">                        </span><span class="k">match</span><span class="w"> </span><span class="bp">self</span><span class="p">.</span><span class="n">acl_engine</span><span class="p">.</span><span class="n">reload</span><span class="p">(</span><span class="n">new_config</span><span class="p">).</span><span class="k">await</span><span class="w"> </span><span class="p">{</span>
+<span class="w">                            </span><span class="nb">Ok</span><span class="p">(</span><span class="n">_</span><span class="p">)</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">                                </span><span class="c1">// Reload successful</span>
+<span class="w">                            </span><span class="p">}</span>
+<span class="w">                            </span><span class="nb">Err</span><span class="p">(</span><span class="n">e</span><span class="p">)</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">                                </span><span class="c1">// Keep previous config on validation error</span>
+<span class="w">                                </span><span class="fm">eprintln!</span><span class="p">(</span><span class="s">&quot;Failed to reload ACL config: {}&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">e</span><span class="p">);</span>
+<span class="w">                            </span><span class="p">}</span>
+<span class="w">                        </span><span class="p">}</span>
+<span class="w">                    </span><span class="p">}</span>
+<span class="w">                    </span><span class="nb">Err</span><span class="p">(</span><span class="n">e</span><span class="p">)</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">                        </span><span class="fm">eprintln!</span><span class="p">(</span><span class="s">&quot;Failed to load ACL config: {}&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">e</span><span class="p">);</span>
+<span class="w">                    </span><span class="p">}</span>
+<span class="w">                </span><span class="p">}</span>
+<span class="w">            </span><span class="p">}</span>
+<span class="w">        </span><span class="p">});</span>
+
+<span class="w">        </span><span class="nb">Ok</span><span class="p">(())</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+<h2 id="integration-with-connection-handler">Integration with Connection Handler<a class="headerlink" href="#integration-with-connection-handler" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><span class="c1">// Example from src/server/handler.rs</span>
+
+<span class="k">use</span><span class="w"> </span><span class="k">crate</span><span class="p">::</span><span class="n">acl</span><span class="p">::</span><span class="n">engine</span><span class="p">::</span><span class="n">AclEngine</span><span class="p">;</span>
+<span class="k">use</span><span class="w"> </span><span class="k">crate</span><span class="p">::</span><span class="n">acl</span><span class="p">::</span><span class="n">types</span><span class="p">::{</span><span class="n">AclDecision</span><span class="p">,</span><span class="w"> </span><span class="n">Protocol</span><span class="p">};</span>
+<span class="k">use</span><span class="w"> </span><span class="n">std</span><span class="p">::</span><span class="n">sync</span><span class="p">::</span><span class="n">Arc</span><span class="p">;</span>
+
+<span class="k">pub</span><span class="w"> </span><span class="k">async</span><span class="w"> </span><span class="k">fn</span><span class="w"> </span><span class="nf">handle_socks_connection</span><span class="p">(</span>
+<span class="w">    </span><span class="n">user</span><span class="p">:</span><span class="w"> </span><span class="kp">&amp;</span><span class="kt">str</span><span class="p">,</span>
+<span class="w">    </span><span class="n">dest_addr</span><span class="p">:</span><span class="w"> </span><span class="kp">&amp;</span><span class="nc">Address</span><span class="p">,</span>
+<span class="w">    </span><span class="n">dest_port</span><span class="p">:</span><span class="w"> </span><span class="kt">u16</span><span class="p">,</span>
+<span class="w">    </span><span class="n">protocol</span><span class="p">:</span><span class="w"> </span><span class="kp">&amp;</span><span class="nc">Protocol</span><span class="p">,</span>
+<span class="w">    </span><span class="n">acl_engine</span><span class="p">:</span><span class="w"> </span><span class="nc">Arc</span><span class="o">&lt;</span><span class="n">AclEngine</span><span class="o">&gt;</span><span class="p">,</span>
+<span class="p">)</span><span class="w"> </span><span class="p">-&gt;</span><span class="w"> </span><span class="nb">Result</span><span class="o">&lt;</span><span class="p">()</span><span class="o">&gt;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="c1">// Evaluate ACL</span>
+<span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="p">(</span><span class="n">decision</span><span class="p">,</span><span class="w"> </span><span class="n">matched_rule</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">acl_engine</span><span class="p">.</span><span class="n">evaluate</span><span class="p">(</span>
+<span class="w">        </span><span class="n">user</span><span class="p">,</span>
+<span class="w">        </span><span class="n">dest_addr</span><span class="p">,</span>
+<span class="w">        </span><span class="n">dest_port</span><span class="p">,</span>
+<span class="w">        </span><span class="n">protocol</span><span class="p">,</span>
+<span class="w">    </span><span class="p">).</span><span class="k">await</span><span class="p">;</span>
+
+<span class="w">    </span><span class="k">match</span><span class="w"> </span><span class="n">decision</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">AclDecision</span><span class="p">::</span><span class="n">Block</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="c1">// Send SOCKS5 error response</span>
+<span class="w">            </span><span class="n">send_socks5_error</span><span class="p">(</span><span class="o">&amp;</span><span class="k">mut</span><span class="w"> </span><span class="n">stream</span><span class="p">,</span><span class="w"> </span><span class="n">ErrorCode</span><span class="p">::</span><span class="n">ConnectionNotAllowed</span><span class="p">).</span><span class="k">await</span><span class="o">?</span><span class="p">;</span>
+<span class="w">            </span><span class="k">return</span><span class="w"> </span><span class="nb">Ok</span><span class="p">(());</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">        </span><span class="n">AclDecision</span><span class="p">::</span><span class="n">Allow</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="c1">// Proceed with connection</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">    </span><span class="p">}</span>
+
+<span class="w">    </span><span class="nb">Ok</span><span class="p">(())</span>
+<span class="p">}</span>
+</code></pre></div>
+<h2 id="rest-api-endpoints">REST API Endpoints<a class="headerlink" href="#rest-api-endpoints" title="Permanent link">&para;</a></h2>
+<p>The ACL engine provides REST endpoints for management:</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># Get all users</span>
+curl<span class="w"> </span>http://127.0.0.1:9090/api/acl/users
+
+<span class="c1"># Get all groups</span>
+curl<span class="w"> </span>http://127.0.0.1:9090/api/acl/groups
+
+<span class="c1"># Get user details</span>
+curl<span class="w"> </span>http://127.0.0.1:9090/api/acl/users/alice
+
+<span class="c1"># Get group details</span>
+curl<span class="w"> </span>http://127.0.0.1:9090/api/acl/groups/developers
+
+<span class="c1"># Reload ACL config</span>
+curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span>http://127.0.0.1:9090/api/admin/reload-acl
+</code></pre></div>
+<h2 id="performance-characteristics">Performance Characteristics<a class="headerlink" href="#performance-characteristics" title="Permanent link">&para;</a></h2>
+<p><strong>Evaluation Performance:</strong>
+- Depends on rule count, matchers, and destination mix
+- Typically fast enough to stay well below network latency
+- Hot reload does not block rule evaluation (read-locked config)</p>
+<h2 id="configuration-best-practices">Configuration Best Practices<a class="headerlink" href="#configuration-best-practices" title="Permanent link">&para;</a></h2>
+<ol>
+<li><strong>Use default_policy = "block"</strong> (whitelist approach)</li>
+<li>More secure than blacklist</li>
+<li>
+<p>Explicit allow rules are easier to audit</p>
+</li>
+<li>
+<p><strong>Set rule priorities</strong></p>
+</li>
+<li>BLOCK rules implicitly higher priority than ALLOW</li>
+<li>Use numeric priorities for same-action rules</li>
+<li>
+<p>Higher number = evaluated first</p>
+</li>
+<li>
+<p><strong>Use group inheritance</strong></p>
+</li>
+<li>Create groups for common rule sets</li>
+<li>Users inherit group rules</li>
+<li>
+<p>Easier to manage permissions</p>
+</li>
+<li>
+<p><strong>Specific before general</strong></p>
+</li>
+<li>Put specific BLOCK rules before general ALLOW rules</li>
+<li>
+<p>Example: Block admin.example.com before allowing *.example.com</p>
+</li>
+<li>
+<p><strong>Watch your ACL file</strong>
+   <div class="highlight"><pre><span></span><code><span class="k">[acl]</span>
+<span class="n">enabled</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+<span class="n">config_file</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;config/acl.toml&quot;</span>
+<span class="n">watch</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span><span class="w">  </span><span class="c1"># Enable hot reload</span>
+</code></pre></div></p>
+</li>
+</ol>
+<h2 id="monitoring-observability">Monitoring &amp; Observability<a class="headerlink" href="#monitoring-observability" title="Permanent link">&para;</a></h2>
+<p>ACL configuration and decisions can be inspected via the API:</p>
+<div class="highlight"><pre><span></span><code>GET<span class="w"> </span>/api/acl/groups<span class="w">   </span><span class="c1"># Groups and their rules</span>
+GET<span class="w"> </span>/api/acl/users<span class="w">    </span><span class="c1"># Users and their rules</span>
+GET<span class="w"> </span>/api/acl/global<span class="w">   </span><span class="c1"># Default policy</span>
+POST<span class="w"> </span>/api/acl/test<span class="w">    </span><span class="c1"># Evaluate a rule decision</span>
+</code></pre></div>
+<h2 id="summary">Summary<a class="headerlink" href="#summary" title="Permanent link">&para;</a></h2>
+<p>The RustSocks ACL engine provides:</p>
+<p>✅ <strong>Granular control</strong> - per-user and per-group rules
+✅ <strong>Security first</strong> - BLOCK rules have priority
+✅ <strong>Zero-downtime</strong> - hot reload support
+✅ <strong>High performance</strong> - microsecond evaluation
+✅ <strong>Flexible matching</strong> - IP, CIDR, domains, wildcards, ports
+✅ <strong>Auditable</strong> - every decision is logged
+✅ <strong>Production-ready</strong> - comprehensive validation</p>
+<p>The implementation leverages Rust's type system for safety and Tokio for async operations, making it both fast and maintainable.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.instant", "navigation.tabs", "navigation.sections", "navigation.expand", "navigation.top", "toc.follow", "search.highlight", "content.code.copy"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

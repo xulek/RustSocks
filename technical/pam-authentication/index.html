@@ -1,0 +1,2944 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="High-performance SOCKS5 proxy with ACLs, sessions, metrics, and a modern web dashboard.">
+      
+      
+      
+        <link rel="canonical" href="https://xulek.github.io/RustSocks/technical/pam-authentication/">
+      
+      
+        <link rel="prev" href="../protocol/">
+      
+      
+        <link rel="next" href="../session-management/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.4">
+    
+    
+      
+        <title>PAM Authentication - RustSocks Documentation</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=IBM+Plex+Sans:300,300i,400,400i,700,700i%7CIBM+Plex+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"IBM Plex Sans";--md-code-font:"IBM Plex Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="blue-grey" data-md-color-accent="cyan">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#pam-authentication-implementation-guide" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="RustSocks Documentation" class="md-header__button md-logo" aria-label="RustSocks Documentation" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            RustSocks Documentation
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              PAM Authentication
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="blue-grey" data-md-color-accent="cyan"  aria-hidden="true"  type="radio" name="__palette" id="__palette_0">
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/xulek/RustSocks" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    xulek/RustSocks
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../usage/quick-start/" class="md-tabs__link">
+          
+  
+  
+  Getting Started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../ui/overview/" class="md-tabs__link">
+          
+  
+  
+  UI & Dashboard
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../config/rustsocks/" class="md-tabs__link">
+          
+  
+  
+  Configuration
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../usage/examples/" class="md-tabs__link">
+          
+  
+  
+  Usage & Examples
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../guides/web-dashboard/" class="md-tabs__link">
+          
+  
+  
+  Guides
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../references/project-readme/" class="md-tabs__link">
+          
+  
+  
+  References
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../architecture/" class="md-tabs__link">
+          
+  
+  
+  Technical
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="RustSocks Documentation" class="md-nav__button md-logo" aria-label="RustSocks Documentation" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    RustSocks Documentation
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/xulek/RustSocks" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    xulek/RustSocks
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/quick-start/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quick Start
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/docker/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker Deployment
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    UI & Dashboard
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    UI & Dashboard
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../ui/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/dashboard-authentication/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Authentication
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/smtp-configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SMTP Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Configuration
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../config/rustsocks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    rustsocks.toml
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../config/acl/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    acl.toml
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Usage & Examples
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Usage & Examples
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/examples/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Common Scenarios
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/web-dashboard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Web Dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/building-with-base-path/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Base Path Deployment
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/ldap-groups/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LDAP Groups
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/active-directory/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Active Directory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    References
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    References
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../references/project-readme/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Project README
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../references/claude/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Developer Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../references/dashboard-readme/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dashboard README
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../references/loadtests-manual/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Load Testing Manual
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Technical
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Technical
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../acl-engine/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ACL Engine
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../connection-pool/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Connection Pool
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../protocol/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Protocol & TLS
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PAM Authentication
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PAM Authentication
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Overview
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#system-requirements" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        System Requirements
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="System Requirements">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#build-time-requirements" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Build-Time Requirements
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#runtime-requirements" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Runtime Requirements
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#dependencies-in-cargotoml" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dependencies in Cargo.toml
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#core-implementation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Core Implementation
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Core Implementation">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#pam-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PAM Configuration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pam-service-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PAM Service Files
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#installation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Installation
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#two-tier-authentication" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Two-Tier Authentication
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Two-Tier Authentication">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#client-level-authentication-before-socks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Client-Level Authentication (Before SOCKS)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#socks-level-authentication-after-socks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SOCKS-Level Authentication (After SOCKS)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#combined-defense-in-depth" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Combined (Defense in Depth)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#api-endpoints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        API Endpoints
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#monitoring-logging" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Monitoring &amp; Logging
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#testing-pam-setup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Testing PAM Setup
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Testing PAM Setup">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#manual-testing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Manual Testing
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#integration-testing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Integration Testing
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#security-considerations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Security Considerations
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Security Considerations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-password-transmission" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Password Transmission
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-privilege-management" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Privilege Management
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-pam-service-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. PAM Service Configuration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-defense-in-depth" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Defense in Depth
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Troubleshooting
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Troubleshooting">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#pam-authentication-always-fails" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PAM Authentication Always Fails
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#permission-denied-errors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Permission Denied Errors
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pam-module-not-found" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PAM Module Not Found
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#performance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Performance
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#best-practices" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Best Practices
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#example-deployment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Deployment
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Example Deployment">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#step-1-create-pam-service-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 1: Create PAM Service Files
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-2-configure-rustsocks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 2: Configure RustSocks
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-3-create-unprivileged-user" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 3: Create Unprivileged User
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-4-run-server" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 4: Run Server
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-5-test-authentication" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 5: Test Authentication
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cross-platform-support" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cross-Platform Support
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#summary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Summary
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../session-management/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Session Management
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Overview
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#system-requirements" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        System Requirements
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="System Requirements">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#build-time-requirements" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Build-Time Requirements
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#runtime-requirements" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Runtime Requirements
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#dependencies-in-cargotoml" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dependencies in Cargo.toml
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#core-implementation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Core Implementation
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Core Implementation">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#pam-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PAM Configuration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pam-service-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PAM Service Files
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#installation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Installation
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#two-tier-authentication" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Two-Tier Authentication
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Two-Tier Authentication">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#client-level-authentication-before-socks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Client-Level Authentication (Before SOCKS)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#socks-level-authentication-after-socks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SOCKS-Level Authentication (After SOCKS)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#combined-defense-in-depth" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Combined (Defense in Depth)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#api-endpoints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        API Endpoints
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#monitoring-logging" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Monitoring &amp; Logging
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#testing-pam-setup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Testing PAM Setup
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Testing PAM Setup">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#manual-testing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Manual Testing
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#integration-testing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Integration Testing
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#security-considerations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Security Considerations
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Security Considerations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-password-transmission" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Password Transmission
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-privilege-management" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Privilege Management
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-pam-service-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. PAM Service Configuration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-defense-in-depth" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Defense in Depth
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Troubleshooting
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Troubleshooting">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#pam-authentication-always-fails" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PAM Authentication Always Fails
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#permission-denied-errors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Permission Denied Errors
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pam-module-not-found" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PAM Module Not Found
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#performance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Performance
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#best-practices" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Best Practices
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#example-deployment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Deployment
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Example Deployment">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#step-1-create-pam-service-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 1: Create PAM Service Files
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-2-configure-rustsocks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 2: Configure RustSocks
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-3-create-unprivileged-user" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 3: Create Unprivileged User
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-4-run-server" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 4: Run Server
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-5-test-authentication" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 5: Test Authentication
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cross-platform-support" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cross-Platform Support
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#summary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Summary
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="pam-authentication-implementation-guide">PAM Authentication - Implementation Guide<a class="headerlink" href="#pam-authentication-implementation-guide" title="Permanent link">&para;</a></h1>
+<p>This document explains the PAM (Pluggable Authentication Modules) integration in RustSocks.</p>
+<h2 id="overview">Overview<a class="headerlink" href="#overview" title="Permanent link">&para;</a></h2>
+<p>RustSocks supports two PAM authentication methods:</p>
+<ol>
+<li><strong>pam.address</strong> - Authentication based on IP/hostname only (no username/password)</li>
+<li>Used in client-level rules (before SOCKS handshake)</li>
+<li>Useful for trusted networks</li>
+<li>
+<p>Example: PAM rhosts module</p>
+</li>
+<li>
+<p><strong>pam.username</strong> - Authentication with username and password</p>
+</li>
+<li>Used in SOCKS-level rules (after SOCKS handshake)</li>
+<li>Standard SOCKS5 username/password (RFC 1929)</li>
+<li>⚠️ Password transmitted in clear-text</li>
+</ol>
+<h2 id="system-requirements">System Requirements<a class="headerlink" href="#system-requirements" title="Permanent link">&para;</a></h2>
+<h3 id="build-time-requirements">Build-Time Requirements<a class="headerlink" href="#build-time-requirements" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><span class="c1"># Debian/Ubuntu</span>
+sudo<span class="w"> </span>apt-get<span class="w"> </span>install<span class="w"> </span>libpam0g-dev
+
+<span class="c1"># RHEL/CentOS/Fedora</span>
+sudo<span class="w"> </span>dnf<span class="w"> </span>install<span class="w"> </span>pam-devel<span class="w"> </span>gcc
+
+<span class="c1"># Arch Linux</span>
+sudo<span class="w"> </span>pacman<span class="w"> </span>-S<span class="w"> </span>pam
+
+<span class="c1"># Verification</span>
+ls<span class="w"> </span>-la<span class="w"> </span>/usr/include/security/pam_appl.h
+ls<span class="w"> </span>-la<span class="w"> </span>/usr/lib/x86_64-linux-gnu/libpam.so
+</code></pre></div>
+<h3 id="runtime-requirements">Runtime Requirements<a class="headerlink" href="#runtime-requirements" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Server must start as root (for PAM verification)</li>
+<li>PAM configuration file: <code>/etc/pam.d/rustsocks</code> (or custom)</li>
+<li>Unprivileged user for privilege dropping: <code>socks</code></li>
+</ul>
+<h3 id="dependencies-in-cargotoml">Dependencies in Cargo.toml<a class="headerlink" href="#dependencies-in-cargotoml" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><span class="k">[target.</span><span class="s1">&#39;cfg(unix)&#39;</span><span class="k">.dependencies]</span>
+<span class="n">pam</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;0.7&quot;</span><span class="w">           </span><span class="c1"># PAM bindings</span>
+<span class="n">nix</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">version</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s2">&quot;0.27&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">features</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;user&quot;</span><span class="p">]</span><span class="w"> </span><span class="p">}</span>
+<span class="n">libc</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;0.2&quot;</span><span class="w">          </span><span class="c1"># For PAM syscalls</span>
+</code></pre></div>
+<h2 id="core-implementation">Core Implementation<a class="headerlink" href="#core-implementation" title="Permanent link">&para;</a></h2>
+<h3 id="pam-configuration">PAM Configuration<a class="headerlink" href="#pam-configuration" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><span class="c1"># config/rustsocks.toml</span>
+
+<span class="k">[server]</span>
+<span class="n">bind_address</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;0.0.0.0&quot;</span>
+<span class="n">bind_port</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1080</span>
+
+<span class="k">[auth]</span>
+<span class="c1"># Client-level auth (before SOCKS handshake)</span>
+<span class="n">client_method</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;none&quot;</span><span class="w">        </span><span class="c1"># or &quot;pam.address&quot;</span>
+<span class="n">client_pam_service</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;rustsocks-client&quot;</span>
+
+<span class="c1"># SOCKS-level auth (after SOCKS handshake)</span>
+<span class="n">socks_method</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;pam.username&quot;</span><span class="w"> </span><span class="c1"># or &quot;pam.address&quot;, &quot;userpass&quot;, &quot;none&quot;</span>
+<span class="n">socks_pam_service</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;rustsocks&quot;</span>
+
+<span class="k">[auth.pam]</span>
+<span class="c1"># Default user for pam.address</span>
+<span class="n">default_user</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;rhostusr&quot;</span>
+<span class="n">default_ruser</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;rhostusr&quot;</span>
+
+<span class="c1"># Enable verbose PAM logging</span>
+<span class="n">verbose</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">false</span>
+
+<span class="c1"># Verify PAM service files exist at startup</span>
+<span class="n">verify_service</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">false</span>
+</code></pre></div>
+<h3 id="pam-service-files">PAM Service Files<a class="headerlink" href="#pam-service-files" title="Permanent link">&para;</a></h3>
+<p><strong><code>/etc/pam.d/rustsocks</code> (for socks-rules - username/password auth)</strong>
+<div class="highlight"><pre><span></span><code>%PAM-1.0
+
+<span class="c1"># Authentication</span>
+auth<span class="w">       </span>required<span class="w">     </span>pam_unix.so
+auth<span class="w">       </span>required<span class="w">     </span>pam_env.so
+
+<span class="c1"># Account management</span>
+account<span class="w">    </span>required<span class="w">     </span>pam_unix.so
+account<span class="w">    </span>required<span class="w">     </span>pam_nologin.so
+
+<span class="c1"># Session management (optional)</span>
+session<span class="w">    </span>optional<span class="w">     </span>pam_limits.so
+</code></pre></div></p>
+<p><strong><code>/etc/pam.d/rustsocks-client</code> (for client-rules - IP-based auth)</strong>
+<div class="highlight"><pre><span></span><code>%PAM-1.0
+
+<span class="c1"># Use pam_rhosts or similar for IP-based auth</span>
+auth<span class="w">       </span>required<span class="w">     </span>pam_rhosts.so
+account<span class="w">    </span>required<span class="w">     </span>pam_permit.so
+</code></pre></div></p>
+<h3 id="installation">Installation<a class="headerlink" href="#installation" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><span class="c1"># Copy PAM service files to system directory</span>
+sudo<span class="w"> </span>cp<span class="w"> </span>config/pam.d/rustsocks<span class="w"> </span>/etc/pam.d/rustsocks
+sudo<span class="w"> </span>cp<span class="w"> </span>config/pam.d/rustsocks-client<span class="w"> </span>/etc/pam.d/rustsocks-client
+
+<span class="c1"># Set correct permissions</span>
+sudo<span class="w"> </span>chmod<span class="w"> </span><span class="m">644</span><span class="w"> </span>/etc/pam.d/rustsocks*
+
+<span class="c1"># Verify</span>
+sudo<span class="w"> </span>pamtester<span class="w"> </span>rustsocks<span class="w"> </span>username<span class="w"> </span>authenticate
+</code></pre></div>
+<h2 id="two-tier-authentication">Two-Tier Authentication<a class="headerlink" href="#two-tier-authentication" title="Permanent link">&para;</a></h2>
+<p>RustSocks supports dual authentication for defense in depth:</p>
+<h3 id="client-level-authentication-before-socks">Client-Level Authentication (Before SOCKS)<a class="headerlink" href="#client-level-authentication-before-socks" title="Permanent link">&para;</a></h3>
+<p>Performed before SOCKS handshake when client connects:</p>
+<div class="highlight"><pre><span></span><code><span class="k">[auth]</span>
+<span class="n">client_method</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;pam.address&quot;</span><span class="w">    </span><span class="c1"># Authenticate based on IP</span>
+<span class="n">client_pam_service</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;rustsocks-client&quot;</span>
+</code></pre></div>
+<p>Benefits:
+- Early rejection of unauthorized IPs
+- Prevents SOCKS negotiation with untrusted clients
+- Lower latency (fails fast)</p>
+<h3 id="socks-level-authentication-after-socks">SOCKS-Level Authentication (After SOCKS)<a class="headerlink" href="#socks-level-authentication-after-socks" title="Permanent link">&para;</a></h3>
+<p>Performed after SOCKS handshake:</p>
+<div class="highlight"><pre><span></span><code><span class="k">[auth]</span>
+<span class="n">socks_method</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;pam.username&quot;</span><span class="w">    </span><span class="c1"># Authenticate with username/password</span>
+<span class="n">socks_pam_service</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;rustsocks&quot;</span>
+</code></pre></div>
+<h3 id="combined-defense-in-depth">Combined (Defense in Depth)<a class="headerlink" href="#combined-defense-in-depth" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><span class="k">[auth]</span>
+<span class="n">client_method</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;pam.address&quot;</span><span class="w">     </span><span class="c1"># IP filtering</span>
+<span class="n">socks_method</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;pam.username&quot;</span><span class="w">     </span><span class="c1"># Username/password</span>
+</code></pre></div>
+<p>This requires:
+1. Client IP must pass PAM pam_rhosts check
+2. AND username/password must pass PAM pam_unix check</p>
+<h2 id="api-endpoints">API Endpoints<a class="headerlink" href="#api-endpoints" title="Permanent link">&para;</a></h2>
+<p>PAM integration provides REST endpoints:</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># Get current auth method</span>
+curl<span class="w"> </span>http://127.0.0.1:9090/api/auth/method
+
+<span class="c1"># Get PAM status</span>
+curl<span class="w"> </span>http://127.0.0.1:9090/api/auth/pam/status
+
+<span class="c1"># Test PAM authentication (requires valid credentials)</span>
+curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span>http://127.0.0.1:9090/api/auth/pam/test<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-H<span class="w"> </span><span class="s2">&quot;Content-Type: application/json&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-d<span class="w"> </span><span class="s1">&#39;{&quot;username&quot;: &quot;testuser&quot;, &quot;password&quot;: &quot;testpass&quot;}&#39;</span>
+</code></pre></div>
+<h2 id="monitoring-logging">Monitoring &amp; Logging<a class="headerlink" href="#monitoring-logging" title="Permanent link">&para;</a></h2>
+<p>PAM authentication attempts are logged and metered:</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># View PAM logs</span>
+sudo<span class="w"> </span>tail<span class="w"> </span>-f<span class="w"> </span>/var/log/auth.log
+
+<span class="c1"># Check PAM metrics</span>
+curl<span class="w"> </span>http://127.0.0.1:9090/metrics<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>pam
+</code></pre></div>
+<p>Expected metrics:
+- <code>rustsocks_pam_auth_total{method,service,result}</code> - Authentication attempts
+- <code>rustsocks_pam_auth_duration_seconds{method,service}</code> - Auth latency</p>
+<h2 id="testing-pam-setup">Testing PAM Setup<a class="headerlink" href="#testing-pam-setup" title="Permanent link">&para;</a></h2>
+<h3 id="manual-testing">Manual Testing<a class="headerlink" href="#manual-testing" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><span class="c1"># Test PAM service</span>
+sudo<span class="w"> </span>pamtester<span class="w"> </span>rustsocks<span class="w"> </span>username<span class="w"> </span>authenticate
+<span class="c1"># Output: pamtester: successfully authenticated</span>
+
+<span class="c1"># Test PAM service fails on wrong password</span>
+sudo<span class="w"> </span>pamtester<span class="w"> </span>rustsocks<span class="w"> </span>username<span class="w"> </span>authenticate
+<span class="c1"># (enter wrong password)</span>
+<span class="c1"># Output: pamtester: Authentication failure</span>
+</code></pre></div>
+<h3 id="integration-testing">Integration Testing<a class="headerlink" href="#integration-testing" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><span class="c1"># Run PAM tests</span>
+cargo<span class="w"> </span><span class="nb">test</span><span class="w"> </span>--all-features<span class="w"> </span>pam<span class="w"> </span>--<span class="w"> </span>--ignored
+
+<span class="c1"># Tests included:</span>
+<span class="c1"># - pam.address authentication</span>
+<span class="c1"># - pam.username authentication</span>
+<span class="c1"># - Cross-platform compatibility</span>
+<span class="c1"># - Error handling</span>
+</code></pre></div>
+<h2 id="security-considerations">Security Considerations<a class="headerlink" href="#security-considerations" title="Permanent link">&para;</a></h2>
+<h3 id="1-password-transmission">1. Password Transmission<a class="headerlink" href="#1-password-transmission" title="Permanent link">&para;</a></h3>
+<ul>
+<li>⚠️ <strong>CRITICAL</strong>: SOCKS5 username/password transmits credentials in <strong>clear-text</strong></li>
+<li>Use only in trusted networks</li>
+<li>Recommended: Wrap with SOCKS over TLS (future feature)</li>
+</ul>
+<h3 id="2-privilege-management">2. Privilege Management<a class="headerlink" href="#2-privilege-management" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Server must start as <strong>root</strong> for PAM access</li>
+<li><strong>Drop privileges IMMEDIATELY</strong> after binding socket</li>
+<li>Verify privilege drop succeeded</li>
+<li>Never run as root during request handling</li>
+</ul>
+<h3 id="3-pam-service-configuration">3. PAM Service Configuration<a class="headerlink" href="#3-pam-service-configuration" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>CRITICAL</strong>: Non-existent PAM service may allow all traffic on some systems!</li>
+<li>Always verify PAM config exists: <code>/etc/pam.d/&lt;service&gt;</code></li>
+<li>Test both successful and failed authentication</li>
+<li>Monitor PAM logs: <code>/var/log/auth.log</code> or <code>/var/log/secure</code></li>
+</ul>
+<h3 id="4-defense-in-depth">4. Defense in Depth<a class="headerlink" href="#4-defense-in-depth" title="Permanent link">&para;</a></h3>
+<p>Combine PAM with other security layers:
+<div class="highlight"><pre><span></span><code><span class="k">[auth]</span>
+<span class="n">client_method</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;pam.address&quot;</span><span class="w">     </span><span class="c1"># IP filtering</span>
+<span class="n">socks_method</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;pam.username&quot;</span><span class="w">     </span><span class="c1"># Username check</span>
+
+<span class="k">[acl]</span>
+<span class="n">enabled</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span><span class="w">                     </span><span class="c1"># ACL rules</span>
+<span class="n">watch</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span><span class="w">                       </span><span class="c1"># Hot reload</span>
+</code></pre></div></p>
+<h2 id="troubleshooting">Troubleshooting<a class="headerlink" href="#troubleshooting" title="Permanent link">&para;</a></h2>
+<h3 id="pam-authentication-always-fails">PAM Authentication Always Fails<a class="headerlink" href="#pam-authentication-always-fails" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><span class="c1"># Check PAM logs</span>
+sudo<span class="w"> </span>tail<span class="w"> </span>-f<span class="w"> </span>/var/log/auth.log
+
+<span class="c1"># Check service file exists</span>
+ls<span class="w"> </span>-la<span class="w"> </span>/etc/pam.d/rustsocks
+
+<span class="c1"># Test manually</span>
+pamtester<span class="w"> </span>rustsocks<span class="w"> </span>username<span class="w"> </span>authenticate
+
+<span class="c1"># Check permissions</span>
+ls<span class="w"> </span>-la<span class="w"> </span>/etc/shadow<span class="w">  </span><span class="c1"># Must be readable by root</span>
+</code></pre></div>
+<h3 id="permission-denied-errors">Permission Denied Errors<a class="headerlink" href="#permission-denied-errors" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><span class="c1"># Check if running as root</span>
+id
+
+<span class="c1"># Check user exists</span>
+id<span class="w"> </span>socks
+
+<span class="c1"># Verify user can be created</span>
+useradd<span class="w"> </span>-r<span class="w"> </span>-s<span class="w"> </span>/bin/false<span class="w"> </span>socks
+
+<span class="c1"># Test privilege drop</span>
+sudo<span class="w"> </span>./target/release/rustsocks<span class="w"> </span>--config<span class="w"> </span>config/rustsocks.toml
+</code></pre></div>
+<h3 id="pam-module-not-found">PAM Module Not Found<a class="headerlink" href="#pam-module-not-found" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><span class="c1"># Install PAM development packages</span>
+sudo<span class="w"> </span>apt-get<span class="w"> </span>install<span class="w"> </span>libpam0g-dev
+
+<span class="c1"># Recompile</span>
+cargo<span class="w"> </span>clean
+cargo<span class="w"> </span>build<span class="w"> </span>--release
+</code></pre></div>
+<h2 id="performance">Performance<a class="headerlink" href="#performance" title="Permanent link">&para;</a></h2>
+<p>PAM authentication typically adds minimal overhead:</p>
+<ul>
+<li><strong>pam.address</strong>: 1-5ms (depends on PAM service)</li>
+<li><strong>pam.username</strong>: 10-50ms (depends on auth backend)</li>
+<li>Background: Runs in <code>spawn_blocking</code> to avoid blocking async runtime</li>
+</ul>
+<h2 id="best-practices">Best Practices<a class="headerlink" href="#best-practices" title="Permanent link">&para;</a></h2>
+<ol>
+<li><strong>Use pam.address for IP filtering</strong></li>
+<li>Fast (1-5ms)</li>
+<li>No credentials required</li>
+<li>
+<p>Good for trusted networks</p>
+</li>
+<li>
+<p><strong>Use pam.username for user-based access</strong></p>
+</li>
+<li>Slower (10-50ms) but more flexible</li>
+<li>Use PAM pam_unix for system authentication</li>
+<li>
+<p>Consider LDAP integration for large deployments</p>
+</li>
+<li>
+<p><strong>Combine both for defense in depth</strong></p>
+</li>
+<li>IP filter first (fails fast)</li>
+<li>
+<p>Then username/password (second factor)</p>
+</li>
+<li>
+<p><strong>Monitor and log</strong>
+   <div class="highlight"><pre><span></span><code><span class="c1"># Enable debug logging</span>
+<span class="nv">log_level</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;debug&quot;</span>
+
+<span class="c1"># Monitor PAM logs</span>
+sudo<span class="w"> </span>tail<span class="w"> </span>-f<span class="w"> </span>/var/log/auth.log<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>rustsocks
+</code></pre></div></p>
+</li>
+<li>
+<p><strong>Verify configuration</strong>
+   <div class="highlight"><pre><span></span><code><span class="c1"># At startup</span>
+<span class="o">[</span>auth.pam<span class="o">]</span>
+<span class="nv">verify_service</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">true</span><span class="w">  </span><span class="c1"># Check PAM files exist</span>
+</code></pre></div></p>
+</li>
+</ol>
+<h2 id="example-deployment">Example Deployment<a class="headerlink" href="#example-deployment" title="Permanent link">&para;</a></h2>
+<h3 id="step-1-create-pam-service-files">Step 1: Create PAM Service Files<a class="headerlink" href="#step-1-create-pam-service-files" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><span class="c1"># /etc/pam.d/rustsocks</span>
+%PAM-1.0
+auth<span class="w">       </span>required<span class="w">     </span>pam_unix.so
+account<span class="w">    </span>required<span class="w">     </span>pam_unix.so
+session<span class="w">    </span>optional<span class="w">     </span>pam_limits.so
+</code></pre></div>
+<h3 id="step-2-configure-rustsocks">Step 2: Configure RustSocks<a class="headerlink" href="#step-2-configure-rustsocks" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><span class="k">[auth]</span>
+<span class="n">socks_method</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;pam.username&quot;</span>
+<span class="n">socks_pam_service</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;rustsocks&quot;</span>
+
+<span class="k">[auth.pam]</span>
+<span class="n">default_user</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;rhostusr&quot;</span>
+<span class="n">verbose</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+<span class="n">verify_service</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+</code></pre></div>
+<h3 id="step-3-create-unprivileged-user">Step 3: Create Unprivileged User<a class="headerlink" href="#step-3-create-unprivileged-user" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><span class="c1"># Create socks user</span>
+sudo<span class="w"> </span>useradd<span class="w"> </span>-r<span class="w"> </span>-s<span class="w"> </span>/bin/false<span class="w"> </span>socks
+
+<span class="c1"># Check user exists</span>
+id<span class="w"> </span>socks
+</code></pre></div>
+<h3 id="step-4-run-server">Step 4: Run Server<a class="headerlink" href="#step-4-run-server" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><span class="c1"># Start as root</span>
+sudo<span class="w"> </span>./target/release/rustsocks<span class="w"> </span>--config<span class="w"> </span>config/rustsocks.toml
+
+<span class="c1"># Server will:</span>
+<span class="c1"># 1. Load PAM service &quot;rustsocks&quot;</span>
+<span class="c1"># 2. Bind socket (requires root)</span>
+<span class="c1"># 3. Drop privileges to &#39;socks&#39; user</span>
+<span class="c1"># 4. Accept connections as unprivileged user</span>
+</code></pre></div>
+<h3 id="step-5-test-authentication">Step 5: Test Authentication<a class="headerlink" href="#step-5-test-authentication" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><span class="c1"># Test with valid system account</span>
+curl<span class="w"> </span>-x<span class="w"> </span>socks5://someuser:somepass@127.0.0.1:1080<span class="w"> </span>http://example.com
+
+<span class="c1"># Monitor logs</span>
+sudo<span class="w"> </span>tail<span class="w"> </span>-f<span class="w"> </span>/var/log/auth.log
+
+<span class="c1"># Check RustSocks logs</span>
+tail<span class="w"> </span>-f<span class="w"> </span>rustsocks.log
+</code></pre></div>
+<h2 id="cross-platform-support">Cross-Platform Support<a class="headerlink" href="#cross-platform-support" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Platform</th>
+<th>Status</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Linux</td>
+<td>✅ Full</td>
+<td>PAM fully supported</td>
+</tr>
+<tr>
+<td>BSD</td>
+<td>✅ Full</td>
+<td>PAM available on most BSD systems</td>
+</tr>
+<tr>
+<td>macOS</td>
+<td>⚠️ Limited</td>
+<td>OpenPAM available, limited by system restrictions</td>
+</tr>
+<tr>
+<td>Windows</td>
+<td>❌ None</td>
+<td>No PAM equivalent, use LDAP or custom auth</td>
+</tr>
+</tbody>
+</table>
+<h2 id="summary">Summary<a class="headerlink" href="#summary" title="Permanent link">&para;</a></h2>
+<p>RustSocks PAM authentication provides:</p>
+<p>✅ <strong>pam.address</strong> - IP-only auth for trusted networks
+✅ <strong>pam.username</strong> - Username/password auth via SOCKS5
+✅ <strong>Two-tier authentication</strong> - Defense in depth
+✅ <strong>Privilege dropping</strong> - Secure privilege management
+✅ <strong>Production-ready</strong> - Comprehensive error handling and logging
+✅ <strong>Testable</strong> - Unit and integration tests</p>
+<hr />
+<p><strong>Last Updated:</strong> 2025-11-02
+<strong>Version:</strong> 0.9
+<strong>Status:</strong> ✅ Production Ready</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.instant", "navigation.tabs", "navigation.sections", "navigation.expand", "navigation.top", "toc.follow", "search.highlight", "content.code.copy"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>
