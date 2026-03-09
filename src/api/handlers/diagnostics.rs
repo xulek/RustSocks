@@ -97,3 +97,103 @@ pub async fn test_tcp_connectivity(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::Config;
+    use crate::server::pool::{ConnectionPool, PoolConfig};
+    use crate::session::{MetricsHistory, SessionManager};
+    use std::sync::Arc;
+
+    fn test_state() -> ApiState {
+        ApiState {
+            session_manager: Arc::new(SessionManager::new()),
+            acl_engine: None,
+            acl_config_path: None,
+            connection_pool: Arc::new(ConnectionPool::new(PoolConfig::default())),
+            start_time: std::time::Instant::now(),
+            #[cfg(feature = "database")]
+            session_store: None,
+            metrics_history: Some(Arc::new(MetricsHistory::new(4, 1))),
+            telemetry_history: None,
+            config_path: None,
+            config_snapshot: Arc::new(Config::default()),
+            original_args: Arc::new(Vec::new()),
+        }
+    }
+
+    #[tokio::test]
+    async fn rejects_empty_address() {
+        let (status, Json(response)) = test_tcp_connectivity(
+            State(test_state()),
+            Json(ConnectivityTestRequest {
+                address: "   ".to_string(),
+                port: 80,
+                timeout_ms: None,
+            }),
+        )
+        .await;
+
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(response.error.as_deref(), Some("empty_address"));
+    }
+
+    #[tokio::test]
+    async fn rejects_invalid_ip_and_port() {
+        let (status, Json(response)) = test_tcp_connectivity(
+            State(test_state()),
+            Json(ConnectivityTestRequest {
+                address: "not-an-ip".to_string(),
+                port: 8080,
+                timeout_ms: Some(50),
+            }),
+        )
+        .await;
+
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(response.error.as_deref(), Some("invalid_ip"));
+
+        let (status, Json(response)) = test_tcp_connectivity(
+            State(test_state()),
+            Json(ConnectivityTestRequest {
+                address: "127.0.0.1".to_string(),
+                port: 0,
+                timeout_ms: Some(50),
+            }),
+        )
+        .await;
+
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(response.error.as_deref(), Some("invalid_port"));
+    }
+
+    #[tokio::test]
+    async fn returns_success_for_reachable_listener() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("listener");
+        let addr = listener.local_addr().expect("local addr");
+
+        let accept_task = tokio::spawn(async move {
+            let _ = listener.accept().await.expect("accept");
+        });
+
+        let (status, Json(response)) = test_tcp_connectivity(
+            State(test_state()),
+            Json(ConnectivityTestRequest {
+                address: "127.0.0.1".to_string(),
+                port: addr.port(),
+                timeout_ms: Some(500),
+            }),
+        )
+        .await;
+
+        accept_task.await.expect("accept task");
+
+        assert_eq!(status, StatusCode::OK);
+        assert!(response.success);
+        assert!(response.latency_ms.is_some());
+        assert!(response.error.is_none());
+    }
+}

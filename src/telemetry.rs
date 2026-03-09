@@ -114,3 +114,83 @@ impl TelemetryHistory {
             .collect()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn event_with_offset(minutes_ago: i64, message: &str) -> TelemetryEvent {
+        TelemetryEvent {
+            timestamp: Utc::now() - ChronoDuration::minutes(minutes_ago),
+            severity: TelemetrySeverity::Info,
+            category: "tests".to_string(),
+            message: message.to_string(),
+            details: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn add_event_prunes_expired_entries() {
+        let history = TelemetryHistory::new(8, 1);
+        history.add_event(event_with_offset(180, "expired")).await;
+        history.add_event(event_with_offset(5, "fresh")).await;
+
+        let events = history.get_events().await;
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].message, "fresh");
+    }
+
+    #[tokio::test]
+    async fn add_event_tracks_capacity_drops() {
+        let history = TelemetryHistory::new(2, 24);
+
+        history.add_event(event_with_offset(0, "one")).await;
+        history.add_event(event_with_offset(0, "two")).await;
+        history.add_event(event_with_offset(0, "three")).await;
+
+        let events = history.get_events().await;
+        let messages: Vec<_> = events.into_iter().map(|event| event.message).collect();
+
+        assert_eq!(messages, vec!["two".to_string(), "three".to_string()]);
+        assert_eq!(history.dropped_event_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn record_event_sets_timestamp_and_details() {
+        let history = TelemetryHistory::new(4, 24);
+
+        history
+            .record_event(
+                TelemetrySeverity::Warning,
+                "pool",
+                "queue saturated",
+                Some(json!({"destination": "127.0.0.1:443"})),
+            )
+            .await;
+
+        let events = history.get_events().await;
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].severity, TelemetrySeverity::Warning);
+        assert_eq!(events[0].category, "pool");
+        assert!(events[0].timestamp <= Utc::now());
+        assert_eq!(
+            events[0]
+                .details
+                .as_ref()
+                .and_then(|value| value.get("destination")),
+            Some(&json!("127.0.0.1:443"))
+        );
+    }
+
+    #[tokio::test]
+    async fn get_events_since_filters_by_cutoff() {
+        let history = TelemetryHistory::new(8, 24);
+        history.add_event(event_with_offset(120, "old")).await;
+        history.add_event(event_with_offset(15, "recent")).await;
+
+        let recent = history.get_events_since(60).await;
+        assert_eq!(recent.len(), 1);
+        assert_eq!(recent[0].message, "recent");
+    }
+}

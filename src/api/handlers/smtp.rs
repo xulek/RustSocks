@@ -263,3 +263,151 @@ pub async fn test_smtp(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::Config;
+    use crate::server::pool::{ConnectionPool, PoolConfig};
+    use crate::session::SessionManager;
+    use std::sync::Arc;
+
+    fn test_state() -> ApiState {
+        ApiState {
+            session_manager: Arc::new(SessionManager::new()),
+            acl_engine: None,
+            acl_config_path: None,
+            connection_pool: Arc::new(ConnectionPool::new(PoolConfig::default())),
+            start_time: std::time::Instant::now(),
+            #[cfg(feature = "database")]
+            session_store: None,
+            metrics_history: None,
+            telemetry_history: None,
+            config_path: None,
+            config_snapshot: Arc::new(Config::default()),
+            original_args: Arc::new(Vec::new()),
+        }
+    }
+
+    #[tokio::test]
+    async fn smtp_modes_exposes_supported_values() {
+        let (status, Json(response)) = get_smtp_modes().await;
+
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(response.modes.len(), 7);
+        assert!(response
+            .modes
+            .iter()
+            .any(|mode| mode.value == "starttls_auth" && mode.default_port == 587));
+        assert!(response
+            .modes
+            .iter()
+            .any(|mode| mode.value == "smtps_auth" && mode.requires_auth));
+    }
+
+    #[tokio::test]
+    async fn smtp_handlers_reject_missing_database_configuration() {
+        let (status, body) = get_smtp_config(State(test_state())).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(body.0["error"], "Database not configured");
+
+        let (status, body) = update_smtp_config(
+            State(test_state()),
+            Json(SmtpConfigUpdateRequest {
+                enabled: true,
+                mode: "starttls_auth".to_string(),
+                host: "smtp.example.com".to_string(),
+                port: 587,
+                from_address: "noreply@example.com".to_string(),
+                from_name: None,
+                username: None,
+                password: None,
+                notify_recipients: vec![],
+                notify_critical: false,
+                notify_security: false,
+                notify_config_changes: false,
+                notify_service_status: false,
+                notify_resource_pressure: false,
+                notify_connection_pressure: false,
+                notify_cooldown_seconds: 60,
+                notify_cpu_threshold: 80,
+                notify_ram_threshold: 80,
+                notify_disk_threshold: 90,
+                notify_connection_percent_threshold: 85,
+            }),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(body.0["error"], "Database not configured");
+
+        let (status, Json(response)) = test_smtp(
+            State(test_state()),
+            Json(SmtpTestRequest {
+                recipient: "ops@example.com".to_string(),
+            }),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert!(!response.success);
+        assert_eq!(response.error.as_deref(), Some("Database not configured"));
+    }
+
+    #[cfg(feature = "database")]
+    #[tokio::test]
+    async fn update_smtp_config_validates_mode_before_save() {
+        let store = Arc::new(
+            crate::session::SessionStore::connect("sqlite::memory:")
+                .await
+                .expect("store"),
+        );
+        let mut config = Config::default();
+        config.sessions.api_token = Some("token".to_string());
+
+        let state = ApiState {
+            session_manager: Arc::new(SessionManager::new()),
+            acl_engine: None,
+            acl_config_path: None,
+            connection_pool: Arc::new(ConnectionPool::new(PoolConfig::default())),
+            start_time: std::time::Instant::now(),
+            session_store: Some(store),
+            metrics_history: None,
+            telemetry_history: None,
+            config_path: None,
+            config_snapshot: Arc::new(config),
+            original_args: Arc::new(Vec::new()),
+        };
+
+        let (status, body) = update_smtp_config(
+            State(state),
+            Json(SmtpConfigUpdateRequest {
+                enabled: true,
+                mode: "invalid_mode".to_string(),
+                host: "smtp.example.com".to_string(),
+                port: 587,
+                from_address: "noreply@example.com".to_string(),
+                from_name: None,
+                username: None,
+                password: None,
+                notify_recipients: vec!["ops@example.com".to_string()],
+                notify_critical: false,
+                notify_security: false,
+                notify_config_changes: false,
+                notify_service_status: false,
+                notify_resource_pressure: false,
+                notify_connection_pressure: false,
+                notify_cooldown_seconds: 60,
+                notify_cpu_threshold: 80,
+                notify_ram_threshold: 80,
+                notify_disk_threshold: 90,
+                notify_connection_percent_threshold: 85,
+            }),
+        )
+        .await;
+
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert!(body.0["error"]
+            .as_str()
+            .expect("error string")
+            .contains("Unknown SMTP mode"));
+    }
+}

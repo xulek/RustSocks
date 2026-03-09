@@ -59,3 +59,20 @@ pub async fn get_system_resources() -> (StatusCode, Json<SystemResourcesResponse
 
     (StatusCode::OK, Json(response))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn returns_sane_resource_snapshot() {
+        let (status, Json(response)) = get_system_resources().await;
+
+        assert_eq!(status, StatusCode::OK);
+        assert!(response.system_cpu_percent >= 0.0);
+        assert!(response.system_ram_percent >= 0.0);
+        assert!(response.system_ram_percent <= 100.0);
+        assert!(response.system_ram_total_bytes >= response.system_ram_used_bytes);
+        assert!(response.process_cpu_percent >= 0.0);
+    }
+}

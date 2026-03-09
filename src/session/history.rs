@@ -132,3 +132,68 @@ pub async fn start_metrics_collector(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn snapshot_with_offset(hours_ago: i64, total_sessions: u64) -> MetricsSnapshot {
+        MetricsSnapshot {
+            timestamp: Utc::now() - ChronoDuration::hours(hours_ago),
+            active_sessions: total_sessions / 2,
+            total_sessions,
+            bandwidth: total_sessions * 100,
+        }
+    }
+
+    #[tokio::test]
+    async fn add_snapshot_prunes_expired_entries() {
+        let history = MetricsHistory::new(8, 1);
+        history.add_snapshot(snapshot_with_offset(4, 10)).await;
+        history.add_snapshot(snapshot_with_offset(0, 20)).await;
+
+        let snapshots = history.get_snapshots().await;
+        assert_eq!(snapshots.len(), 1);
+        assert_eq!(snapshots[0].total_sessions, 20);
+    }
+
+    #[tokio::test]
+    async fn add_snapshot_enforces_max_capacity() {
+        let history = MetricsHistory::new(2, 24);
+        history.add_snapshot(snapshot_with_offset(0, 10)).await;
+        history.add_snapshot(snapshot_with_offset(0, 20)).await;
+        history.add_snapshot(snapshot_with_offset(0, 30)).await;
+
+        let snapshots = history.get_snapshots().await;
+        let totals: Vec<_> = snapshots
+            .into_iter()
+            .map(|snapshot| snapshot.total_sessions)
+            .collect();
+        assert_eq!(totals, vec![20, 30]);
+    }
+
+    #[tokio::test]
+    async fn get_snapshots_since_filters_recent_values() {
+        let history = MetricsHistory::new(8, 24);
+        history
+            .add_snapshot(MetricsSnapshot {
+                timestamp: Utc::now() - ChronoDuration::minutes(90),
+                active_sessions: 1,
+                total_sessions: 10,
+                bandwidth: 100,
+            })
+            .await;
+        history
+            .add_snapshot(MetricsSnapshot {
+                timestamp: Utc::now() - ChronoDuration::minutes(10),
+                active_sessions: 2,
+                total_sessions: 20,
+                bandwidth: 200,
+            })
+            .await;
+
+        let snapshots = history.get_snapshots_since(60).await;
+        assert_eq!(snapshots.len(), 1);
+        assert_eq!(snapshots[0].total_sessions, 20);
+    }
+}
