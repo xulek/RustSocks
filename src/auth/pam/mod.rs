@@ -219,9 +219,13 @@ mod unix {
                 last_status: PamReturnCode::SUCCESS,
             };
 
-            transaction.set_item(PamItemType::RHOST, &transaction.rhost)?;
-            transaction.set_item(PamItemType::RUSER, &transaction.ruser)?;
-            transaction.set_item(PamItemType::USER, &transaction.user)?;
+            let rhost = transaction.rhost.clone();
+            let ruser = transaction.ruser.clone();
+            let user = transaction.user.clone();
+
+            transaction.set_item(PamItemType::RHOST, &rhost)?;
+            transaction.set_item(PamItemType::RUSER, &ruser)?;
+            transaction.set_item(PamItemType::USER, &user)?;
 
             Ok(transaction)
         }
@@ -271,7 +275,9 @@ mod unix {
     impl Drop for PamTransaction {
         fn drop(&mut self) {
             if !self.handle.is_null() {
-                let _ = wrapped::end(self.handle_mut(), self.last_status);
+                let status = self.last_status;
+                let handle = self.handle;
+                let _ = unsafe { wrapped::end(&mut *handle, status) };
             }
         }
     }
