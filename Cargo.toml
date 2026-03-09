@@ -58,8 +58,10 @@ subtle = "2.6"          # Constant-time comparisons
 lettre = { version = "0.11", default-features = false, features = ["tokio1", "tokio1-rustls-tls", "ring", "builder", "smtp-transport"] }  # SMTP email notifications (using ring crypto backend)
 aes-gcm = "0.10"        # AES-GCM encryption for SMTP passwords
 
-# Database (SQLite for session history)
-sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "sqlite", "mysql", "any", "chrono", "uuid", "macros", "migrate"], optional = true }
+# Database
+sqlx-core = { version = "0.8", default-features = false, features = ["_rt-tokio", "chrono", "uuid", "migrate"], optional = true }
+sqlx-sqlite = { version = "0.8", default-features = false, features = ["bundled", "chrono", "uuid", "migrate"], optional = true }
+mysql_async = { version = "0.36", features = ["default-rustls-ring"], optional = true }
 
 # Metrics
 prometheus = { version = "0.14", optional = true }
@@ -72,7 +74,9 @@ smallvec = "1.13"  # Stack-allocated vectors for small buffers (protocol parsing
 [features]
 default = ["metrics", "fast-allocator"]
 metrics = ["prometheus", "lazy_static"]
-database = ["sqlx"]
+database = ["database-sqlite", "database-mysql"]
+database-sqlite = ["sqlx-core", "sqlx-sqlite"]
+database-mysql = ["mysql_async"]
 fast-allocator = ["mimalloc"]
 gssapi = ["libgssapi"]
 
@@ -80,12 +84,11 @@ gssapi = ["libgssapi"]
 tokio-test = "0.4"
 tempfile = "3.23"
 serde_json = "1.0"
-pam-sys = "0.5"
 rcgen = "0.14"
 criterion = { version = "0.5", features = ["async_tokio", "html_reports"] }
 
 [target.'cfg(unix)'.dependencies]
-pam = "0.7"
+pam-sys = "0.5"
 nix = { version = "0.30", features = ["user"] }  # For getgrouplist() - LDAP groups
 libc = "0.2"  # For getgrouplist() syscall
 libgssapi = { version = "0.7", optional = true }  # For GSS-API/Kerberos authentication
@@ -110,3 +113,11 @@ harness = false
 [[bench]]
 name = "udp_serialization"
 harness = false
+
+[profile.dev]
+debug = 0
+incremental = false
+
+[profile.test]
+debug = 0
+incremental = false

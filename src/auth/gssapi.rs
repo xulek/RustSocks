@@ -4,12 +4,12 @@
 
 use crate::config::GssApiSettings;
 use crate::protocol::GssApiProtectionLevel;
-use std::fmt;
-use tokio::io::{AsyncRead, AsyncWrite};
 #[cfg(unix)]
 use crate::protocol::{
     parse_gssapi_message, send_gssapi_abort, send_gssapi_message, GssApiMessageType,
 };
+use std::fmt;
+use tokio::io::{AsyncRead, AsyncWrite};
 #[cfg(unix)]
 use tracing::{debug, error, info, trace, warn};
 

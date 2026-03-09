@@ -13,7 +13,7 @@ use crate::session::{start_metrics_collector, MetricsHistory, SessionManager};
 use crate::session::{BatchConfig, SessionStore};
 #[cfg(feature = "database")]
 use crate::smtp::notifications::{
-    notify_with_pool, resource_monitor_loop, NotificationDecision, NotificationKind,
+    notify_with_store, resource_monitor_loop, NotificationDecision, NotificationKind,
 };
 use crate::telemetry::TelemetryHistory;
 use crate::utils::error::{Result, RustSocksError};
@@ -568,7 +568,7 @@ impl SocksServer {
 
         #[cfg(feature = "database")]
         if let Some(store) = self.session_manager.session_store() {
-            let pool = store.pool().clone();
+            let store = store.clone();
             let api_token = self.config.sessions.api_token.clone();
             let subject = "RustSocks service status: started".to_string();
             let body = format!(
@@ -579,8 +579,8 @@ impl SocksServer {
                 if self.acl_engine.is_some() { "yes" } else { "no" }
             );
             tokio::spawn(async move {
-                match notify_with_pool(
-                    &pool,
+                match notify_with_store(
+                    &store,
                     api_token,
                     NotificationKind::ServiceStatus,
                     subject,
@@ -604,12 +604,11 @@ impl SocksServer {
 
         #[cfg(feature = "database")]
         if let Some(store) = self.session_manager.session_store() {
-            let pool = store.pool().clone();
             let api_token = self.config.sessions.api_token.clone();
             let session_manager = self.session_manager.clone();
             let max_connections = self.config.server.max_connections;
             tokio::spawn(resource_monitor_loop(
-                pool,
+                store,
                 api_token,
                 session_manager,
                 max_connections,

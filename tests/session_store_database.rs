@@ -11,7 +11,9 @@ use uuid::Uuid;
 async fn setup_store() -> (SessionStore, TempDir) {
     std::fs::create_dir_all("target").unwrap();
     let temp_dir = TempDir::new_in("target").unwrap();
-    let db_path = temp_dir.path().join(format!("sessions-{}.db", Uuid::new_v4()));
+    let db_path = temp_dir
+        .path()
+        .join(format!("sessions-{}.db", Uuid::new_v4()));
     let db_url = format!("sqlite://{}", db_path.to_string_lossy().replace('\\', "/"));
     let store = SessionStore::connect(&db_url).await.unwrap();
     (store, temp_dir)

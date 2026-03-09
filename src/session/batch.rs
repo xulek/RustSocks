@@ -83,7 +83,8 @@ impl BatchWriter {
         debug!(count, "Flushing session batch to store");
 
         if let Err(e) = self.store.save_batch(batch.clone()).await {
-            let consecutive_failures = self.consecutive_failures.fetch_add(1, Ordering::Relaxed) + 1;
+            let consecutive_failures =
+                self.consecutive_failures.fetch_add(1, Ordering::Relaxed) + 1;
             let mut queue = self.queue.lock().await;
             for session in batch.into_iter().rev() {
                 queue.push_front(session);

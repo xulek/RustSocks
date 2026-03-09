@@ -20,12 +20,10 @@ type HmacSha256 = Hmac<Sha256>;
 
 use crate::auth::verify_password;
 use crate::config::DashboardAuthSettings;
+#[cfg(feature = "database")]
+use crate::smtp::notifications::{notify_with_store, NotificationDecision, NotificationKind};
 use argon2::password_hash::{rand_core::OsRng as ArgonOsRng, PasswordHasher, SaltString};
 use argon2::Argon2;
-#[cfg(feature = "database")]
-use crate::smtp::notifications::{notify_with_pool, NotificationDecision, NotificationKind};
-#[cfg(feature = "database")]
-use sqlx::{Any, Pool};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 const SESSION_COOKIE_NAME: &str = "rustsocks_session";
@@ -58,7 +56,7 @@ pub struct AuthState {
     /// Next Unix timestamp when full session cleanup is allowed.
     next_cleanup_at: Arc<AtomicU64>,
     #[cfg(feature = "database")]
-    pub smtp_pool: Option<Pool<Any>>,
+    pub smtp_store: Option<Arc<crate::session::SessionStore>>,
 }
 
 #[derive(Clone, Debug)]
@@ -91,7 +89,7 @@ impl AuthState {
         settings: DashboardAuthSettings,
         base_path: String,
         api_token: Option<String>,
-        smtp_pool: Option<Pool<Any>>,
+        smtp_store: Option<Arc<crate::session::SessionStore>>,
     ) -> Self {
         Self {
             settings,
@@ -101,7 +99,7 @@ impl AuthState {
             login_attempts: Arc::new(DashMap::new()),
             ip_login_attempts: Arc::new(DashMap::new()),
             next_cleanup_at: Arc::new(AtomicU64::new(0)),
-            smtp_pool,
+            smtp_store,
         }
     }
 
@@ -109,7 +107,11 @@ impl AuthState {
     fn is_login_locked(&self, username: &str, source_ip: IpAddr) -> bool {
         let login_key = login_attempt_key(username, source_ip);
         Self::attempt_locked(&self.login_attempts, &login_key, MAX_LOGIN_ATTEMPTS)
-            || Self::attempt_locked(&self.ip_login_attempts, &source_ip, MAX_LOGIN_ATTEMPTS_PER_IP)
+            || Self::attempt_locked(
+                &self.ip_login_attempts,
+                &source_ip,
+                MAX_LOGIN_ATTEMPTS_PER_IP,
+            )
     }
 
     /// Record a failed login attempt.
@@ -122,7 +124,8 @@ impl AuthState {
 
     /// Clear login attempts on successful login.
     fn clear_login_attempts(&self, username: &str, source_ip: IpAddr) {
-        self.login_attempts.remove(&login_attempt_key(username, source_ip));
+        self.login_attempts
+            .remove(&login_attempt_key(username, source_ip));
     }
 
     pub fn create_session(&self, username: String) -> String {
@@ -191,7 +194,12 @@ impl AuthState {
     }
 
     pub fn verify_credentials(&self, username: &str, password: &str) -> bool {
-        if let Some(user) = self.settings.users.iter().find(|user| user.username == username) {
+        if let Some(user) = self
+            .settings
+            .users
+            .iter()
+            .find(|user| user.username == username)
+        {
             verify_password(&user.password, password)
         } else {
             let _ = verify_password(dummy_password_hash(), password);
@@ -471,7 +479,7 @@ pub async fn login_handler(
 
 #[cfg(feature = "database")]
 fn spawn_security_notification(auth_state: &AuthState, username: &str, reason: &str) {
-    let Some(pool) = auth_state.smtp_pool.as_ref() else {
+    let Some(store) = auth_state.smtp_store.as_ref() else {
         return;
     };
     let subject = "RustSocks security alert: failed login attempt".to_string();
@@ -479,11 +487,12 @@ fn spawn_security_notification(auth_state: &AuthState, username: &str, reason: &
         "A failed dashboard login attempt was detected.\n\nUsername: {}\nReason: {}\n",
         username, reason
     );
-    let pool = pool.clone();
+    let store = store.clone();
     let api_token = auth_state.api_token.clone();
 
     tokio::spawn(async move {
-        match notify_with_pool(&pool, api_token, NotificationKind::Security, subject, body).await {
+        match notify_with_store(&store, api_token, NotificationKind::Security, subject, body).await
+        {
             Ok(NotificationDecision::Sent { recipients }) => {
                 info!("Security notification sent to {} recipient(s)", recipients);
             }

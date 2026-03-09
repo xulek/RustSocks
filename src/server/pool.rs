@@ -444,13 +444,8 @@ impl ConnectionPool {
                 }
 
                 self.decrement_active(addr);
-                self.log_capacity_events(
-                    "returning to pool",
-                    addr,
-                    drop_reason,
-                    evicted_addr,
-                )
-                .await;
+                self.log_capacity_events("returning to pool", addr, drop_reason, evicted_addr)
+                    .await;
             }
             ReuseHint::Refresh => {
                 let mut stream = stream;
@@ -629,13 +624,8 @@ impl ConnectionPool {
             );
         }
 
-        self.log_capacity_events(
-            "refreshing idle pool",
-            addr,
-            drop_reason,
-            evicted_addr,
-        )
-        .await;
+        self.log_capacity_events("refreshing idle pool", addr, drop_reason, evicted_addr)
+            .await;
 
         Ok(())
     }

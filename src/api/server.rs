@@ -1293,12 +1293,11 @@ pub async fn start_api_server(
     let auth_state = {
         #[cfg(feature = "database")]
         {
-            let smtp_pool = session_store.as_ref().map(|store| store.pool().clone());
             Arc::new(AuthState::new(
                 config.dashboard_auth.clone(),
                 base_path.clone(),
                 config.token.clone(),
-                smtp_pool,
+                session_store.clone(),
             ))
         }
         #[cfg(not(feature = "database"))]
@@ -1594,7 +1593,10 @@ pub async fn start_api_server(
     }
 
     let handle = tokio::spawn(async move {
-        let server = axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>());
+        let server = axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<SocketAddr>(),
+        );
         if let Err(err) = server.await {
             error!("API server error: {}", err);
         }

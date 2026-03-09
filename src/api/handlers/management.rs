@@ -2,7 +2,7 @@ use crate::api::handlers::sessions::ApiState;
 use crate::api::types::{AclTestRequest, AclTestResponse, HealthResponse};
 use crate::config::Config;
 #[cfg(feature = "database")]
-use crate::smtp::notifications::{notify_with_pool, NotificationDecision, NotificationKind};
+use crate::smtp::notifications::{notify_with_store, NotificationDecision, NotificationKind};
 use axum::{extract::State, http::StatusCode, Json};
 use serde::{Deserialize, Serialize};
 use std::ffi::OsString;
@@ -17,10 +17,10 @@ fn spawn_notification(state: &ApiState, kind: NotificationKind, subject: String,
     let Some(store) = state.session_store.as_ref() else {
         return;
     };
-    let pool = store.pool().clone();
+    let store = store.clone();
     let api_token = state.config_snapshot.sessions.api_token.clone();
     tokio::spawn(async move {
-        match notify_with_pool(&pool, api_token, kind, subject, body).await {
+        match notify_with_store(&store, api_token, kind, subject, body).await {
             Ok(NotificationDecision::Sent { recipients }) => {
                 info!("Notification sent to {} recipient(s)", recipients);
             }

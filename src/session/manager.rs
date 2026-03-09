@@ -321,7 +321,10 @@ impl SessionManager {
 
         {
             let rejected = self.rejected_sessions.read().await;
-            for session in rejected.iter().filter(|session| session.start_time >= cutoff) {
+            for session in rejected
+                .iter()
+                .filter(|session| session.start_time >= cutoff)
+            {
                 visit(session);
             }
         }
@@ -1233,7 +1236,9 @@ mod tests {
         {
             let mut closed = manager.closed_sessions.write().await;
             closed[0].start_time -= ChronoDuration::hours(48);
-            closed[0].end_time = closed[0].end_time.map(|end| end - ChronoDuration::hours(48));
+            closed[0].end_time = closed[0]
+                .end_time
+                .map(|end| end - ChronoDuration::hours(48));
         }
 
         let current_id = manager

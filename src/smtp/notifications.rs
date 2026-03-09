@@ -165,8 +165,8 @@ pub async fn send_notification(
 }
 
 #[cfg(feature = "database")]
-pub async fn notify_with_pool(
-    pool: &sqlx::Pool<sqlx::Any>,
+pub async fn notify_with_store(
+    store: &std::sync::Arc<crate::session::SessionStore>,
     api_token: Option<String>,
     kind: NotificationKind,
     subject: String,
@@ -174,14 +174,14 @@ pub async fn notify_with_pool(
 ) -> Result<NotificationDecision, String> {
     use super::repository::SmtpRepository;
 
-    let repo = SmtpRepository::new(pool.clone(), api_token);
+    let repo = SmtpRepository::new(store.clone(), api_token);
     let config = repo.get_config().await?;
     send_notification(&config, kind, &subject, &body).await
 }
 
 #[cfg(feature = "database")]
 pub async fn resource_monitor_loop(
-    pool: sqlx::Pool<sqlx::Any>,
+    store: std::sync::Arc<crate::session::SessionStore>,
     api_token: Option<String>,
     session_manager: std::sync::Arc<crate::session::SessionManager>,
     max_connections: usize,
@@ -240,11 +240,12 @@ pub async fn resource_monitor_loop(
             0.0
         };
 
-        let repo = SmtpRepository::new(pool.clone(), api_token.clone());
+        let repo = SmtpRepository::new(store.clone(), api_token.clone());
         let config = match repo.get_config().await {
             Ok(cfg) => cfg,
             Err(err) => {
                 warn!("Failed to fetch SMTP config for resource alerts: {}", err);
+                sleep(Duration::from_secs(interval_seconds.max(5))).await;
                 continue;
             }
         };
@@ -416,17 +417,17 @@ mod tests {
             state.can_send(NotificationKind::Critical, 60, now + 30),
             Err(NotificationSkipReason::CooldownActive)
         );
-        assert_eq!(state.can_send(NotificationKind::Critical, 60, now + 61), Ok(()));
+        assert_eq!(
+            state.can_send(NotificationKind::Critical, 60, now + 61),
+            Ok(())
+        );
     }
 
     #[test]
     fn cooldown_is_not_armed_until_send_succeeds() {
         let mut state = CooldownState::default();
         let now = 2_000;
-        assert_eq!(
-            state.can_send(NotificationKind::Security, 60, now),
-            Ok(())
-        );
+        assert_eq!(state.can_send(NotificationKind::Security, 60, now), Ok(()));
         assert_eq!(
             state.can_send(NotificationKind::Security, 60, now + 30),
             Ok(())

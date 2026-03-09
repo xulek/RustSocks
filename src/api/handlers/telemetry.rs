@@ -242,7 +242,9 @@ mod tests {
         let recent_session = manager
             .new_session("alice", sample_connection("recent.example"), "allow", None)
             .await;
-        manager.update_traffic(&recent_session, 200, 100, 1, 1).await;
+        manager
+            .update_traffic(&recent_session, 200, 100, 1, 1)
+            .await;
         manager
             .close_session(&recent_session, Some("done".into()), SessionStatus::Closed)
             .await;

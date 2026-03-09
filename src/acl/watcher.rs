@@ -246,7 +246,8 @@ impl AclWatcher {
         }
 
         let success =
-            Self::handle_reload_event(config_path, engine, session_manager, should_log_failure).await;
+            Self::handle_reload_event(config_path, engine, session_manager, should_log_failure)
+                .await;
 
         let mut state_lock = state.lock().await;
         if success {

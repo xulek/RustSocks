@@ -66,9 +66,8 @@ pub async fn get_smtp_config(
             );
         };
 
-        let pool = session_store.pool();
         let api_token = state.config_snapshot.sessions.api_token.clone();
-        let repo = SmtpRepository::new(pool.clone(), api_token);
+        let repo = SmtpRepository::new(session_store.clone(), api_token);
 
         match repo.get_config().await {
             Ok(config) => {
@@ -136,9 +135,8 @@ pub async fn update_smtp_config(
             );
         };
 
-        let pool = session_store.pool();
         let api_token = state.config_snapshot.sessions.api_token.clone();
-        let repo = SmtpRepository::new(pool.clone(), api_token);
+        let repo = SmtpRepository::new(session_store.clone(), api_token);
 
         let mode: SmtpMode = match request.mode.parse() {
             Ok(m) => m,
@@ -226,9 +224,8 @@ pub async fn test_smtp(
             );
         };
 
-        let pool = session_store.pool();
         let api_token = state.config_snapshot.sessions.api_token.clone();
-        let repo = SmtpRepository::new(pool.clone(), api_token);
+        let repo = SmtpRepository::new(session_store.clone(), api_token);
 
         let config = match repo.get_config().await {
             Ok(c) => c,
