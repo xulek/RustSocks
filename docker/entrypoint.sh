@@ -61,7 +61,11 @@ ACL_FILE="/etc/rustsocks/acl.toml"
 if [ -f "$ACL_FILE" ]; then
     echo "✓ ACL configuration found"
 elif [ -f "${ACL_FILE}.example" ]; then
-    echo "ℹ️  ACL example available at ${ACL_FILE}.example"
+    echo "📋 Initializing ACL configuration from ${ACL_FILE}.example"
+    cp "${ACL_FILE}.example" "$ACL_FILE"
+else
+    echo "❌ ACL configuration is enabled but no ACL file or example is available"
+    exit 1
 fi
 
 # Dashboard check

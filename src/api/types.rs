@@ -9,8 +9,11 @@ use crate::server::pool::PoolStats;
 #[derive(Debug, Serialize, Deserialize)]
 pub struct HealthResponse {
     pub status: String,
+    pub ready: bool,
     pub version: String,
     pub uptime_seconds: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub database: Option<String>,
 }
 
 /// Session detail in API response

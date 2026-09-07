@@ -33,7 +33,7 @@ base_path = "/"            # URL base path (e.g., "/rustsocks")
 
 ### Optional Dashboard Authentication
 
-Enable Basic Authentication for the dashboard to gate access:
+Enable built-in session authentication for the dashboard and API:
 
 ```toml
 [sessions.dashboard_auth]
@@ -43,7 +43,7 @@ username = "admin"
 password = "strong-secret"
 ```
 
-When enabled, the browser prompts for the configured credentials before the dashboard loads.
+When enabled, users sign in through the dashboard login page and receive an HttpOnly session cookie.
 
 ### 2. Build Dashboard
 
@@ -467,7 +467,6 @@ Typical load times on localhost:
 ## Future Enhancements
 
 Planned features:
-- [ ] Built-in authentication (JWT, OAuth)
 - [ ] WebSocket for real-time updates
 - [ ] Advanced filtering and search
 - [ ] Export to CSV/JSON

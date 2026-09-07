@@ -238,6 +238,44 @@ async fn e2e_basic_connect() {
     println!("✅ E2E Test 1: Basic CONNECT - PASSED");
 }
 
+#[tokio::test]
+async fn e2e_connect_preserves_payload_prefetched_with_request() {
+    let echo_addr = spawn_echo_server().await;
+    let auth_config = AuthConfig {
+        client_method: "none".to_string(),
+        socks_method: "none".to_string(),
+        users: vec![],
+        pam: Default::default(),
+        gssapi: Default::default(),
+    };
+
+    let (ctx, _) = create_basic_server_context(auth_config, None).await;
+    let socks_addr = spawn_socks_server(ctx).await;
+    let mut client = TcpStream::connect(socks_addr).await.unwrap();
+    socks5_handshake_noauth(&mut client).await.unwrap();
+
+    let payload = b"payload-in-same-write-as-connect-request";
+    let mut request_and_payload = vec![0x05, 0x01, 0x00, 0x01];
+    let IpAddr::V4(target_ip) = echo_addr.ip() else {
+        panic!("echo helper must bind IPv4");
+    };
+    request_and_payload.extend_from_slice(&target_ip.octets());
+    request_and_payload.extend_from_slice(&echo_addr.port().to_be_bytes());
+    request_and_payload.extend_from_slice(payload);
+    client.write_all(&request_and_payload).await.unwrap();
+
+    let mut connect_response = [0u8; 10];
+    client.read_exact(&mut connect_response).await.unwrap();
+    assert_eq!(connect_response[1], ReplyCode::Succeeded as u8);
+
+    let mut echoed = vec![0u8; payload.len()];
+    tokio::time::timeout(Duration::from_secs(2), client.read_exact(&mut echoed))
+        .await
+        .expect("prefetched payload should not be lost")
+        .unwrap();
+    assert_eq!(echoed, payload);
+}
+
 // ============================================================================
 // E2E Test 2: Authentication (All Methods)
 // ============================================================================

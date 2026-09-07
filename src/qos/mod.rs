@@ -7,6 +7,12 @@ pub use htb::HtbQos;
 pub use metrics::QosMetrics;
 pub use types::{ConnectionLimits, HtbConfig, QosConfig, UserAllocation};
 
+/// Ensure all QoS Prometheus collectors are registered before a scrape.
+#[inline]
+pub fn ensure_metrics_registered() {
+    metrics::init();
+}
+
 use crate::utils::error::{Result, RustSocksError};
 use std::sync::Arc;
 use tracing::info;

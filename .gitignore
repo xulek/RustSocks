@@ -187,3 +187,8 @@ perf.data*
 file:sqlx-in-memory-*
 .claude
 *.cmd
+# Local deployment secrets
+.env
+.env.*
+!.env.example
+!docker/.env.example

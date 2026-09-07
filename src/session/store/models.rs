@@ -24,9 +24,9 @@ impl MetricSnapshotRow {
 
         Ok(MetricsSnapshot {
             timestamp,
-            active_sessions: self.active_sessions as u64,
-            total_sessions: self.total_sessions as u64,
-            bandwidth: self.bandwidth as u64,
+            active_sessions: nonnegative_u64("active_sessions", self.active_sessions)?,
+            total_sessions: nonnegative_u64("total_sessions", self.total_sessions)?,
+            bandwidth: nonnegative_u64("bandwidth", self.bandwidth)?,
         })
     }
 }
@@ -56,20 +56,27 @@ pub(super) struct SmtpConfigRow {
 }
 
 impl SmtpConfigRow {
-    pub(super) fn into_smtp_config(self, api_token: Option<&str>) -> Result<SmtpConfig, String> {
+    pub(super) fn into_smtp_config(self, encryption_key: Option<&str>) -> Result<SmtpConfig, String> {
         let mode: SmtpMode = self.mode.parse().unwrap_or_default();
         let has_password = self.password_encrypted.is_some();
         let notify_recipients = parse_recipients(self.notify_recipients.as_deref().unwrap_or(""));
-        let password = match (&self.password_encrypted, api_token) {
-            (Some(enc), Some(token)) => decrypt_password(enc, token).ok(),
-            _ => None,
+        let password = match (&self.password_encrypted, encryption_key) {
+            (Some(encrypted), Some(key)) => Some(decrypt_password(encrypted, key)?),
+            (Some(_), None) => {
+                return Err(
+                    "sessions.smtp_encryption_key is required to decrypt the stored SMTP password"
+                        .to_string(),
+                )
+            }
+            (None, _) => None,
         };
 
         Ok(SmtpConfig {
             enabled: self.enabled != 0,
             mode,
             host: self.host,
-            port: self.port as u16,
+            port: u16::try_from(self.port)
+                .map_err(|_| format!("SMTP port out of range: {}", self.port))?,
             from_address: self.from_address,
             from_name: self.from_name,
             username: self.username,
@@ -233,10 +240,10 @@ impl SessionRow {
                 decode_error("dest_port", format!("out of range: {}", self.dest_port))
             })?,
             protocol,
-            bytes_sent: self.bytes_sent as u64,
-            bytes_received: self.bytes_received as u64,
-            packets_sent: self.packets_sent as u64,
-            packets_received: self.packets_received as u64,
+            bytes_sent: nonnegative_u64("bytes_sent", self.bytes_sent)?,
+            bytes_received: nonnegative_u64("bytes_received", self.bytes_received)?,
+            packets_sent: nonnegative_u64("packets_sent", self.packets_sent)?,
+            packets_received: nonnegative_u64("packets_received", self.packets_received)?,
             status,
             close_reason: self.close_reason,
             acl_rule_matched: self.acl_rule_matched.map(Arc::from),
@@ -273,16 +280,16 @@ impl<'a> From<&'a Session> for SessionParams<'a> {
             user: Cow::Borrowed(session.user.as_ref()),
             start_time: session.start_time.to_rfc3339(),
             end_time: session.end_time.map(|dt: DateTime<Utc>| dt.to_rfc3339()),
-            duration_secs: session.duration_secs.map(|v| v as i64),
+            duration_secs: session.duration_secs.map(saturating_i64),
             source_ip: Cow::Owned(session.source_ip.to_string()),
-            source_port: session.source_port as i64,
+            source_port: i64::from(session.source_port),
             dest_ip: Cow::Borrowed(session.dest_ip.as_ref()),
-            dest_port: session.dest_port as i64,
+            dest_port: i64::from(session.dest_port),
             protocol: Cow::Owned(session.protocol.to_string()),
-            bytes_sent: session.bytes_sent as i64,
-            bytes_received: session.bytes_received as i64,
-            packets_sent: session.packets_sent as i64,
-            packets_received: session.packets_received as i64,
+            bytes_sent: saturating_i64(session.bytes_sent),
+            bytes_received: saturating_i64(session.bytes_received),
+            packets_sent: saturating_i64(session.packets_sent),
+            packets_received: saturating_i64(session.packets_received),
             status: Cow::Borrowed(session.status.as_str()),
             close_reason: session.close_reason.clone(),
             acl_rule_matched: session
@@ -292,6 +299,10 @@ impl<'a> From<&'a Session> for SessionParams<'a> {
             acl_decision: Cow::Borrowed(session.acl_decision.as_ref()),
         }
     }
+}
+
+fn saturating_i64(value: u64) -> i64 {
+    value.min(i64::MAX as u64) as i64
 }
 
 pub(super) fn parse_datetime(field: &str, value: &str) -> Result<DateTime<Utc>, sqlx::Error> {
@@ -311,6 +322,10 @@ fn parse_legacy_timestamp(value: &str) -> Result<DateTime<Utc>, chrono::format::
 
 pub(super) fn sanitize_duration(value: Option<i64>) -> Option<u64> {
     value.and_then(|v| if v >= 0 { Some(v as u64) } else { None })
+}
+
+fn nonnegative_u64(field: &str, value: i64) -> Result<u64, sqlx::Error> {
+    u64::try_from(value).map_err(|_| decode_error(field, format!("negative value: {value}")))
 }
 
 pub(super) fn decode_error(

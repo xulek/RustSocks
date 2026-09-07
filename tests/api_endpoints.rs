@@ -105,9 +105,20 @@ async fn test_metrics_endpoint() {
     let metrics = String::from_utf8(body.to_vec()).unwrap();
 
     assert!(metrics.contains("rustsocks_active_sessions"));
-    assert!(metrics.contains("rustsocks_sessions_total"));
-    assert!(metrics.contains("rustsocks_bytes_sent_total"));
-    assert!(metrics.contains("rustsocks_bytes_received_total"));
+
+    #[cfg(feature = "metrics")]
+    {
+        assert!(metrics.contains("rustsocks_sessions_total"));
+        assert!(metrics.contains("rustsocks_bytes_sent_total"));
+        assert!(metrics.contains("rustsocks_bytes_received_total"));
+        assert!(metrics.contains("rustsocks_qos_active_users"));
+        assert!(metrics.contains(
+            "rustsocks_qos_bandwidth_allocated_bytes_total{direction=\"upload\"}"
+        ));
+        assert!(metrics.contains(
+            "rustsocks_qos_bandwidth_allocated_bytes_total{direction=\"download\"}"
+        ));
+    }
 }
 
 #[tokio::test]

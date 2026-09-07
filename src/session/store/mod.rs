@@ -87,6 +87,28 @@ impl SessionStore {
         }
     }
 
+    pub async fn health_check(&self) -> Result<(), sqlx::Error> {
+        match &self.backend {
+            StoreBackend::Sqlite(pool) => {
+                let _: i64 = sqlx::query_scalar("SELECT 1")
+                    .fetch_one(pool)
+                    .await?;
+                Ok(())
+            }
+            StoreBackend::MySql(mysql) => {
+                let mut conn = mysql
+                    .pool
+                    .get_conn()
+                    .await
+                    .map_err(mysql_error_to_sqlx)?;
+                conn.query_drop("SELECT 1")
+                    .await
+                    .map_err(mysql_error_to_sqlx)?;
+                Ok(())
+            }
+        }
+    }
+
     async fn connect_attempt(
         database_url: &str,
         allow_reset: bool,
@@ -861,7 +883,7 @@ impl SessionStore {
         Ok(affected)
     }
 
-    pub async fn load_smtp_config(&self, api_token: Option<&str>) -> Result<SmtpConfig, String> {
+    pub async fn load_smtp_config(&self, encryption_key: Option<&str>) -> Result<SmtpConfig, String> {
         let row = match &self.backend {
             StoreBackend::Sqlite(pool) => sqlx::query_as::<_, SmtpConfigRow>(
                 "SELECT enabled, mode, host, port, from_address, from_name, username, password_encrypted, notify_recipients, notify_critical, notify_security, notify_config_changes, notify_service_status, notify_resource_pressure, notify_connection_pressure, notify_cooldown_seconds, notify_cpu_threshold, notify_ram_threshold, notify_disk_threshold, notify_connection_percent_threshold FROM smtp_config WHERE id = 1",
@@ -873,7 +895,7 @@ impl SessionStore {
         };
 
         Ok(row
-            .map(|value| value.into_smtp_config(api_token))
+            .map(|value| value.into_smtp_config(encryption_key))
             .transpose()?
             .unwrap_or_default())
     }
@@ -882,12 +904,14 @@ impl SessionStore {
         &self,
         config: &SmtpConfig,
         new_password: Option<&str>,
-        api_token: Option<&str>,
+        encryption_key: Option<&str>,
     ) -> Result<(), String> {
         let password_encrypted = match new_password {
             Some(password) if !password.is_empty() => {
-                let token = api_token.ok_or("API token required for password encryption")?;
-                Some(encrypt_password(password, token)?)
+                let key = encryption_key.ok_or(
+                    "sessions.smtp_encryption_key is required for SMTP password encryption",
+                )?;
+                Some(encrypt_password(password, key)?)
             }
             _ => None,
         };
@@ -1141,8 +1165,7 @@ impl MySqlBackend {
             .map_err(mysql_error_to_sqlx)?;
 
         rows.into_iter()
-            .map(mysql_row_to_session_row)
-            .map(SessionRow::into_session)
+            .map(|row| mysql_row_to_session_row(row).and_then(SessionRow::into_session))
             .collect()
     }
 
@@ -1232,8 +1255,7 @@ impl MySqlBackend {
             .await
             .map_err(mysql_error_to_sqlx)?;
 
-        row.map(mysql_row_to_session_row)
-            .map(SessionRow::into_session)
+        row.map(|row| mysql_row_to_session_row(row).and_then(SessionRow::into_session))
             .transpose()
     }
 
@@ -1318,7 +1340,7 @@ impl MySqlBackend {
             )
             .await
             .map_err(mysql_error_to_sqlx)?;
-        Ok(row.map(mysql_row_to_smtp_config_row))
+        row.map(mysql_row_to_smtp_config_row).transpose()
     }
 
     async fn save_smtp_config(

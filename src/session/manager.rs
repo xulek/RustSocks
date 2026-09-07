@@ -19,7 +19,7 @@ use std::sync::Arc;
 use std::sync::OnceLock;
 use std::time::Duration;
 use tokio::sync::mpsc::error::TrySendError;
-use tokio::sync::{broadcast, mpsc, RwLock};
+use tokio::sync::{broadcast, mpsc, oneshot, RwLock};
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 use uuid::Uuid;
@@ -31,16 +31,18 @@ use uuid::Uuid;
 /// - DashMap for active sessions (lock-free concurrent access)
 #[derive(Debug)]
 pub struct SessionManager {
-    active_sessions: DashMap<Uuid, Arc<RwLock<Session>>>,
+    active_sessions: Arc<DashMap<Uuid, Arc<RwLock<Session>>>>,
     closed_sessions: RwLock<Vec<Session>>,
     rejected_sessions: RwLock<Vec<Session>>,
     session_controls: DashMap<Uuid, SessionControl>,
     history_retention: Option<ChronoDuration>,
+    history_max_entries: usize,
     #[cfg(feature = "database")]
     store: Option<Arc<SessionStore>>,
     #[cfg(feature = "database")]
-    batch_writer: OnceLock<Arc<BatchWriter>>,
-    traffic_tx: mpsc::Sender<TrafficUpdate>,
+    batch_writer: Arc<OnceLock<Arc<BatchWriter>>>,
+    traffic_tx: mpsc::Sender<TrafficMessage>,
+    pending_traffic: Arc<DashMap<Uuid, TrafficUpdate>>,
 }
 
 #[derive(Debug, Clone)]
@@ -58,7 +60,16 @@ struct TrafficUpdate {
     packets_received: u64,
 }
 
+enum TrafficMessage {
+    Update(TrafficUpdate),
+    FlushSession {
+        session_id: Uuid,
+        done: oneshot::Sender<()>,
+    },
+}
+
 const DEFAULT_TRAFFIC_QUEUE_CAPACITY: usize = 10_000;
+const DEFAULT_HISTORY_MAX_ENTRIES: usize = 100_000;
 
 impl SessionManager {
     /// Create a new empty manager.
@@ -74,39 +85,67 @@ impl SessionManager {
         capacity: usize,
         history_retention: Option<Duration>,
     ) -> Self {
-        let (traffic_tx, traffic_rx) = mpsc::channel(capacity);
+        Self::new_with_limits(capacity, history_retention, DEFAULT_HISTORY_MAX_ENTRIES)
+    }
+
+    pub fn new_with_limits(
+        capacity: usize,
+        history_retention: Option<Duration>,
+        history_max_entries: usize,
+    ) -> Self {
+        let (traffic_tx, traffic_rx) = mpsc::channel(capacity.max(1));
         let manager = Self {
-            active_sessions: DashMap::new(),
+            active_sessions: Arc::new(DashMap::new()),
             closed_sessions: RwLock::new(Vec::new()),
             rejected_sessions: RwLock::new(Vec::new()),
             session_controls: DashMap::new(),
             history_retention: history_retention
                 .and_then(|retention| ChronoDuration::from_std(retention).ok()),
+            history_max_entries: history_max_entries.max(1),
             #[cfg(feature = "database")]
             store: None,
             #[cfg(feature = "database")]
-            batch_writer: OnceLock::new(),
+            batch_writer: Arc::new(OnceLock::new()),
             traffic_tx,
+            pending_traffic: Arc::new(DashMap::new()),
         };
 
         manager.start_traffic_worker(traffic_rx);
         manager
     }
 
-    fn start_traffic_worker(&self, mut rx: mpsc::Receiver<TrafficUpdate>) {
-        let active_sessions = self.active_sessions.clone();
-        #[cfg(feature = "database")]
-        let batch_writer = self.batch_writer.clone();
+    fn start_traffic_worker(&self, mut rx: mpsc::Receiver<TrafficMessage>) {
+        let active_sessions = Arc::clone(&self.active_sessions);
+        let pending_traffic = Arc::clone(&self.pending_traffic);
 
         tokio::spawn(async move {
-            while let Some(update) = rx.recv().await {
-                SessionManager::apply_traffic_update(
-                    &active_sessions,
-                    #[cfg(feature = "database")]
-                    &batch_writer,
-                    update,
-                )
-                .await;
+            while let Some(message) = rx.recv().await {
+                match message {
+                    TrafficMessage::Update(update) => {
+                        SessionManager::apply_traffic_update(&active_sessions, update).await;
+
+                        // Drain coalesced overflow updates. The map has at most one entry
+                        // per active session, so overload cannot create unbounded tasks.
+                        let pending_ids: Vec<Uuid> = pending_traffic
+                            .iter()
+                            .map(|entry| *entry.key())
+                            .collect();
+                        for id in pending_ids {
+                            if let Some((_, pending)) = pending_traffic.remove(&id) {
+                                SessionManager::apply_traffic_update(&active_sessions, pending).await;
+                            }
+                        }
+                    }
+                    TrafficMessage::FlushSession { session_id, done } => {
+                        // A flush message is ordered after all updates that were accepted by
+                        // the channel before session closure. Apply any coalesced overflow
+                        // for this session as part of the same barrier.
+                        if let Some((_, pending)) = pending_traffic.remove(&session_id) {
+                            SessionManager::apply_traffic_update(&active_sessions, pending).await;
+                        }
+                        let _ = done.send(());
+                    }
+                }
             }
         });
     }
@@ -345,12 +384,20 @@ impl SessionManager {
         sessions.retain(|session| session.end_time.unwrap_or(session.start_time) >= cutoff);
     }
 
+    fn enforce_history_limit(sessions: &mut Vec<Session>, max_entries: usize) {
+        if sessions.len() > max_entries {
+            let excess = sessions.len() - max_entries;
+            sessions.drain(0..excess);
+        }
+    }
+
     async fn push_closed_session(&self, session: Session) {
         let mut closed = self.closed_sessions.write().await;
         closed.push(session);
         if let Some(retention) = self.history_retention {
             Self::prune_history(&mut closed, retention);
         }
+        Self::enforce_history_limit(&mut closed, self.history_max_entries);
     }
 
     async fn push_rejected_session(&self, session: Session) {
@@ -359,6 +406,7 @@ impl SessionManager {
         if let Some(retention) = self.history_retention {
             Self::prune_history(&mut rejected, retention);
         }
+        Self::enforce_history_limit(&mut rejected, self.history_max_entries);
     }
 
     /// Count currently active sessions.
@@ -505,8 +553,6 @@ impl SessionManager {
     ) {
         Self::apply_traffic_update(
             &self.active_sessions,
-            #[cfg(feature = "database")]
-            &self.batch_writer,
             TrafficUpdate {
                 session_id: *session_id,
                 bytes_sent,
@@ -534,29 +580,32 @@ impl SessionManager {
             packets_received,
         };
 
-        match self.traffic_tx.try_send(update) {
+        match self.traffic_tx.try_send(TrafficMessage::Update(update)) {
             Ok(()) => {}
-            Err(TrySendError::Full(update)) | Err(TrySendError::Closed(update)) => {
+            Err(TrySendError::Full(TrafficMessage::Update(update))) => {
                 if let Err(update) = self.try_apply_traffic_update_inline(update) {
-                    let active_sessions = self.active_sessions.clone();
-                    #[cfg(feature = "database")]
-                    let batch_writer = self.batch_writer.clone();
-
-                    tokio::spawn(async move {
-                        SessionManager::apply_traffic_update(
-                            &active_sessions,
-                            #[cfg(feature = "database")]
-                            &batch_writer,
-                            update,
-                        )
-                        .await;
-                    });
+                    self.pending_traffic
+                        .entry(update.session_id)
+                        .and_modify(|pending| {
+                            pending.bytes_sent = pending.bytes_sent.saturating_add(update.bytes_sent);
+                            pending.bytes_received = pending.bytes_received.saturating_add(update.bytes_received);
+                            pending.packets_sent = pending.packets_sent.saturating_add(update.packets_sent);
+                            pending.packets_received = pending.packets_received.saturating_add(update.packets_received);
+                        })
+                        .or_insert(update);
                 }
 
                 tracing::warn!(
                     session = %session_id,
-                    "Traffic queue saturated, applying update directly"
+                    "Traffic queue saturated, coalescing update"
                 );
+            }
+            Err(TrySendError::Closed(TrafficMessage::Update(update))) => {
+                let _ = self.try_apply_traffic_update_inline(update);
+            }
+            Err(TrySendError::Full(TrafficMessage::FlushSession { .. }))
+            | Err(TrySendError::Closed(TrafficMessage::FlushSession { .. })) => {
+                unreachable!("queue_traffic_update only sends update messages");
             }
         }
     }
@@ -589,16 +638,6 @@ impl SessionManager {
         #[cfg(feature = "metrics")]
         SessionMetrics::record_traffic(&user_label, update.bytes_sent, update.bytes_received);
 
-        #[cfg(feature = "database")]
-        if let Some(writer) = self.batch_writer.get().cloned() {
-            let snapshot = session_guard.clone();
-            drop(session_guard);
-            tokio::spawn(async move {
-                writer.enqueue(snapshot).await;
-            });
-        }
-
-        #[cfg(not(feature = "database"))]
         drop(session_guard);
 
         Ok(())
@@ -611,7 +650,6 @@ impl SessionManager {
 
     async fn apply_traffic_update(
         active_sessions: &DashMap<Uuid, Arc<RwLock<Session>>>,
-        #[cfg(feature = "database")] batch_writer: &OnceLock<Arc<BatchWriter>>,
         update: TrafficUpdate,
     ) {
         if let Some(entry) = active_sessions.get(&update.session_id) {
@@ -634,16 +672,29 @@ impl SessionManager {
 
             #[cfg(feature = "metrics")]
             SessionMetrics::record_traffic(&user_label, update.bytes_sent, update.bytes_received);
+        }
+    }
 
-            #[cfg(feature = "database")]
-            if let Some(writer) = batch_writer.get().cloned() {
-                let snapshot = session_guard.clone();
-                drop(session_guard);
-                writer.enqueue(snapshot).await;
-            }
+    async fn flush_traffic_for_session(&self, session_id: Uuid) {
+        let (done_tx, done_rx) = oneshot::channel();
+        if self
+            .traffic_tx
+            .send(TrafficMessage::FlushSession {
+                session_id,
+                done: done_tx,
+            })
+            .await
+            .is_ok()
+        {
+            // The worker is local and this is only an ordering barrier. Bound the
+            // wait so a failed worker can never block session teardown forever.
+            let _ = tokio::time::timeout(Duration::from_secs(2), done_rx).await;
+        }
 
-            #[cfg(not(feature = "database"))]
-            drop(session_guard);
+        // If the channel is closed, or an overflow update raced with the barrier,
+        // apply the final coalesced value directly before removing the session.
+        if let Some((_, pending)) = self.pending_traffic.remove(&session_id) {
+            Self::apply_traffic_update(&self.active_sessions, pending).await;
         }
     }
 
@@ -654,6 +705,7 @@ impl SessionManager {
         reason: Option<String>,
         status: SessionStatus,
     ) {
+        self.flush_traffic_for_session(*session_id).await;
         self.session_controls.remove(session_id);
 
         if let Some((_, session_arc)) = self.active_sessions.remove(session_id) {
@@ -857,7 +909,7 @@ mod tests {
     #[cfg(feature = "metrics")]
     use crate::session::metrics::{
         REJECTED_SESSIONS, SESSION_DURATION, TOTAL_BYTES_RECEIVED, TOTAL_BYTES_SENT,
-        TOTAL_SESSIONS, USER_BANDWIDTH, USER_SESSIONS,
+        TOTAL_SESSIONS,
     };
     #[cfg(feature = "metrics")]
     use lazy_static::lazy_static;
@@ -1087,17 +1139,7 @@ mod tests {
     #[cfg(feature = "metrics")]
     #[tokio::test]
     async fn session_metrics_update_counters() {
-        let (
-            base_total,
-            base_rejected,
-            base_bytes_sent,
-            base_bytes_received,
-            base_duration_count,
-            base_user_alice,
-            base_user_bob,
-            base_user_send,
-            base_user_recv,
-        ) = {
+        let (base_total, base_rejected, base_bytes_sent, base_bytes_received, base_duration_count) = {
             let _guard = METRICS_TEST_GUARD.lock().unwrap();
             (
                 TOTAL_SESSIONS.get(),
@@ -1105,12 +1147,6 @@ mod tests {
                 TOTAL_BYTES_SENT.get(),
                 TOTAL_BYTES_RECEIVED.get(),
                 SESSION_DURATION.get_sample_count(),
-                USER_SESSIONS.with_label_values(&["alice"]).get(),
-                USER_SESSIONS.with_label_values(&["bob"]).get(),
-                USER_BANDWIDTH.with_label_values(&["alice", "sent"]).get(),
-                USER_BANDWIDTH
-                    .with_label_values(&["alice", "received"])
-                    .get(),
             )
         };
 
@@ -1118,36 +1154,11 @@ mod tests {
         let conn = sample_connection();
         let session_id = manager.new_session("alice", conn, "allow", None).await;
 
-        assert!(
-            TOTAL_SESSIONS.get() > base_total,
-            "total sessions should increase"
-        );
-        assert!(
-            USER_SESSIONS.with_label_values(&["alice"]).get() > base_user_alice,
-            "user sessions counter should increase"
-        );
+        assert!(TOTAL_SESSIONS.get() > base_total);
 
         manager.update_traffic(&session_id, 512, 256, 2, 2).await;
-
-        assert!(
-            TOTAL_BYTES_SENT.get() >= base_bytes_sent + 512,
-            "bytes sent counter should increase"
-        );
-        assert!(
-            TOTAL_BYTES_RECEIVED.get() >= base_bytes_received + 256,
-            "bytes received counter should increase"
-        );
-        assert!(
-            USER_BANDWIDTH.with_label_values(&["alice", "sent"]).get() >= base_user_send + 512,
-            "user sent bandwidth should increase"
-        );
-        assert!(
-            USER_BANDWIDTH
-                .with_label_values(&["alice", "received"])
-                .get()
-                >= base_user_recv + 256,
-            "user received bandwidth should increase"
-        );
+        assert!(TOTAL_BYTES_SENT.get() >= base_bytes_sent + 512);
+        assert!(TOTAL_BYTES_RECEIVED.get() >= base_bytes_received + 256);
 
         manager
             .close_session(
@@ -1156,11 +1167,7 @@ mod tests {
                 SessionStatus::Closed,
             )
             .await;
-
-        assert!(
-            SESSION_DURATION.get_sample_count() > base_duration_count,
-            "duration histogram should record the session"
-        );
+        assert!(SESSION_DURATION.get_sample_count() > base_duration_count);
 
         let conn_rejected = ConnectionInfo {
             source_ip: IpAddr::V4(Ipv4Addr::LOCALHOST),
@@ -1172,15 +1179,7 @@ mod tests {
         manager
             .track_rejected_session("bob", conn_rejected, None)
             .await;
-
-        assert!(
-            REJECTED_SESSIONS.get() > base_rejected,
-            "rejected sessions counter should increase"
-        );
-        assert!(
-            USER_SESSIONS.with_label_values(&["bob"]).get() > base_user_bob,
-            "user sessions counter should track rejected users"
-        );
+        assert!(REJECTED_SESSIONS.get() > base_rejected);
     }
 
     #[tokio::test]

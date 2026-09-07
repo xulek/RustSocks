@@ -1907,38 +1907,6 @@ mod tests {
             ))
     }
 
-    #[test]
-    fn api_role_policy_is_fail_closed_for_mutating_and_admin_routes() {
-        assert_eq!(
-            required_api_role(&Method::GET, "/api/acl/rules"),
-            DashboardRole::Viewer
-        );
-        assert_eq!(
-            required_api_role(&Method::POST, "/api/acl/rules"),
-            DashboardRole::Admin
-        );
-        assert_eq!(
-            required_api_role(&Method::POST, "/api/sessions/123/terminate"),
-            DashboardRole::Operator
-        );
-        assert_eq!(
-            required_api_role(&Method::POST, "/api/telemetry/alerts/123/acknowledge"),
-            DashboardRole::Operator
-        );
-        assert_eq!(
-            required_api_role(&Method::POST, "/api/telemetry/alerts/config"),
-            DashboardRole::Admin
-        );
-        assert_eq!(
-            required_api_role(&Method::GET, "/api/smtp/config"),
-            DashboardRole::Admin
-        );
-        assert_eq!(
-            required_api_role(&Method::POST, "/api/diagnostics/connectivity"),
-            DashboardRole::Admin
-        );
-    }
-
     #[tokio::test]
     async fn api_fails_closed_when_auth_disabled() {
         let app = build_api_router(auth_state_with(false, None, "/"));

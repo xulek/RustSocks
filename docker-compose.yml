@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   rustsocks:
     build:
@@ -10,30 +8,26 @@ services:
     restart: unless-stopped
 
     ports:
-      # SOCKS5 proxy port
-      - "1080:1080"
-      # REST API + Web Dashboard
-      - "9090:9090"
+      # Loopback-only by default. Change deliberately if remote clients need access.
+      - "127.0.0.1:1080:1080"
+      - "127.0.0.1:9090:9090"
 
     volumes:
-      # Configuration directory (rw for UI config editing)
-      - ./docker/configs:/etc/rustsocks:rw
-
-      # PAM configuration (read-only)
-      - ./docker/configs/pam.d:/etc/pam.d:ro
-
-      # Persistent data directory (SQLite database)
+      # A named config volume is initialized from the image and remains writable
+      # by the non-root rustsocks user, including dashboard config updates.
+      - rustsocks-config:/etc/rustsocks
+      - ./docker/configs/pam.d/rustsocks:/etc/pam.d/rustsocks:ro
+      - ./docker/configs/pam.d/rustsocks-client:/etc/pam.d/rustsocks-client:ro
       - rustsocks-data:/data
-
-      # Logs (optional, for troubleshooting)
       - rustsocks-logs:/var/log/rustsocks
 
     environment:
-      # Entrypoint inputs
       - RUSTSOCKS_CONFIG=/etc/rustsocks/rustsocks.toml
       - RUSTSOCKS_DB_PATH=/data/sessions.db
-      # Set timezone (optional)
-      - TZ=UTC
+      - RUSTSOCKS_PROXY_PASSWORD=${RUSTSOCKS_PROXY_PASSWORD:?Set RUSTSOCKS_PROXY_PASSWORD}
+      - RUSTSOCKS_DASHBOARD_PASSWORD=${RUSTSOCKS_DASHBOARD_PASSWORD:?Set RUSTSOCKS_DASHBOARD_PASSWORD}
+      - RUSTSOCKS_DASHBOARD_SESSION_SECRET=${RUSTSOCKS_DASHBOARD_SESSION_SECRET:?Set a random 32+ byte session secret}
+      - TZ=${TZ:-UTC}
 
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9090/health"]
@@ -42,54 +36,20 @@ services:
       retries: 3
       start_period: 10s
 
-    # Security options
     security_opt:
       - no-new-privileges:true
-
-    # Resource limits (optional, adjust as needed)
-    # deploy:
-    #   resources:
-    #     limits:
-    #       cpus: '2'
-    #       memory: 512M
-    #     reservations:
-    #       cpus: '0.5'
-    #       memory: 128M
-
-    # Optional CLI overrides (config file still required)
-    # command:
-    #   - rustsocks
-    #   - --config
-    #   - /etc/rustsocks/rustsocks.toml
-    #   - --bind
-    #   - 0.0.0.0
-    #   - --port
-    #   - "1080"
-    #   - --log-level
-    #   - debug
 
     networks:
       - rustsocks-net
 
 volumes:
-  # Persistent data volume for SQLite database
+  rustsocks-config:
+    driver: local
   rustsocks-data:
     driver: local
-
-  # Logs volume (optional)
   rustsocks-logs:
     driver: local
 
 networks:
   rustsocks-net:
     driver: bridge
-
-# Example: Override configuration for development
-# Create docker-compose.override.yml with:
-#
-# services:
-#   rustsocks:
-#     environment:
-#       - RUST_LOG=debug
-#     ports:
-#       - "11080:1080"

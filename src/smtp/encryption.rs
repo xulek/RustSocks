@@ -8,16 +8,16 @@ use sha2::{Digest, Sha256};
 
 const NONCE_SIZE: usize = 12;
 
-fn derive_key(api_token: &str) -> [u8; 32] {
+fn derive_key(encryption_key: &str) -> [u8; 32] {
     let mut hasher = Sha256::new();
-    hasher.update(api_token.as_bytes());
+    hasher.update(encryption_key.as_bytes());
     hasher.finalize().into()
 }
 
 /// Encrypt a password using AES-256-GCM
 /// Returns base64-encoded: nonce || ciphertext || tag
-pub fn encrypt_password(password: &str, api_token: &str) -> Result<String, String> {
-    let key = derive_key(api_token);
+pub fn encrypt_password(password: &str, encryption_key: &str) -> Result<String, String> {
+    let key = derive_key(encryption_key);
     let cipher =
         Aes256Gcm::new_from_slice(&key).map_err(|e| format!("Failed to create cipher: {}", e))?;
 
@@ -39,8 +39,8 @@ pub fn encrypt_password(password: &str, api_token: &str) -> Result<String, Strin
 
 /// Decrypt a password using AES-256-GCM
 /// Expects base64-encoded: nonce || ciphertext || tag
-pub fn decrypt_password(encrypted: &str, api_token: &str) -> Result<String, String> {
-    let key = derive_key(api_token);
+pub fn decrypt_password(encrypted: &str, encryption_key: &str) -> Result<String, String> {
+    let key = derive_key(encryption_key);
     let cipher =
         Aes256Gcm::new_from_slice(&key).map_err(|e| format!("Failed to create cipher: {}", e))?;
 
@@ -70,10 +70,10 @@ mod tests {
     #[test]
     fn test_encrypt_decrypt_roundtrip() {
         let password = "my_secret_password";
-        let api_token = "test_api_token_12345";
+        let encryption_key = "test_encryption_key_12345";
 
-        let encrypted = encrypt_password(password, api_token).unwrap();
-        let decrypted = decrypt_password(&encrypted, api_token).unwrap();
+        let encrypted = encrypt_password(password, encryption_key).unwrap();
+        let decrypted = decrypt_password(&encrypted, encryption_key).unwrap();
 
         assert_eq!(password, decrypted);
     }
@@ -81,10 +81,10 @@ mod tests {
     #[test]
     fn test_wrong_key_fails() {
         let password = "my_secret_password";
-        let api_token = "correct_token";
+        let encryption_key = "correct_token";
         let wrong_token = "wrong_token";
 
-        let encrypted = encrypt_password(password, api_token).unwrap();
+        let encrypted = encrypt_password(password, encryption_key).unwrap();
         let result = decrypt_password(&encrypted, wrong_token);
 
         assert!(result.is_err());

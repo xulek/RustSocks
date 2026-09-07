@@ -33,31 +33,34 @@ Build takes ~5-10 minutes (first time, with caching).
 ### 2. Run with Docker Compose
 
 ```bash
-# Start the service
-docker-compose up -d
+# Create required secrets file from the template
+cp docker/.env.example .env
+# Edit .env and replace all placeholder values before starting
+${EDITOR:-vi} .env
+
+# Start the service (ports are published on 127.0.0.1 by default)
+docker compose up -d
 
 # Check logs
-docker-compose logs -f rustsocks
+docker compose logs -f rustsocks
 
 # Stop the service
-docker-compose down
+docker compose down
 ```
 
 ### 3. Access the Dashboard
 
 Open your browser:
-- **Dashboard**: http://localhost:9090/
-- **API Docs (Swagger)**: http://localhost:9090/swagger-ui/
+- **Dashboard**: http://localhost:9090/rustsocks
+- **API Docs (Swagger)**: http://localhost:9090/rustsocks/swagger-ui/
 - **Health Check**: http://localhost:9090/health
 
 ### 4. Test SOCKS5 Proxy
 
 ```bash
-# Test with curl
-curl -x socks5://localhost:1080 http://example.com
-
-# Test with authentication (if enabled)
-curl -x socks5://alice:secret123@localhost:1080 http://example.com
+# Authentication is mandatory in the bundled Docker profile.
+# Use the password configured as RUSTSOCKS_PROXY_PASSWORD in .env.
+curl -x socks5://proxy:YOUR_PASSWORD@localhost:1080 http://example.com
 
 # Test with SSH
 ssh -o ProxyCommand='nc -X 5 -x 127.0.0.1:1080 %h %p' user@remote-host

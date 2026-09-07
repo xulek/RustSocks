@@ -1,8 +1,8 @@
-/// Benchmark: Handshake Latency (flush behavior)
+/// Benchmark: in-memory buffering/flush overhead.
 ///
-/// Measures the impact of flush() frequency on SOCKS5 handshake latency.
-/// Note: This is mainly for measurement - changing flush behavior requires careful analysis
-/// to avoid protocol synchronization issues.
+/// This deliberately uses BufWriter<Vec<u8>> and therefore does NOT measure
+/// network RTT or real SOCKS5 handshake latency. It only compares local write
+/// flush patterns.
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use std::io::{BufWriter, Write};
 

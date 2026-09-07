@@ -1131,9 +1131,7 @@ mod priority_tests {
     }
 
     #[tokio::test]
-    async fn first_matching_rule_wins() {
-        // BLOCK rules are always evaluated first (security-first policy)
-        // So even though ALLOW has higher priority number, BLOCK will win
+    async fn higher_priority_allow_overrides_lower_priority_block() {
         let rules = vec![
             AclRule {
                 action: Action::Allow,
@@ -1145,7 +1143,7 @@ mod priority_tests {
             },
             AclRule {
                 action: Action::Block,
-                description: "Lower priority block (but wins due to BLOCK-first)".to_string(),
+                description: "Lower priority block".to_string(),
                 destinations: vec!["example.com".to_string()],
                 ports: vec!["80".to_string()],
                 protocols: vec![Protocol::Tcp],
@@ -1164,9 +1162,8 @@ mod priority_tests {
                 &Protocol::Tcp,
             )
             .await;
-        // BLOCK wins because BLOCK rules are always checked first
-        assert_eq!(decision, AclDecision::Block);
-        assert!(desc.unwrap().contains("block"));
+        assert_eq!(decision, AclDecision::Allow);
+        assert!(desc.unwrap().contains("High priority allow"));
     }
 
     #[tokio::test]
@@ -1257,6 +1254,45 @@ mod group_inheritance_tests {
             )
             .await;
         assert_eq!(decision, AclDecision::Allow);
+    }
+
+    #[tokio::test]
+    async fn dynamic_group_evaluation_keeps_static_user_memberships() {
+        let config = AclConfig {
+            global: GlobalAclConfig {
+                default_policy: Action::Block,
+            },
+            users: vec![UserAcl {
+                username: "alice".to_string(),
+                groups: vec!["developers".to_string()],
+                rules: vec![],
+            }],
+            groups: vec![GroupAcl {
+                name: "developers".to_string(),
+                rules: vec![AclRule {
+                    action: Action::Allow,
+                    description: "Static developer membership".to_string(),
+                    destinations: vec!["internal.example.com".to_string()],
+                    ports: vec!["443".to_string()],
+                    protocols: vec![Protocol::Tcp],
+                    priority: 100,
+                }],
+            }],
+        };
+
+        let engine = AclEngine::new(config).unwrap();
+        let (decision, matched) = engine
+            .evaluate_with_groups(
+                "alice",
+                &[],
+                &Address::Domain("internal.example.com".to_string()),
+                443,
+                &Protocol::Tcp,
+            )
+            .await;
+
+        assert_eq!(decision, AclDecision::Allow);
+        assert_eq!(matched.as_deref(), Some("Static developer membership"));
     }
 
     #[tokio::test]

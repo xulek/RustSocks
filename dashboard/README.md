@@ -17,7 +17,7 @@ Modern web-based admin dashboard for RustSocks SOCKS5 proxy server.
 
 ## Tech Stack
 
-- **React 18**: Modern React with hooks
+- **React 19**: Modern React with hooks
 - **Vite**: Lightning-fast build tool and dev server
 - **React Router**: Client-side routing
 - **Lucide React**: Beautiful icons
@@ -81,7 +81,7 @@ base_path = "/"  # Options: "/" or "/rustsocks" or any custom path
 
 ### Dashboard Authentication
 
-You can require HTTP Basic Authentication before the UI loads:
+You can require the built-in session-based username/password authentication before the UI/API is usable:
 
 ```toml
 [sessions.dashboard_auth]
@@ -91,7 +91,7 @@ username = "admin"
 password = "strong-secret"
 ```
 
-The dashboard will prompt for the configured credentials when auth is enabled.
+The dashboard uses its login page and an HttpOnly session cookie when authentication is enabled.
 
 ### Serve Dashboard from RustSocks
 
@@ -185,7 +185,7 @@ Edit refresh intervals in component files:
 
 - The dashboard is for **administrative use only**
 - Deploy behind authentication/VPN in production
-- API endpoints should be secured with tokens (future feature)
+- `/api/*` fails closed unless dashboard authentication or an API token is configured
 - Do not expose dashboard to public internet
 
 ## Future Enhancements
@@ -196,7 +196,6 @@ Edit refresh intervals in component files:
 - [ ] Session termination controls
 - [ ] Traffic graphs with Recharts
 - [ ] Export statistics (CSV/JSON)
-- [ ] Authentication/authorization
 - [ ] Dark/light theme toggle
 
 ## Troubleshooting

@@ -162,8 +162,6 @@ Prometheus metrics exported via `prometheus` crate:
 - `rustsocks_sessions_rejected_total` - Counter of rejected sessions
 - `rustsocks_session_duration_seconds` - Histogram of session durations
 - `rustsocks_bytes_sent_total` / `rustsocks_bytes_received_total` - Traffic counters
-- `rustsocks_user_sessions_total{user}` - Per-user session counter
-- `rustsocks_user_bandwidth_bytes_total{user,direction}` - Per-user bandwidth
 
 ## Operational Telemetry
 

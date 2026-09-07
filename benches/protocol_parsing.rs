@@ -41,30 +41,15 @@ fn bench_smallvec_allocations(c: &mut Criterion) {
 
     c.bench_function("smallvec_small_allocations", |b| {
         b.iter(|| {
-            // Same allocations but using SmallVec (stack-allocated)
-            let mut buffers = Vec::new();
-
-            // Methods buffer (3 bytes) - fits in stack
+            // Keep values as SmallVec so the benchmark actually measures the
+            // stack-backed representation instead of immediately allocating a Vec.
             let methods = SmallVec::<[u8; 8]>::from_elem(0, 3);
-            buffers.push(methods.to_vec());
-
-            // Username (16 bytes) - fits in stack
             let username = SmallVec::<[u8; 64]>::from_elem(0, 16);
-            buffers.push(username.to_vec());
-
-            // Password (16 bytes) - fits in stack
             let password = SmallVec::<[u8; 64]>::from_elem(0, 16);
-            buffers.push(password.to_vec());
-
-            // Domain (32 bytes) - fits in stack
             let domain = SmallVec::<[u8; 128]>::from_elem(0, 32);
-            buffers.push(domain.to_vec());
+            let response = SmallVec::<[u8; 32]>::from_elem(0, 22);
 
-            // Response buffer (22 bytes) - fits in stack
-            let response = SmallVec::<[u8; 256]>::new();
-            buffers.push(response.to_vec());
-
-            black_box(buffers);
+            black_box((methods, username, password, domain, response));
         });
     });
 }

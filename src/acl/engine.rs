@@ -37,6 +37,14 @@ struct CompiledGroupAcl {
     rules: Vec<Arc<CompiledAclRule>>,
 }
 
+fn compare_rules(a: &Arc<CompiledAclRule>, b: &Arc<CompiledAclRule>) -> std::cmp::Ordering {
+    b.priority.cmp(&a.priority).then_with(|| match (&a.action, &b.action) {
+        (Action::Block, Action::Allow) => std::cmp::Ordering::Less,
+        (Action::Allow, Action::Block) => std::cmp::Ordering::Greater,
+        _ => std::cmp::Ordering::Equal,
+    })
+}
+
 impl AclEngine {
     /// Create a new ACL engine from configuration
     pub fn new(config: AclConfig) -> Result<Self, String> {
@@ -61,13 +69,8 @@ impl AclEngine {
                 .map(|r| CompiledAclRule::compile(r).map(Arc::new))
                 .collect::<Result<Vec<_>, _>>()?;
 
-            // Pre-sort rules during compilation (optimization: avoid per-evaluation sorting)
-            // BLOCK rules first, then by priority descending
-            compiled_rules.sort_by(|a, b| match (&a.action, &b.action) {
-                (Action::Block, Action::Allow) => std::cmp::Ordering::Less,
-                (Action::Allow, Action::Block) => std::cmp::Ordering::Greater,
-                _ => b.priority.cmp(&a.priority),
-            });
+            // Higher priority wins. BLOCK wins only when priorities are equal.
+            compiled_rules.sort_by(compare_rules);
 
             users.insert(
                 user_acl.username.clone(),
@@ -87,13 +90,8 @@ impl AclEngine {
                 .map(|r| CompiledAclRule::compile(r).map(Arc::new))
                 .collect::<Result<Vec<_>, _>>()?;
 
-            // Pre-sort rules during compilation (optimization: avoid per-evaluation sorting)
-            // BLOCK rules first, then by priority descending
-            compiled_rules.sort_by(|a, b| match (&a.action, &b.action) {
-                (Action::Block, Action::Allow) => std::cmp::Ordering::Less,
-                (Action::Allow, Action::Block) => std::cmp::Ordering::Greater,
-                _ => b.priority.cmp(&a.priority),
-            });
+            // Higher priority wins. BLOCK wins only when priorities are equal.
+            compiled_rules.sort_by(compare_rules);
 
             let compiled_group = CompiledGroupAcl {
                 name: group_acl.name.clone(),
@@ -138,7 +136,7 @@ impl AclEngine {
             );
         }
 
-        // Evaluate rules in priority order (BLOCK rules first)
+        // Evaluate rules by descending priority; BLOCK wins only on equal priority
         for rule in &all_rules {
             if rule.matches(dest, port, protocol) {
                 return (
@@ -162,7 +160,7 @@ impl AclEngine {
     /// 2. Filters ONLY groups defined in ACL config (case-insensitive matching)
     /// 3. Ignores groups not in ACL config (no need to define all LDAP groups)
     /// 4. Optionally adds per-user rules from [[users]] section
-    /// 5. Evaluates rules in priority order (BLOCK first)
+    /// 5. Evaluates rules by descending priority (BLOCK wins only on equal priority)
     ///
     /// Example:
     /// - User "alice" has LDAP groups: ["alice", "developers", "engineering", "hr", ...]
@@ -194,7 +192,7 @@ impl AclEngine {
             );
         }
 
-        // Evaluate rules in priority order (BLOCK rules first)
+        // Evaluate rules by descending priority; BLOCK wins only on equal priority
         for rule in &all_rules {
             if rule.matches(dest, port, protocol) {
                 return (
@@ -211,8 +209,40 @@ impl AclEngine {
         )
     }
 
+    /// Re-evaluate explicit rules against an already-resolved destination.
+    /// This is used after DNS resolution so domain allow rules cannot bypass
+    /// higher-priority CIDR/IP denies while preserving normal rule precedence.
+    pub async fn is_explicitly_blocked_with_groups(
+        &self,
+        user: &str,
+        user_groups: &[String],
+        dest: &Address,
+        port: u16,
+        protocol: &Protocol,
+    ) -> Option<String> {
+        let all_rules = {
+            let config = self.config.read().await;
+            self.collect_rules_from_groups(&config, user, user_groups)
+        };
+
+        for rule in &all_rules {
+            if !rule.matches(dest, port, protocol) {
+                continue;
+            }
+
+            // The resolved-IP recheck preserves normal ACL precedence: a higher
+            // priority ALLOW may override a lower priority BLOCK. If no IP rule
+            // matches, the original hostname decision remains authoritative.
+            return match rule.action {
+                Action::Block => Some(rule.description.clone()),
+                Action::Allow => None,
+            };
+        }
+        None
+    }
+
     /// Collect all rules for a user (user rules + group rules)
-    /// Rules are pre-sorted during compilation, so no sorting needed here
+    /// Rules are merged from user/group sources and globally re-sorted here
     /// Returns Vec<Arc<CompiledAclRule>> - cloning Arc is cheap (atomic counter increment)
     fn collect_rules(&self, config: &CompiledAclConfig, user: &str) -> Vec<Arc<CompiledAclRule>> {
         // Pre-allocate capacity to avoid reallocations
@@ -238,14 +268,8 @@ impl AclEngine {
             }
         }
 
-        // OPTIMIZATION: Re-sort combined rules to maintain global priority order
-        // This is needed because we're mixing user rules + group rules
-        // Pre-sorted data sorts faster (O(n) for already sorted data with adaptive sort)
-        all_rules.sort_unstable_by(|a, b| match (&a.action, &b.action) {
-            (Action::Block, Action::Allow) => std::cmp::Ordering::Less,
-            (Action::Allow, Action::Block) => std::cmp::Ordering::Greater,
-            _ => b.priority.cmp(&a.priority),
-        });
+        // Re-sort combined user/group rules using the documented global order.
+        all_rules.sort_unstable_by(compare_rules);
 
         all_rules
     }
@@ -278,34 +302,35 @@ impl AclEngine {
         let estimated_group_rules = (user_groups.len() / 5 + 1) * 5; // ~20% match rate * 5 rules avg
         let mut all_rules = Vec::with_capacity(user_rules_count + estimated_group_rules);
 
-        // Add per-user rules first (already sorted during compilation)
+        let mut matched_groups = std::collections::HashSet::new();
+
+        // Add per-user rules and statically configured groups from [[users]].
+        // Static memberships remain useful even when NSS/SSSD is unavailable.
         if let Some(user_acl) = config.users.get(user) {
-            // Cheap clone - just Arc increment, no deep copy
             all_rules.extend(user_acl.rules.clone());
+            for configured_group in &user_acl.groups {
+                let lowercase_group = configured_group.to_lowercase();
+                if matched_groups.insert(lowercase_group.clone()) {
+                    if let Some(group_acl) = config.groups_by_lowercase.get(&lowercase_group) {
+                        all_rules.extend(group_acl.rules.clone());
+                    }
+                }
+            }
         }
 
-        // OPTIMIZATION: Iterate through user's LDAP groups with O(1) lookup instead of O(n*m) nested loop
-        for ldap_group in user_groups {
-            let lowercase_group = ldap_group.to_lowercase();
+        // Merge dynamic NSS/SSSD memberships case-insensitively and deduplicate
+        // groups already supplied by the static user configuration.
+        for dynamic_group in user_groups {
+            let lowercase_group = dynamic_group.to_lowercase();
+            if !matched_groups.insert(lowercase_group.clone()) {
+                continue;
+            }
             if let Some(group_acl) = config.groups_by_lowercase.get(&lowercase_group) {
-                // Cheap clone - just Arc increment, no deep copy
-                // Rules are already sorted during compilation
                 all_rules.extend(group_acl.rules.clone());
             }
         }
 
-        // OPTIMIZATION: Re-sort combined rules to maintain global priority order
-        // This is needed because we're mixing user rules + multiple group rules
-        // Pre-sorting during compilation helps here (partially sorted data sorts faster)
-        // Use sort_unstable_by for better performance (no stable sort needed for ACL rules)
-        all_rules.sort_unstable_by(|a, b| {
-            match (&a.action, &b.action) {
-                (Action::Block, Action::Allow) => std::cmp::Ordering::Less,
-                (Action::Allow, Action::Block) => std::cmp::Ordering::Greater,
-                // Same action - sort by priority descending
-                _ => b.priority.cmp(&a.priority),
-            }
-        });
+        all_rules.sort_unstable_by(compare_rules);
 
         all_rules
     }

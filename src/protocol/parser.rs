@@ -128,10 +128,10 @@ where
 
     // RFC 1928: Reserved field MUST be 0x00
     if reserved != 0x00 {
-        trace!(
-            "Non-zero reserved field in SOCKS5 request: 0x{:02x} (expected 0x00)",
+        return Err(RustSocksError::Protocol(format!(
+            "Non-zero reserved field in SOCKS5 request: 0x{:02x}",
             reserved
-        );
+        )));
     }
 
     let command = Command::try_from(command)?;
@@ -147,6 +147,11 @@ where
         0x03 => {
             // Domain name - use SmallVec for stack allocation (most domains < 128 bytes)
             let domain_len = stream.read_u8().await? as usize;
+            if domain_len == 0 {
+                return Err(RustSocksError::Protocol(
+                    "SOCKS5 domain name cannot be empty".to_string(),
+                ));
+            }
             let mut domain_buf = SmallVec::<[u8; 128]>::from_elem(0, domain_len);
             stream.read_exact(&mut domain_buf).await?;
             let domain = String::from_utf8(domain_buf.into_vec())
@@ -351,7 +356,9 @@ where
 /// Parse UDP packet from raw bytes
 /// Format: RSV(2) + FRAG(1) + ATYP(1) + DST.ADDR(var) + DST.PORT(2) + DATA
 pub fn parse_udp_packet(buf: Bytes) -> Result<UdpPacket> {
-    if buf.len() < 10 {
+    // Address length is variable; validate each field below instead of assuming
+    // the IPv4 minimum size. A one-octet domain packet is only 8 bytes.
+    if buf.len() < 7 {
         return Err(RustSocksError::Protocol("UDP packet too short".to_string()));
     }
 
@@ -361,10 +368,10 @@ pub fn parse_udp_packet(buf: Bytes) -> Result<UdpPacket> {
     // Read and validate RSV (2 bytes) - RFC 1928: MUST be 0x0000
     let rsv = u16::from_be_bytes([buf[pos], buf[pos + 1]]);
     if rsv != 0x0000 {
-        trace!(
-            "Non-zero reserved field in UDP packet: 0x{:04x} (expected 0x0000)",
+        return Err(RustSocksError::Protocol(format!(
+            "Non-zero reserved field in UDP packet: 0x{:04x}",
             rsv
-        );
+        )));
     }
     pos += 2;
 
@@ -420,6 +427,11 @@ pub fn parse_udp_packet(buf: Bytes) -> Result<UdpPacket> {
             }
             let domain_len = buf[pos] as usize;
             pos += 1;
+            if domain_len == 0 {
+                return Err(RustSocksError::Protocol(
+                    "UDP domain name cannot be empty".to_string(),
+                ));
+            }
             if buf.len() < pos + domain_len {
                 return Err(RustSocksError::Protocol(
                     "Invalid domain in UDP packet".to_string(),

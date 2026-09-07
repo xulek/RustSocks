@@ -1,4 +1,4 @@
-use super::models::{SessionParams, SessionRow, SmtpConfigRow};
+use super::models::{decode_error, SessionParams, SessionRow, SmtpConfigRow};
 use super::{sqlx, SessionFilter};
 use mysql_async::{Params as MySqlParams, Row as MySqlRow, Value as MySqlValue};
 
@@ -25,81 +25,85 @@ impl MySqlParam {
 
 pub(super) type MySqlMetricTuple = (String, i64, i64, i64);
 
-pub(super) fn mysql_row_to_session_row(mut row: MySqlRow) -> SessionRow {
-    SessionRow {
-        session_id: mysql_take_required(&mut row, "session_id"),
-        user: mysql_take_required(&mut row, "user"),
-        start_time: mysql_take_required(&mut row, "start_time"),
-        end_time: mysql_take_optional(&mut row, "end_time"),
-        duration_secs: mysql_take_optional(&mut row, "duration_secs"),
-        source_ip: mysql_take_required(&mut row, "source_ip"),
-        source_port: mysql_take_required(&mut row, "source_port"),
-        dest_ip: mysql_take_required(&mut row, "dest_ip"),
-        dest_port: mysql_take_required(&mut row, "dest_port"),
-        protocol: mysql_take_required(&mut row, "protocol"),
-        bytes_sent: mysql_take_required(&mut row, "bytes_sent"),
-        bytes_received: mysql_take_required(&mut row, "bytes_received"),
-        packets_sent: mysql_take_required(&mut row, "packets_sent"),
-        packets_received: mysql_take_required(&mut row, "packets_received"),
-        status: mysql_take_required(&mut row, "status"),
-        close_reason: mysql_take_optional(&mut row, "close_reason"),
-        acl_rule_matched: mysql_take_optional(&mut row, "acl_rule_matched"),
-        acl_decision: mysql_take_required(&mut row, "acl_decision"),
-    }
+pub(super) fn mysql_row_to_session_row(mut row: MySqlRow) -> Result<SessionRow, sqlx::Error> {
+    Ok(SessionRow {
+        session_id: mysql_take_required(&mut row, "session_id")?,
+        user: mysql_take_required(&mut row, "user")?,
+        start_time: mysql_take_required(&mut row, "start_time")?,
+        end_time: mysql_take_optional(&mut row, "end_time")?,
+        duration_secs: mysql_take_optional(&mut row, "duration_secs")?,
+        source_ip: mysql_take_required(&mut row, "source_ip")?,
+        source_port: mysql_take_required(&mut row, "source_port")?,
+        dest_ip: mysql_take_required(&mut row, "dest_ip")?,
+        dest_port: mysql_take_required(&mut row, "dest_port")?,
+        protocol: mysql_take_required(&mut row, "protocol")?,
+        bytes_sent: mysql_take_required(&mut row, "bytes_sent")?,
+        bytes_received: mysql_take_required(&mut row, "bytes_received")?,
+        packets_sent: mysql_take_required(&mut row, "packets_sent")?,
+        packets_received: mysql_take_required(&mut row, "packets_received")?,
+        status: mysql_take_required(&mut row, "status")?,
+        close_reason: mysql_take_optional(&mut row, "close_reason")?,
+        acl_rule_matched: mysql_take_optional(&mut row, "acl_rule_matched")?,
+        acl_decision: mysql_take_required(&mut row, "acl_decision")?,
+    })
 }
 
-pub(super) fn mysql_row_to_smtp_config_row(mut row: MySqlRow) -> SmtpConfigRow {
-    SmtpConfigRow {
-        enabled: mysql_take_required::<i64>(&mut row, "enabled") as i32,
-        mode: mysql_take_required(&mut row, "mode"),
-        host: mysql_take_required(&mut row, "host"),
-        port: mysql_take_required::<i64>(&mut row, "port") as i32,
-        from_address: mysql_take_required(&mut row, "from_address"),
-        from_name: mysql_take_optional(&mut row, "from_name"),
-        username: mysql_take_optional(&mut row, "username"),
-        password_encrypted: mysql_take_optional(&mut row, "password_encrypted"),
-        notify_recipients: mysql_take_optional(&mut row, "notify_recipients"),
-        notify_critical: mysql_take_required::<i64>(&mut row, "notify_critical") as i32,
-        notify_security: mysql_take_required::<i64>(&mut row, "notify_security") as i32,
-        notify_config_changes: mysql_take_required::<i64>(&mut row, "notify_config_changes") as i32,
-        notify_service_status: mysql_take_required::<i64>(&mut row, "notify_service_status") as i32,
-        notify_resource_pressure: mysql_take_required::<i64>(&mut row, "notify_resource_pressure")
-            as i32,
-        notify_connection_pressure: mysql_take_required::<i64>(
-            &mut row,
-            "notify_connection_pressure",
-        ) as i32,
-        notify_cooldown_seconds: mysql_take_required::<i64>(&mut row, "notify_cooldown_seconds")
-            as i32,
-        notify_cpu_threshold: mysql_take_required::<i64>(&mut row, "notify_cpu_threshold") as i32,
-        notify_ram_threshold: mysql_take_required::<i64>(&mut row, "notify_ram_threshold") as i32,
-        notify_disk_threshold: mysql_take_required::<i64>(&mut row, "notify_disk_threshold") as i32,
-        notify_connection_percent_threshold: mysql_take_required::<i64>(
+pub(super) fn mysql_row_to_smtp_config_row(
+    mut row: MySqlRow,
+) -> Result<SmtpConfigRow, sqlx::Error> {
+    Ok(SmtpConfigRow {
+        enabled: i32::try_from(mysql_take_required::<i64>(&mut row, "enabled")?)
+            .map_err(|_| decode_error("enabled", "value is outside i32 range"))?,
+        mode: mysql_take_required(&mut row, "mode")?,
+        host: mysql_take_required(&mut row, "host")?,
+        port: i32::try_from(mysql_take_required::<i64>(&mut row, "port")?)
+            .map_err(|_| decode_error("port", "value is outside i32 range"))?,
+        from_address: mysql_take_required(&mut row, "from_address")?,
+        from_name: mysql_take_optional(&mut row, "from_name")?,
+        username: mysql_take_optional(&mut row, "username")?,
+        password_encrypted: mysql_take_optional(&mut row, "password_encrypted")?,
+        notify_recipients: mysql_take_optional(&mut row, "notify_recipients")?,
+        notify_critical: mysql_i64_to_i32(&mut row, "notify_critical")?,
+        notify_security: mysql_i64_to_i32(&mut row, "notify_security")?,
+        notify_config_changes: mysql_i64_to_i32(&mut row, "notify_config_changes")?,
+        notify_service_status: mysql_i64_to_i32(&mut row, "notify_service_status")?,
+        notify_resource_pressure: mysql_i64_to_i32(&mut row, "notify_resource_pressure")?,
+        notify_connection_pressure: mysql_i64_to_i32(&mut row, "notify_connection_pressure")?,
+        notify_cooldown_seconds: mysql_i64_to_i32(&mut row, "notify_cooldown_seconds")?,
+        notify_cpu_threshold: mysql_i64_to_i32(&mut row, "notify_cpu_threshold")?,
+        notify_ram_threshold: mysql_i64_to_i32(&mut row, "notify_ram_threshold")?,
+        notify_disk_threshold: mysql_i64_to_i32(&mut row, "notify_disk_threshold")?,
+        notify_connection_percent_threshold: mysql_i64_to_i32(
             &mut row,
             "notify_connection_percent_threshold",
-        ) as i32,
-    }
+        )?,
+    })
 }
 
-fn mysql_take_required<T>(row: &mut MySqlRow, column: &str) -> T
+fn mysql_i64_to_i32(row: &mut MySqlRow, column: &str) -> Result<i32, sqlx::Error> {
+    let value = mysql_take_required::<i64>(row, column)?;
+    i32::try_from(value).map_err(|_| decode_error(column, format!("value out of range: {value}")))
+}
+
+fn mysql_take_required<T>(row: &mut MySqlRow, column: &str) -> Result<T, sqlx::Error>
 where
     T: mysql_async::prelude::FromValue,
 {
     match row.take_opt::<T, _>(column) {
-        Some(Ok(value)) => value,
-        Some(Err(err)) => panic!("failed to decode mysql column {column}: {err}"),
-        None => panic!("missing mysql column {column}"),
+        Some(Ok(value)) => Ok(value),
+        Some(Err(err)) => Err(decode_error(column, format!("failed to decode value: {err}"))),
+        None => Err(decode_error(column, format!("missing column: {column}"))),
     }
 }
 
-fn mysql_take_optional<T>(row: &mut MySqlRow, column: &str) -> Option<T>
+fn mysql_take_optional<T>(row: &mut MySqlRow, column: &str) -> Result<Option<T>, sqlx::Error>
 where
     T: mysql_async::prelude::FromValue,
 {
     match row.take_opt::<Option<T>, _>(column) {
-        Some(Ok(value)) => value,
-        Some(Err(err)) => panic!("failed to decode mysql column {column}: {err}"),
-        None => None,
+        Some(Ok(value)) => Ok(value),
+        Some(Err(err)) => Err(decode_error(column, format!("failed to decode value: {err}"))),
+        None => Err(decode_error(column, format!("missing column: {column}"))),
     }
 }
 

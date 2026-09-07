@@ -66,18 +66,36 @@ impl UdpSessionMap {
 /// Returns the local address/port where the UDP relay is listening
 pub async fn handle_udp_associate(
     client_addr: SocketAddr,
+    expected_client_port: Option<u16>,
     session_manager: Arc<SessionManager>,
     session_id: Uuid,
     shutdown_rx: broadcast::Receiver<()>,
     udp_ctx: UdpRelayContext,
 ) -> Result<SocketAddr> {
-    // Bind UDP socket on any available port
-    let udp_socket = UdpSocket::bind("0.0.0.0:0").await?;
+    // Bind the relay in the same address family as the TCP control connection.
+    let bind_target = if client_addr.is_ipv6() { "[::]:0" } else { "0.0.0.0:0" };
+    let udp_socket = UdpSocket::bind(bind_target).await?;
     let local_addr = udp_socket.local_addr()?;
 
+    // Wildcard addresses are not useful to a remote client. Determine the local
+    // interface selected by the route to the control peer and advertise that IP.
+    let advertised_addr = if local_addr.ip().is_unspecified() {
+        let probe = UdpSocket::bind(bind_target).await?;
+        if probe.connect(client_addr).await.is_ok() {
+            probe
+                .local_addr()
+                .map(|addr| SocketAddr::new(addr.ip(), local_addr.port()))
+                .unwrap_or(local_addr)
+        } else {
+            local_addr
+        }
+    } else {
+        local_addr
+    };
+
     info!(
-        "UDP ASSOCIATE: bound relay socket on {} for client {}",
-        local_addr, client_addr
+        "UDP ASSOCIATE: bound relay socket on {} (advertising {}) for client {}",
+        local_addr, advertised_addr, client_addr
     );
 
     // Spawn UDP relay task
@@ -85,6 +103,7 @@ pub async fn handle_udp_associate(
         if let Err(e) = run_udp_relay(
             udp_socket,
             client_addr,
+            expected_client_port,
             session_manager.clone(),
             session_id,
             shutdown_rx,
@@ -103,13 +122,14 @@ pub async fn handle_udp_associate(
         }
     });
 
-    Ok(local_addr)
+    Ok(advertised_addr)
 }
 
 /// Run the UDP relay loop
 async fn run_udp_relay(
     socket: UdpSocket,
     client_addr: SocketAddr,
+    expected_client_port: Option<u16>,
     session_manager: Arc<SessionManager>,
     session_id: Uuid,
     mut shutdown_rx: broadcast::Receiver<()>,
@@ -118,7 +138,8 @@ async fn run_udp_relay(
     let socket = Arc::new(socket);
     let session_map = Arc::new(UdpSessionMap::new());
     let udp_ctx = Arc::new(udp_ctx);
-    let mut client_udp_addr: Option<SocketAddr> = None;
+    let mut client_udp_addr = expected_client_port
+        .map(|port| SocketAddr::new(client_addr.ip(), port));
 
     const MAX_DATAGRAM: usize = 65_535;
     let mut buf = BytesMut::with_capacity(MAX_DATAGRAM);
@@ -141,7 +162,10 @@ async fn run_udp_relay(
 
                         let packet_data = buf.split().freeze();
 
-                        // Determine if this is from client or from destination
+                        // Determine if this is from the associated client or a destination.
+                        // When the request supplied a UDP source port, only that exact endpoint
+                        // may use the relay. For wildcard-port requests, bind to the first *valid*
+                        // SOCKS5 UDP datagram from the TCP control peer's IP.
                         let is_client = match client_udp_addr {
                             Some(addr) => addr == peer_addr,
                             None => peer_addr.ip() == client_addr.ip(),
@@ -149,7 +173,15 @@ async fn run_udp_relay(
 
                         if is_client {
                             if client_udp_addr.is_none() {
+                                if parse_udp_packet(packet_data.clone()).is_err() {
+                                    warn!(
+                                        peer = %peer_addr,
+                                        "Ignoring malformed UDP packet while waiting for client endpoint"
+                                    );
+                                    continue;
+                                }
                                 client_udp_addr = Some(peer_addr);
+                                debug!(client_udp = %peer_addr, "Bound UDP association to client endpoint");
                             }
                             // Packet from client to destination
                             if let Err(e) = handle_client_packet(
@@ -279,16 +311,47 @@ async fn handle_client_packet(
         return Ok(());
     }
 
-    // Resolve destination address
+    // Resolve destination address and recheck explicit IP/CIDR deny rules
+    // against the exact address that will receive the datagram.
     let dest_candidates = resolve_address(&packet.header.address, packet.header.port).await?;
+    let mut dest_addr = None;
+    for candidate in dest_candidates {
+        let resolved = match candidate.ip() {
+            std::net::IpAddr::V4(ip) => Address::IPv4(ip.octets()),
+            std::net::IpAddr::V6(ip) => Address::IPv6(ip.octets()),
+        };
+        if let Some(engine) = udp_ctx.acl_engine.as_ref() {
+            if let Some(rule) = engine
+                .is_explicitly_blocked_with_groups(
+                    udp_ctx.user.as_ref(),
+                    udp_ctx.user_groups.as_ref(),
+                    &resolved,
+                    packet.header.port,
+                    &Protocol::Udp,
+                )
+                .await
+            {
+                warn!(
+                    user = %udp_ctx.user.as_ref(),
+                    domain = %packet.header.address,
+                    resolved_ip = %candidate.ip(),
+                    rule = %rule,
+                    "Resolved UDP destination blocked by ACL"
+                );
+                continue;
+            }
+        }
+        dest_addr = Some(candidate);
+        break;
+    }
 
-    // Try to connect to first available destination
-    let dest_addr = dest_candidates
-        .first()
-        .ok_or_else(|| RustSocksError::Protocol("No destination address resolved".to_string()))?;
+    let Some(dest_addr) = dest_addr else {
+        udp_ctx.acl_stats.record_block(udp_ctx.user.as_ref());
+        return Ok(());
+    };
 
     // Store session mapping
-    session_map.insert(client_addr, *dest_addr, *session_id);
+    session_map.insert(client_addr, dest_addr, *session_id);
 
     // Forward raw data to destination (without SOCKS5 header)
     let sent = socket.send_to(packet.data.as_ref(), dest_addr).await?;

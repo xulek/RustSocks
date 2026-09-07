@@ -276,9 +276,6 @@ rustsocks_bytes_sent_total
 rustsocks_bytes_received_total
 
 # Per-user metrics
-rustsocks_user_sessions_total{user="alice"}
-rustsocks_user_bandwidth_bytes_total{user="alice", direction="sent"}
-rustsocks_user_bandwidth_bytes_total{user="alice", direction="received"}
 ```
 
 ### Integration
@@ -300,7 +297,6 @@ curl http://127.0.0.1:9090/metrics
 rate(rustsocks_session_duration_seconds_sum[5m]) / rate(rustsocks_session_duration_seconds_count[5m])
 
 # Bandwidth by user
-rate(rustsocks_user_bandwidth_bytes_total{user="alice"}[5m])
 
 # Rejection rate
 rate(rustsocks_sessions_rejected_total[5m]) / rate(rustsocks_sessions_total[5m])

@@ -3,7 +3,7 @@
 ![Version](https://img.shields.io/badge/version-0.9.0-blue.svg)
 ![Rust](https://img.shields.io/badge/rust-1.70%2B-orange.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
-![Status](https://img.shields.io/badge/status-Production%20Ready-brightgreen.svg)
+![Status](https://img.shields.io/badge/status-Hardened%20Candidate-blue.svg)
 ![Coverage](https://img.shields.io/github/actions/workflow/status/xulek/RustSocks/coverage.yml?branch=master&label=coverage)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/xulek/RustSocks)
 
@@ -14,6 +14,8 @@
 A modern, high-performance SOCKS5 proxy server written in Rust, featuring advanced Access Control Lists (ACL), real-time session tracking, Prometheus metrics, and an intuitive web dashboard. Built for administrators who need fine-grained control, security, and comprehensive monitoring.
 
 **Documentation:** https://xulek.github.io/RustSocks/
+
+> **Security default:** public no-auth listeners are rejected unless explicitly opted in. The bundled Docker Compose publishes ports on loopback and requires secrets through environment variables.
 
 ---
 

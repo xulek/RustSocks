@@ -298,15 +298,20 @@ where
                         )
                         .await;
                     }
+                    cancel_token.cancel();
                     return Err(RustSocksError::Io(e));
                 }
             }
         };
 
         if qos_enabled {
-            qos_engine
+            if let Err(e) = qos_engine
                 .allocate_bandwidth_arc(&user, bytes_read as u64)
-                .await?;
+                .await
+            {
+                cancel_token.cancel();
+                return Err(e);
+            }
             if bytes_read > 0 {
                 QosMetrics::record_allocation(
                     user.as_ref(),
@@ -336,6 +341,7 @@ where
                     )
                     .await;
                 }
+                cancel_token.cancel();
                 return Err(RustSocksError::Io(e));
             }
         }
@@ -368,7 +374,11 @@ where
         .await;
     }
 
-    cancel_token.cancel();
+    if client_closed && !cancelled {
+        if let Err(e) = upstream_write.shutdown().await {
+            trace!("Failed to propagate client half-close upstream: {}", e);
+        }
+    }
 
     if cancelled {
         Err(RustSocksError::ConnectionClosed)
@@ -445,15 +455,20 @@ where
                         )
                         .await;
                     }
+                    cancel_token.cancel();
                     return Err(RustSocksError::Io(e));
                 }
             }
         };
 
         if qos_enabled {
-            qos_engine
+            if let Err(e) = qos_engine
                 .allocate_bandwidth_arc(&user, bytes_read as u64)
-                .await?;
+                .await
+            {
+                cancel_token.cancel();
+                return Err(e);
+            }
             if bytes_read > 0 {
                 QosMetrics::record_allocation(
                     user.as_ref(),
@@ -483,6 +498,7 @@ where
                     )
                     .await;
                 }
+                cancel_token.cancel();
                 return Err(RustSocksError::Io(e));
             }
         }
@@ -515,7 +531,11 @@ where
         .await;
     }
 
-    cancel_token.cancel();
+    if remote_closed && !cancelled {
+        if let Err(e) = writer.shutdown().await {
+            trace!("Failed to propagate upstream half-close to client: {}", e);
+        }
+    }
 
     if cancelled {
         Err(RustSocksError::ConnectionClosed)

@@ -278,15 +278,9 @@ impl GssApiAuthenticator {
         // Protection level negotiation (RFC 1961 Section 4)
         self.negotiate_protection_level(stream, &mut ctx).await?;
 
-        // Retrieve user groups from system (LDAP via NSS/SSSD)
-        let groups = crate::auth::get_user_groups(&username).unwrap_or_else(|e| {
-            warn!(
-                user = %username,
-                error = %e,
-                "Failed to retrieve user groups from system, using empty list"
-            );
-            Vec::new()
-        });
+        // Group enumeration may block on NSS/SSSD/LDAP, so use the shared
+        // bounded async resolver instead of blocking a Tokio worker.
+        let groups = crate::auth::resolve_user_groups(&username).await;
 
         debug!(
             user = %username,

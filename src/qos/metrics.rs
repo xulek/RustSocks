@@ -14,8 +14,8 @@ mod enabled {
         .expect("register rustsocks_qos_active_users gauge");
         pub static ref BANDWIDTH_ALLOCATED: IntCounterVec = register_int_counter_vec!(
             "rustsocks_qos_bandwidth_allocated_bytes_total",
-            "Total bytes allocated through the QoS engine per user and direction",
-            &["user", "direction"]
+            "Total bytes allocated through the QoS engine per direction",
+            &["direction"]
         )
         .expect("register rustsocks_qos_bandwidth_allocated_bytes_total counter vec");
         pub static ref ALLOCATION_WAIT: Histogram = register_histogram!(
@@ -40,9 +40,9 @@ mod enabled {
         }
 
         #[inline]
-        pub fn record_allocation(user: &str, direction: &str, bytes: u64) {
+        pub fn record_allocation(_user: &str, direction: &str, bytes: u64) {
             BANDWIDTH_ALLOCATED
-                .with_label_values(&[user, direction])
+                .with_label_values(&[direction])
                 .inc_by(bytes);
         }
 
@@ -57,6 +57,16 @@ mod enabled {
         lazy_static::initialize(&ACTIVE_QOS_USERS);
         lazy_static::initialize(&BANDWIDTH_ALLOCATED);
         lazy_static::initialize(&ALLOCATION_WAIT);
+
+        // Counter vectors only expose concrete series after their label values are
+        // instantiated. Register the two supported directions up front so /metrics
+        // has a stable schema even before the first proxied byte.
+        BANDWIDTH_ALLOCATED
+            .with_label_values(&["upload"])
+            .inc_by(0);
+        BANDWIDTH_ALLOCATED
+            .with_label_values(&["download"])
+            .inc_by(0);
     }
 }
 
@@ -87,3 +97,29 @@ mod disabled {
 pub use disabled::*;
 #[cfg(feature = "metrics")]
 pub use enabled::*;
+
+#[cfg(all(test, feature = "metrics"))]
+mod tests {
+    use super::enabled::init;
+    use prometheus::{Encoder, TextEncoder};
+
+    #[test]
+    fn init_exports_stable_direction_series() {
+        init();
+
+        let encoder = TextEncoder::new();
+        let mut buffer = Vec::new();
+        encoder
+            .encode(&prometheus::gather(), &mut buffer)
+            .expect("encode Prometheus metrics");
+        let output = String::from_utf8(buffer).expect("metrics output is UTF-8");
+
+        assert!(output.contains("rustsocks_qos_active_users"));
+        assert!(output.contains(
+            "rustsocks_qos_bandwidth_allocated_bytes_total{direction=\"upload\"}"
+        ));
+        assert!(output.contains(
+            "rustsocks_qos_bandwidth_allocated_bytes_total{direction=\"download\"}"
+        ));
+    }
+}

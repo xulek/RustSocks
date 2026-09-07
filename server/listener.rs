@@ -282,16 +282,14 @@ impl SocksServer {
             None
         };
 
-        let session_manager_inner = SessionManager::new_with_limits(
+        #[cfg_attr(not(feature = "database"), allow(unused_mut))]
+        let mut session_manager_inner = SessionManager::new_with_limits(
             config.sessions.traffic_queue_capacity,
             Some(Duration::from_secs(
                 config.sessions.retention_days.saturating_mul(24 * 3600),
             )),
             config.sessions.history_max_entries,
         );
-
-        #[cfg(feature = "database")]
-        let mut session_manager_inner = session_manager_inner;
 
         #[cfg(feature = "database")]
         if config.sessions.enabled

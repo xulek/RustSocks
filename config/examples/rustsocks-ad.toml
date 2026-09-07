@@ -369,8 +369,6 @@ format = "pretty"
 # - rustsocks_sessions_rejected_total: Total sessions rejected by ACL
 # - rustsocks_bytes_sent_total: Total bytes sent to destinations
 # - rustsocks_bytes_received_total: Total bytes received from destinations
-# - rustsocks_user_sessions_total{user="alice@ad.company.com"}: Per-user session count
-# - rustsocks_user_bandwidth_bytes_total{user="alice@ad.company.com",direction="sent"}: Per-user bandwidth
 #
 # REST API endpoints (port 9090):
 # - GET /api/sessions/active: List active sessions

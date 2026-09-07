@@ -60,6 +60,16 @@ impl PooledConnection {
     fn is_expired(&self, idle_timeout: Duration) -> bool {
         self.last_used.elapsed() > idle_timeout
     }
+
+    fn is_clean_idle(&self) -> bool {
+        let mut probe = [0u8; 1];
+        match self.stream.try_read(&mut probe) {
+            Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => true,
+            // EOF, pending application bytes, or another socket error means this
+            // connection cannot be safely handed to a different SOCKS client.
+            _ => false,
+        }
+    }
 }
 
 #[derive(Debug, Default)]
@@ -518,6 +528,15 @@ impl ConnectionPool {
                     "Discarding expired connection to {} (idle: {:?})",
                     addr,
                     conn.last_used.elapsed()
+                );
+                expired += 1;
+                continue;
+            }
+
+            if !conn.is_clean_idle() {
+                trace!(
+                    "Discarding stale or dirty pooled connection to {}",
+                    addr
                 );
                 expired += 1;
                 continue;

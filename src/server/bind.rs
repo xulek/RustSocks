@@ -1,14 +1,17 @@
+use crate::acl::{AclEngine, Protocol};
 use crate::protocol::{Address, ReplyCode};
 use crate::qos::QosEngine;
 use crate::server::handler::IoStream;
-use crate::server::pool::{ConnectionPool, ReuseHint};
+use crate::server::pool::ConnectionPool;
+use crate::server::resolver::resolve_address;
 use crate::server::proxy::{proxy_data, ProxyContext, TrafficUpdateConfig};
 use crate::session::{ConnectionInfo, SessionManager, SessionProtocol, SessionStatus};
 use crate::utils::error::{Result, RustSocksError};
-use std::net::SocketAddr;
+use std::collections::HashSet;
+use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::net::TcpListener;
+use tokio::net::{TcpListener, UdpSocket};
 use tokio::time::timeout;
 use tracing::{debug, info, warn};
 
@@ -23,6 +26,8 @@ pub struct BindContext {
     pub acl_rule: Option<String>,
     pub qos_engine: QosEngine,
     pub connection_pool: Arc<ConnectionPool>,
+    pub acl_engine: Option<Arc<AclEngine>>,
+    pub user_groups: Vec<String>,
 }
 
 /// Handle BIND command
@@ -40,17 +45,50 @@ where
     let client_addr = bind_ctx.client_addr;
     let dest_string = dest_addr.to_string();
 
-    // Bind TCP listener on ephemeral port (0 = random)
-    let bind_listener = TcpListener::bind("0.0.0.0:0").await?;
+    // Resolve the expected peer once and validate the exact incoming connection.
+    // A wildcard request address/port intentionally leaves that component unrestricted.
+    let wildcard_address = match dest_addr {
+        Address::IPv4(octets) => *octets == [0, 0, 0, 0],
+        Address::IPv6(octets) => *octets == [0; 16],
+        Address::Domain(_) => false,
+    };
+    let expected_ips: Option<HashSet<IpAddr>> = if wildcard_address {
+        None
+    } else {
+        let resolved = resolve_address(dest_addr, dest_port).await?;
+        Some(resolved.into_iter().map(|addr| addr.ip()).collect())
+    };
+
+    // Preserve the control connection address family.
+    let bind_target = if client_addr.is_ipv6() { "[::]:0" } else { "0.0.0.0:0" };
+    let bind_listener = TcpListener::bind(bind_target).await?;
     let bind_addr = bind_listener.local_addr()?;
+    let advertised_bind_addr = if bind_addr.ip().is_unspecified() {
+        let probe = UdpSocket::bind(bind_target).await?;
+        if probe.connect(client_addr).await.is_ok() {
+            probe
+                .local_addr()
+                .map(|addr| SocketAddr::new(addr.ip(), bind_addr.port()))
+                .unwrap_or(bind_addr)
+        } else {
+            bind_addr
+        }
+    } else {
+        bind_addr
+    };
 
     info!(
-        "BIND: listening on {} for incoming connection to {}:{}",
-        bind_addr, dest_string, dest_port
+        "BIND: listening on {} (advertising {}) for incoming connection to {}:{}",
+        bind_addr, advertised_bind_addr, dest_string, dest_port
     );
 
-    // Send first response with bind address/port
-    send_bind_response(&mut client_stream, ReplyCode::Succeeded, bind_addr).await?;
+    // Send first response with a usable local address instead of a wildcard when possible.
+    send_bind_response(
+        &mut client_stream,
+        ReplyCode::Succeeded,
+        advertised_bind_addr,
+    )
+    .await?;
 
     // Create session for this BIND
     let connection_info = ConnectionInfo {
@@ -72,11 +110,65 @@ where
         )
         .await;
 
-    // Wait for incoming connection with timeout
-    let incoming_result = timeout(BIND_ACCEPT_TIMEOUT, bind_listener.accept()).await;
+    // Wait for the expected incoming connection with timeout. Unexpected peers are
+    // dropped instead of being accepted as the BIND target.
+    let incoming_result = timeout(BIND_ACCEPT_TIMEOUT, async {
+        loop {
+            let (stream, peer_addr) = bind_listener.accept().await?;
+            let ip_matches = expected_ips
+                .as_ref()
+                .map(|ips| ips.contains(&peer_addr.ip()))
+                .unwrap_or(true);
+            let port_matches = dest_port == 0 || peer_addr.port() == dest_port;
+            if ip_matches && port_matches {
+                break Ok((stream, peer_addr));
+            }
+            warn!(
+                peer = %peer_addr,
+                expected = %dest_string,
+                expected_port = dest_port,
+                "BIND: rejected unexpected incoming peer"
+            );
+            drop(stream);
+        }
+    }).await;
 
     match incoming_result {
         Ok(Ok((incoming_stream, peer_addr))) => {
+            if let Some(engine) = bind_ctx.acl_engine.as_ref() {
+                let peer_address = match peer_addr.ip() {
+                    IpAddr::V4(ip) => Address::IPv4(ip.octets()),
+                    IpAddr::V6(ip) => Address::IPv6(ip.octets()),
+                };
+                if let Some(rule) = engine
+                    .is_explicitly_blocked_with_groups(
+                        bind_ctx.user.as_ref(),
+                        &bind_ctx.user_groups,
+                        &peer_address,
+                        peer_addr.port(),
+                        &Protocol::Tcp,
+                    )
+                    .await
+                {
+                    warn!(peer = %peer_addr, rule = %rule, "BIND peer blocked by ACL");
+                    send_bind_response(
+                        &mut client_stream,
+                        ReplyCode::ConnectionNotAllowed,
+                        peer_addr,
+                    )
+                    .await?;
+                    session_manager
+                        .close_session(
+                            &session_id,
+                            Some(format!("BIND peer blocked by ACL: {}", rule)),
+                            SessionStatus::Failed,
+                        )
+                        .await;
+                    return Err(RustSocksError::AuthFailed(
+                        "BIND peer blocked by ACL".to_string(),
+                    ));
+                }
+            }
             info!(
                 "BIND: accepted incoming connection from {} for client {}",
                 peer_addr, client_addr
@@ -96,10 +188,7 @@ where
             };
             match proxy_data(client_stream, incoming_stream, proxy_ctx).await {
                 Ok(Some(reuse)) => {
-                    bind_ctx
-                        .connection_pool
-                        .put(peer_addr, reuse.stream, reuse.hint)
-                        .await;
+                    drop(reuse.stream);
                     session_manager
                         .close_session(
                             &session_id,
@@ -109,10 +198,6 @@ where
                         .await;
                 }
                 Ok(None) => {
-                    bind_ctx
-                        .connection_pool
-                        .release(peer_addr, ReuseHint::Refresh)
-                        .await;
                     session_manager
                         .close_session(
                             &session_id,
@@ -122,10 +207,6 @@ where
                         .await;
                 }
                 Err(RustSocksError::ConnectionClosed) => {
-                    bind_ctx
-                        .connection_pool
-                        .release(peer_addr, ReuseHint::Refresh)
-                        .await;
                     session_manager
                         .close_session(
                             &session_id,
@@ -137,10 +218,6 @@ where
                 }
                 Err(e) => {
                     let reason = format!("BIND proxy error: {}", e);
-                    bind_ctx
-                        .connection_pool
-                        .release(peer_addr, ReuseHint::Refresh)
-                        .await;
                     session_manager
                         .close_session(&session_id, Some(reason), SessionStatus::Failed)
                         .await;

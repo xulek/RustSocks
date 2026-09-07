@@ -60,10 +60,16 @@ fn stats_api_bind_address_must_be_valid() {
     config.sessions.stats_api_enabled = true;
     config.sessions.stats_api_bind_address = "not-an-ip".to_string();
 
-    assert_config_error(
-        &config,
-        "Invalid stats API bind address/port: not-an-ip:9090",
-    );
+    assert_config_error(&config, "Invalid stats API bind address: not-an-ip");
+}
+
+#[test]
+fn stats_api_bind_address_accepts_ipv6() {
+    let mut config = Config::default();
+    config.sessions.stats_api_enabled = true;
+    config.sessions.stats_api_bind_address = "::1".to_string();
+
+    assert!(config.validate_effective().is_ok());
 }
 
 #[test]

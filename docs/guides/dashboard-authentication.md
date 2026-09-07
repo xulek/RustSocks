@@ -12,7 +12,7 @@ Complete guide to setting up authentication for the RustSocks dashboard with opt
 
 ## Quick Start
 
-### Basic Authentication (Username/Password Only)
+### Session Authentication (Username/Password)
 
 1. **Enable authentication in config**:
 
@@ -31,6 +31,10 @@ session_duration_hours = 24
 [[sessions.dashboard_auth.users]]
 username = "admin"
 password = "SecurePassword123"
+
+[[sessions.dashboard_auth.roles]]
+username = "admin"
+role = "admin" # viewer | operator | admin
 ```
 
 2. **Start the server**:
@@ -504,13 +508,9 @@ Access at: `http://127.0.0.1:9090/socks`
 
 Planned features for future versions:
 
-- [ ] Password hashing (bcrypt/argon2)
 - [ ] Two-factor authentication (TOTP)
-- [ ] Role-based access control (RBAC)
 - [ ] LDAP/Active Directory integration
-- [ ] API key authentication
 - [ ] Audit logging
-- [ ] Brute-force protection
 - [ ] Session management UI
 
 ---

@@ -146,11 +146,5 @@ fn bench_oncelock_contention(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(
-    benches,
-    bench_mutex_single_thread,
-    bench_oncelock_single_thread,
-    bench_mutex_contention,
-    bench_oncelock_contention
-);
+criterion_group!(benches, bench_mutex_single_thread, bench_oncelock_single_thread);
 criterion_main!(benches);

@@ -57,6 +57,26 @@ pub struct AuthState {
     next_cleanup_at: Arc<AtomicU64>,
     #[cfg(feature = "database")]
     pub smtp_store: Option<Arc<crate::session::SessionStore>>,
+    #[cfg(feature = "database")]
+    pub smtp_encryption_key: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum DashboardRole {
+    Viewer,
+    Operator,
+    Admin,
+}
+
+impl DashboardRole {
+    fn from_config(value: &str) -> Self {
+        match value {
+            "viewer" => Self::Viewer,
+            "operator" => Self::Operator,
+            "admin" => Self::Admin,
+            _ => Self::Viewer,
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -90,6 +110,7 @@ impl AuthState {
         base_path: String,
         api_token: Option<String>,
         smtp_store: Option<Arc<crate::session::SessionStore>>,
+        smtp_encryption_key: Option<String>,
     ) -> Self {
         Self {
             settings,
@@ -100,6 +121,7 @@ impl AuthState {
             ip_login_attempts: Arc::new(DashMap::new()),
             next_cleanup_at: Arc::new(AtomicU64::new(0)),
             smtp_store,
+            smtp_encryption_key,
         }
     }
 
@@ -205,6 +227,17 @@ impl AuthState {
             let _ = verify_password(dummy_password_hash(), password);
             false
         }
+    }
+
+    pub fn role_for(&self, username: &str) -> DashboardRole {
+        self.settings
+            .roles
+            .iter()
+            .find(|assignment| assignment.username == username)
+            .map(|assignment| DashboardRole::from_config(&assignment.role))
+            // Missing assignments are fail-closed: authenticated users get the
+            // least-privileged role unless an operator explicitly grants more.
+            .unwrap_or(DashboardRole::Viewer)
     }
 
     pub fn cookie_path(&self) -> &str {
@@ -488,10 +521,17 @@ fn spawn_security_notification(auth_state: &AuthState, username: &str, reason: &
         username, reason
     );
     let store = store.clone();
-    let api_token = auth_state.api_token.clone();
+    let smtp_encryption_key = auth_state.smtp_encryption_key.clone();
 
     tokio::spawn(async move {
-        match notify_with_store(&store, api_token, NotificationKind::Security, subject, body).await
+        match notify_with_store(
+            &store,
+            smtp_encryption_key,
+            NotificationKind::Security,
+            subject,
+            body,
+        )
+        .await
         {
             Ok(NotificationDecision::Sent { recipients }) => {
                 info!("Security notification sent to {} recipient(s)", recipients);
@@ -736,7 +776,7 @@ mod tests {
     fn test_auth_state(settings: DashboardAuthSettings) -> Arc<AuthState> {
         #[cfg(feature = "database")]
         {
-            Arc::new(AuthState::new(settings, "".to_string(), None, None))
+            Arc::new(AuthState::new(settings, "".to_string(), None, None, None))
         }
         #[cfg(not(feature = "database"))]
         {
@@ -788,7 +828,7 @@ mod tests {
         let state = {
             #[cfg(feature = "database")]
             {
-                AuthState::new(settings.clone(), "/rustsocks".to_string(), None, None)
+                AuthState::new(settings.clone(), "/rustsocks".to_string(), None, None, None)
             }
             #[cfg(not(feature = "database"))]
             {
@@ -800,7 +840,7 @@ mod tests {
         let root_state = {
             #[cfg(feature = "database")]
             {
-                AuthState::new(settings, "".to_string(), None, None)
+                AuthState::new(settings, "".to_string(), None, None, None)
             }
             #[cfg(not(feature = "database"))]
             {
@@ -808,6 +848,12 @@ mod tests {
             }
         };
         assert_eq!(root_state.cookie_path(), "/");
+    }
+
+    #[test]
+    fn missing_dashboard_role_defaults_to_viewer() {
+        let state = test_auth_state(DashboardAuthSettings::default());
+        assert_eq!(state.role_for("unassigned-user"), DashboardRole::Viewer);
     }
 
     #[test]
