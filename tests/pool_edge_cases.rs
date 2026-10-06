@@ -437,7 +437,12 @@ async fn pool_handles_multiple_destinations_correctly() {
         tokio::spawn(async move {
             loop {
                 if let Ok((stream, _)) = listener.accept().await {
-                    drop(stream);
+                    // Keep accepted connections open so the pool does not
+                    // discard them as stale when they are returned.
+                    tokio::spawn(async move {
+                        let _stream = stream;
+                        tokio::time::sleep(Duration::from_secs(60)).await;
+                    });
                 }
             }
         });

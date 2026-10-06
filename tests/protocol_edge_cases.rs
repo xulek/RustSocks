@@ -283,7 +283,7 @@ async fn test_socks5_request_all_address_types() {
 
 #[tokio::test]
 async fn test_socks5_request_zero_length_domain() {
-    // Test with zero-length domain (will parse but domain will be empty string)
+    // Empty domain names are rejected by the parser
     let mut data = vec![
         SOCKS_VERSION,
         Command::Connect as u8,
@@ -296,14 +296,7 @@ async fn test_socks5_request_zero_length_domain() {
     let mut stream = MockStream::new(data);
     let result = parse_socks5_request(&mut stream).await;
 
-    // Empty domain is technically valid in parsing, though may fail later in resolution
-    assert!(result.is_ok());
-    let request = result.unwrap();
-    if let Address::Domain(domain) = request.address {
-        assert_eq!(domain.len(), 0);
-    } else {
-        panic!("Expected Domain address");
-    }
+    assert!(result.is_err(), "empty SOCKS5 domain must be rejected");
 }
 
 #[tokio::test]
