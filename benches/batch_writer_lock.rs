@@ -2,7 +2,8 @@
 ///
 /// Compares Mutex<Option<Arc<T>>> vs OnceLock<Arc<T>> for read-heavy workloads.
 /// This simulates the session manager accessing batch writer on every session creation.
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
+use std::hint::black_box;
 use std::sync::{Arc, Barrier, Mutex, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant};

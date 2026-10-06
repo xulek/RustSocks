@@ -2,7 +2,8 @@
 ///
 /// Compares Vec::new() vs Vec::with_capacity() for UDP packet serialization.
 /// Pre-allocating capacity avoids multiple reallocations during packet construction.
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
+use std::hint::black_box;
 
 fn bench_udp_serialize_no_capacity(c: &mut Criterion) {
     c.bench_function("udp_serialize_no_capacity", |b| {

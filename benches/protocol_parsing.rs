@@ -2,7 +2,8 @@
 ///
 /// Compares Vec allocations vs SmallVec for protocol parsing operations.
 /// This measures the performance impact of stack-allocated buffers in hot paths.
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{criterion_group, criterion_main, Criterion};
+use std::hint::black_box;
 
 // Mock protocol parsing - measures allocation overhead
 fn bench_vec_allocations(c: &mut Criterion) {

@@ -4,7 +4,7 @@
 /// legacy rules only, with dynamic policies carrying conditions, and the admission
 /// reservation tracker used for connection/quota limits.
 use chrono::{TimeZone, Utc};
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use rustsocks::acl::types::{AclRule, UserAcl};
 use rustsocks::acl::{
     AccessPolicy, AclConfig, AclEngine, Action, PolicyAdmissionLimits, PolicyConditions,
@@ -12,6 +12,7 @@ use rustsocks::acl::{
     Protocol,
 };
 use rustsocks::protocol::Address;
+use std::hint::black_box;
 use std::sync::Arc;
 use tokio::runtime::Runtime;
 
