@@ -48,7 +48,7 @@ describe('SessionDetailDrawer', () => {
       <SessionDetailDrawer open session={mockSession} loading={false} error={null} onClose={onClose} />
     )
 
-    const closeButtons = screen.getAllByTitle('Zamknij panel')
+    const closeButtons = screen.getAllByTitle('Close panel')
     await user.click(closeButtons[closeButtons.length - 1])
     expect(onClose).toHaveBeenCalledTimes(1)
   })

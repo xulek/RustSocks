@@ -17,7 +17,9 @@ describe('session helpers', () => {
       pageSize: 100
     })
 
-    expect(query).toBe('?page=2&page_size=100&user=alice&dest_ip=10.0.0.1&status=closed&hours=24')
+    expect(query).toBe(
+      '?page=2&page_size=100&user=alice&dest_ip=10.0.0.1&status=closed&hours=24&sort_by=start_time&sort_dir=desc'
+    )
   })
 
   it('clamps page and page size to accepted ranges', () => {
@@ -26,12 +28,14 @@ describe('session helpers', () => {
       pageSize: 10_000
     })
 
-    expect(query).toBe(`?page=1&page_size=1000`)
+    expect(query).toBe('?page=1&page_size=1000&sort_by=start_time&sort_dir=desc')
   })
 
   it('builds full history url', () => {
     const url = buildHistoryUrl('/api/sessions/history', { page: 3, pageSize: DEFAULT_PAGE_SIZE })
-    expect(url).toBe(`/api/sessions/history?page=3&page_size=${DEFAULT_PAGE_SIZE}`)
+    expect(url).toBe(
+      `/api/sessions/history?page=3&page_size=${DEFAULT_PAGE_SIZE}&sort_by=start_time&sort_dir=desc`
+    )
   })
 
   it('converts sessions list to csv', () => {
