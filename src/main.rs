@@ -33,9 +33,9 @@ struct Args {
     #[arg(long, value_name = "FILE")]
     generate_config: Option<PathBuf>,
 
-    /// Log level (trace, debug, info, warn, error)
-    #[arg(long, default_value = "info")]
-    log_level: String,
+    /// Log level (trace, debug, info, warn, error); overrides `logging.level` from the config
+    #[arg(long)]
+    log_level: Option<String>,
 }
 
 #[tokio::main]
@@ -56,25 +56,29 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
-    // Initialize logging
-    init_logging(&args.log_level)?;
+    // Load the configuration first: the log level and format come from it, so logging can
+    // only be initialized afterwards. Load errors are returned to the caller as usual.
+    let mut config = if let Some(ref config_path) = config_path {
+        Config::from_file(config_path)?
+    } else {
+        Config::default()
+    };
+
+    // Initialize logging (CLI `--log-level` overrides `logging.level`)
+    let log_level = config.effective_log_level(args.log_level.as_deref());
+    init_logging(&log_level, &config.logging.format)?;
 
     info!("RustSocks v{} starting", env!("CARGO_PKG_VERSION"));
     if let Ok(cwd) = std::env::current_dir() {
         info!("Current working directory: {}", cwd.display());
     }
+    match &config_path {
+        Some(path) => info!("Loaded configuration from: {:?}", path),
+        None => info!("No configuration file specified, using defaults"),
+    }
 
     // Check system settings for optimal performance
     rustsocks::utils::system::check_system_settings();
-
-    // Load configuration
-    let mut config = if let Some(ref config_path) = config_path {
-        info!("Loading configuration from: {:?}", config_path);
-        Config::from_file(config_path)?
-    } else {
-        info!("No configuration file specified, using defaults");
-        Config::default()
-    };
 
     // Apply CLI overrides
     if let Some(bind) = args.bind {
@@ -115,14 +119,16 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-fn init_logging(level: &str) -> Result<()> {
+fn init_logging(level: &str, format: &str) -> Result<()> {
     let env_filter = EnvFilter::try_new(level)
         .map_err(|e| rustsocks::RustSocksError::Config(format!("Invalid log level: {}", e)))?;
 
-    tracing_subscriber::registry()
-        .with(env_filter)
-        .with(fmt::layer())
-        .init();
+    let registry = tracing_subscriber::registry().with(env_filter);
+    if format.eq_ignore_ascii_case("json") {
+        registry.with(fmt::layer().json()).init();
+    } else {
+        registry.with(fmt::layer()).init();
+    }
 
     Ok(())
 }

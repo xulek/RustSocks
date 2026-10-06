@@ -122,7 +122,9 @@ Used only when `socks_method = "userpass"`.
 | Key | Type | Default | Description |
 | --- | --- | --- | --- |
 | `level` | string | `info` | Log level: `trace`, `debug`, `info`, `warn`, `error`. |
-| `format` | string | `pretty` | `pretty` or `json`. |
+| `format` | string | `pretty` | `pretty` (human-readable lines) or `json` (one JSON object per line, for log pipelines). |
+
+The level can also be given as a filter directive (for example `warn,rustsocks::server=info`). The `--log-level` command-line option overrides `logging.level`. Messages written while the configuration file is being read (before logging starts) are not logged. At `info`, every accepted connection is logged; use `warn` in production if that is too verbose.
 
 ## [acl]
 

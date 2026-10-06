@@ -278,3 +278,33 @@ lease_secs = 30
     assert_eq!(config.policy_state.failure_mode, "fail_open");
     assert_eq!(config.policy_state.lease_secs, 30);
 }
+
+#[test]
+fn log_level_comes_from_config_unless_overridden_on_the_command_line() {
+    let toml = r#"
+[server]
+bind_address = "127.0.0.1"
+bind_port = 1080
+
+[auth]
+client_method = "none"
+socks_method = "none"
+
+[logging]
+level = "warn"
+format = "json"
+"#;
+    let config = Config::from_toml_str(toml).expect("config parses");
+    assert_eq!(config.logging.level, "warn");
+    assert_eq!(config.logging.format, "json");
+
+    // No CLI value: the configured level applies (it used to be ignored).
+    assert_eq!(config.effective_log_level(None), "warn");
+    assert_eq!(config.effective_log_level(Some("")), "warn");
+    assert_eq!(config.effective_log_level(Some("  ")), "warn");
+    // The command line wins when given.
+    assert_eq!(config.effective_log_level(Some("debug")), "debug");
+
+    // Defaults stay "info" when the config says nothing.
+    assert_eq!(Config::default().effective_log_level(None), "info");
+}

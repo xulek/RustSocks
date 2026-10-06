@@ -924,6 +924,14 @@ impl Config {
     }
 
     /// Validate the configuration (public wrapper used by APIs)
+    /// The log level to use: the command-line value if given, otherwise `logging.level`.
+    pub fn effective_log_level(&self, cli_override: Option<&str>) -> String {
+        match cli_override.map(str::trim) {
+            Some(level) if !level.is_empty() => level.to_string(),
+            _ => self.logging.level.clone(),
+        }
+    }
+
     fn validate_policy_state(&self) -> Result<()> {
         let state = &self.policy_state;
         match state.backend.as_str() {
