@@ -17,9 +17,11 @@ use crate::smtp::notifications::{
 };
 use crate::telemetry::TelemetryHistory;
 use crate::utils::error::{Result, RustSocksError};
+use dashmap::DashMap;
 use rustls::pki_types::{pem::PemObject, CertificateDer, PrivateKeyDer};
 use rustls::RootCertStore;
 use std::ffi::OsString;
+use std::net::IpAddr;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -63,20 +65,109 @@ pub struct SocksServer {
     connection_pool: Arc<ConnectionPool>,
 }
 
+/// Global and optional per-address connection admission.
 #[derive(Clone)]
 struct ConnectionLimiter {
     semaphore: Arc<Semaphore>,
+    per_ip: Option<Arc<PerIpLimiter>>,
+}
+
+/// Held for the lifetime of a connection; releases both the global slot and the
+/// per-address slot on drop.
+struct ConnectionPermit {
+    _global: tokio::sync::OwnedSemaphorePermit,
+    _per_ip: Option<IpPermit>,
 }
 
 impl ConnectionLimiter {
-    fn new(max_connections: usize) -> Self {
+    fn new(max_connections: usize, max_per_ip: usize) -> Self {
         Self {
             semaphore: Arc::new(Semaphore::new(max_connections)),
+            per_ip: (max_per_ip > 0).then(|| Arc::new(PerIpLimiter::new(max_per_ip))),
         }
     }
 
-    fn try_acquire(&self) -> Option<tokio::sync::OwnedSemaphorePermit> {
-        self.semaphore.clone().try_acquire_owned().ok()
+    fn try_acquire(&self, client: IpAddr) -> std::result::Result<ConnectionPermit, RejectReason> {
+        let global = self
+            .semaphore
+            .clone()
+            .try_acquire_owned()
+            .map_err(|_| RejectReason::Global)?;
+        let per_ip = match &self.per_ip {
+            Some(limiter) => Some(limiter.try_acquire(client).ok_or(RejectReason::PerIp)?),
+            None => None,
+        };
+        Ok(ConnectionPermit {
+            _global: global,
+            _per_ip: per_ip,
+        })
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RejectReason {
+    Global,
+    PerIp,
+}
+
+struct PerIpLimiter {
+    max_per_ip: usize,
+    active: DashMap<IpAddr, usize>,
+}
+
+struct IpPermit {
+    limiter: Arc<PerIpLimiter>,
+    key: IpAddr,
+}
+
+impl PerIpLimiter {
+    fn new(max_per_ip: usize) -> Self {
+        Self {
+            max_per_ip,
+            active: DashMap::new(),
+        }
+    }
+
+    /// IPv4-mapped IPv6 addresses count as IPv4; other IPv6 clients are grouped by /64 so a
+    /// single subnet allocation cannot bypass the limit by rotating host bits.
+    fn key(client: IpAddr) -> IpAddr {
+        match client.to_canonical() {
+            IpAddr::V6(v6) => {
+                let mut octets = v6.octets();
+                octets[8..].fill(0);
+                IpAddr::V6(std::net::Ipv6Addr::from(octets))
+            }
+            v4 => v4,
+        }
+    }
+
+    fn try_acquire(self: &Arc<Self>, client: IpAddr) -> Option<IpPermit> {
+        let key = Self::key(client);
+        let mut count = self.active.entry(key).or_insert(0);
+        if *count >= self.max_per_ip {
+            return None;
+        }
+        *count += 1;
+        drop(count);
+        Some(IpPermit {
+            limiter: Arc::clone(self),
+            key,
+        })
+    }
+}
+
+impl Drop for IpPermit {
+    fn drop(&mut self) {
+        if let dashmap::mapref::entry::Entry::Occupied(mut entry) =
+            self.limiter.active.entry(self.key)
+        {
+            let remaining = entry.get().saturating_sub(1);
+            if remaining == 0 {
+                entry.remove();
+            } else {
+                *entry.get_mut() = remaining;
+            }
+        }
     }
 }
 
@@ -547,7 +638,10 @@ impl SocksServer {
         let bind_addr = std::net::SocketAddr::new(bind_ip, self.config.server.bind_port);
 
         let listener = TcpListener::bind(bind_addr).await?;
-        let limiter = ConnectionLimiter::new(self.config.server.max_connections);
+        let limiter = ConnectionLimiter::new(
+            self.config.server.max_connections,
+            self.config.server.max_connections_per_ip,
+        );
 
         info!("RustSocks server listening on {}", bind_addr);
         info!(
@@ -633,13 +727,21 @@ impl SocksServer {
                 Ok((stream, addr)) => {
                     info!("New connection from {}", addr);
 
-                    let permit = match limiter.try_acquire() {
-                        Some(permit) => permit,
-                        None => {
+                    let permit = match limiter.try_acquire(addr.ip()) {
+                        Ok(permit) => permit,
+                        Err(RejectReason::Global) => {
                             warn!(
                                 client = %addr,
                                 max_connections = self.config.server.max_connections,
                                 "Connection limit reached; dropping connection"
+                            );
+                            continue;
+                        }
+                        Err(RejectReason::PerIp) => {
+                            warn!(
+                                client = %addr,
+                                max_connections_per_ip = self.config.server.max_connections_per_ip,
+                                "Per-address connection limit reached; dropping connection"
                             );
                             continue;
                         }
@@ -725,20 +827,84 @@ impl SocksServer {
 
 #[cfg(test)]
 mod tests {
-    use super::{redact_database_url, ConnectionLimiter};
+    use super::{redact_database_url, ConnectionLimiter, RejectReason};
+    use std::net::IpAddr;
+
+    fn ip(s: &str) -> IpAddr {
+        s.parse().unwrap()
+    }
 
     #[test]
     fn connection_limiter_enforces_capacity() {
-        let limiter = ConnectionLimiter::new(2);
-        let permit1 = limiter.try_acquire();
-        let permit2 = limiter.try_acquire();
+        let limiter = ConnectionLimiter::new(2, 0);
+        let client = ip("192.0.2.1");
+        let permit1 = limiter.try_acquire(client);
+        let permit2 = limiter.try_acquire(client);
 
-        assert!(permit1.is_some());
-        assert!(permit2.is_some());
-        assert!(limiter.try_acquire().is_none());
+        assert!(permit1.is_ok());
+        assert!(permit2.is_ok());
+        assert_eq!(
+            limiter.try_acquire(client).err(),
+            Some(RejectReason::Global)
+        );
 
         drop(permit1);
-        assert!(limiter.try_acquire().is_some());
+        assert!(limiter.try_acquire(client).is_ok());
+    }
+
+    #[test]
+    fn per_ip_limit_is_enforced_independently_and_released_on_drop() {
+        let limiter = ConnectionLimiter::new(100, 2);
+        let a = ip("192.0.2.1");
+        let b = ip("192.0.2.2");
+
+        let a1 = limiter.try_acquire(a).unwrap();
+        let _a2 = limiter.try_acquire(a).unwrap();
+        assert_eq!(limiter.try_acquire(a).err(), Some(RejectReason::PerIp));
+        // A different address is unaffected.
+        assert!(limiter.try_acquire(b).is_ok());
+
+        drop(a1);
+        assert!(limiter.try_acquire(a).is_ok());
+    }
+
+    #[test]
+    fn per_ip_rejection_does_not_leak_global_slots() {
+        let limiter = ConnectionLimiter::new(2, 1);
+        let a = ip("192.0.2.1");
+        let _held = limiter.try_acquire(a).unwrap();
+        for _ in 0..10 {
+            assert_eq!(limiter.try_acquire(a).err(), Some(RejectReason::PerIp));
+        }
+        // The one remaining global slot is still available to another address.
+        assert!(limiter.try_acquire(ip("192.0.2.9")).is_ok());
+    }
+
+    #[test]
+    fn ipv6_clients_are_grouped_by_slash_64_and_mapped_v4_counts_as_v4() {
+        let limiter = ConnectionLimiter::new(100, 1);
+        let _first = limiter.try_acquire(ip("2001:db8:1:2::1")).unwrap();
+        // Same /64, different host bits.
+        assert_eq!(
+            limiter.try_acquire(ip("2001:db8:1:2:ffff::7")).err(),
+            Some(RejectReason::PerIp)
+        );
+        // Different /64.
+        assert!(limiter.try_acquire(ip("2001:db8:1:3::1")).is_ok());
+
+        let _v4 = limiter.try_acquire(ip("198.51.100.5")).unwrap();
+        assert_eq!(
+            limiter.try_acquire(ip("::ffff:198.51.100.5")).err(),
+            Some(RejectReason::PerIp)
+        );
+    }
+
+    #[test]
+    fn per_ip_table_does_not_retain_idle_addresses() {
+        let limiter = ConnectionLimiter::new(100, 3);
+        let permit = limiter.try_acquire(ip("192.0.2.1")).unwrap();
+        drop(permit);
+        assert_eq!(limiter.per_ip.as_ref().unwrap().active.len(), 0);
     }
 
     #[test]

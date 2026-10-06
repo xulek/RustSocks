@@ -32,6 +32,10 @@ pub struct ServerConfig {
     pub bind_port: u16,
     #[serde(default = "default_max_connections")]
     pub max_connections: usize,
+    /// Maximum concurrent connections from one client address (IPv6 clients are
+    /// grouped by /64). `0` disables the per-address limit.
+    #[serde(default)]
+    pub max_connections_per_ip: usize,
     #[serde(default = "default_handshake_timeout_ms")]
     pub handshake_timeout_ms: u64,
     #[serde(default)]
@@ -535,6 +539,7 @@ impl Default for ServerConfig {
             bind_address: default_bind_address(),
             bind_port: default_bind_port(),
             max_connections: default_max_connections(),
+            max_connections_per_ip: 0,
             handshake_timeout_ms: default_handshake_timeout_ms(),
             allow_unsafe_public_proxy: false,
             tls: TlsSettings::default(),
@@ -1157,6 +1162,12 @@ impl Config {
         if public_no_auth && !self.server.allow_unsafe_public_proxy {
             return Err(RustSocksError::Config(
                 "Refusing to expose an unauthenticated SOCKS proxy on a non-loopback address. Configure authentication, bind to loopback, or explicitly set server.allow_unsafe_public_proxy = true.".to_string(),
+            ));
+        }
+
+        if self.server.max_connections_per_ip > self.server.max_connections {
+            return Err(RustSocksError::Config(
+                "server.max_connections_per_ip must not exceed server.max_connections".to_string(),
             ));
         }
 

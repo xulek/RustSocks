@@ -144,3 +144,37 @@ base_path = "///api//v1/"
     let config = Config::from_toml_str(toml).expect("valid config");
     assert_eq!(config.sessions.base_path, "/api/v1");
 }
+
+#[test]
+fn per_ip_connection_limit_defaults_to_disabled_and_is_bounded_by_global_limit() {
+    let mut config = Config::default();
+    assert_eq!(config.server.max_connections_per_ip, 0);
+    assert!(config.validate_effective().is_ok());
+
+    config.server.max_connections = 100;
+    config.server.max_connections_per_ip = 100;
+    assert!(config.validate_effective().is_ok());
+
+    config.server.max_connections_per_ip = 101;
+    assert_config_error(
+        &config,
+        "server.max_connections_per_ip must not exceed server.max_connections",
+    );
+}
+
+#[test]
+fn per_ip_connection_limit_is_read_from_toml() {
+    let toml = r#"
+[server]
+bind_address = "127.0.0.1"
+bind_port = 1080
+max_connections = 500
+max_connections_per_ip = 25
+
+[auth]
+client_method = "none"
+socks_method = "none"
+"#;
+    let config = Config::from_toml_str(toml).expect("config parses");
+    assert_eq!(config.server.max_connections_per_ip, 25);
+}
