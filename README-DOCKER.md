@@ -48,6 +48,23 @@ docker compose logs -f rustsocks
 docker compose down
 ```
 
+### Runtime hardening and limits
+
+`docker-compose.yml` runs the container with a read-only root filesystem (writable volumes
+for config, data and logs plus a small `/tmp`), all Linux capabilities dropped, and
+`no-new-privileges`. Resource limits can be tuned in `.env`:
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `RUSTSOCKS_MEMORY_LIMIT` | `512m` | Container memory limit |
+| `RUSTSOCKS_CPUS` | `2.0` | CPU limit |
+| `RUSTSOCKS_PIDS_LIMIT` | `512` | Maximum processes/threads |
+| `RUSTSOCKS_NOFILE` | `65536` | Open file descriptor limit (about two per relayed connection) |
+
+Raise `RUSTSOCKS_NOFILE` together with `server.max_connections`. When running several
+containers behind a load balancer, share policy counters through Redis; see
+[Running several instances](docs/config/policy-engine.md#running-several-instances).
+
 ### 3. Access the Dashboard
 
 Open your browser:

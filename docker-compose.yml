@@ -39,6 +39,26 @@ services:
     security_opt:
       - no-new-privileges:true
 
+    # Runtime hardening. The container only writes to the three named volumes above
+    # (config, data, logs) and /tmp, so the root filesystem can be read-only and every
+    # Linux capability can be dropped (the proxy listens on unprivileged ports).
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    cap_drop:
+      - ALL
+
+    # Resource limits. Each can be overridden from the environment or an .env file.
+    pids_limit: ${RUSTSOCKS_PIDS_LIMIT:-512}
+    mem_limit: ${RUSTSOCKS_MEMORY_LIMIT:-512m}
+    cpus: ${RUSTSOCKS_CPUS:-2.0}
+    # One file descriptor per proxied connection (two per relayed stream): the default
+    # container limit is too low for server.max_connections in the thousands.
+    ulimits:
+      nofile:
+        soft: ${RUSTSOCKS_NOFILE:-65536}
+        hard: ${RUSTSOCKS_NOFILE:-65536}
+
     networks:
       - rustsocks-net
 
