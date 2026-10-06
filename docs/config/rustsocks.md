@@ -41,6 +41,7 @@ For a full example, see `docs/examples/rustsocks.example.toml`.
 | `bind_address` | string | `127.0.0.1` | Address to bind the SOCKS5 listener. |
 | `bind_port` | integer | `1080` | Port to bind the SOCKS5 listener. |
 | `max_connections` | integer | `1000` | Maximum concurrent connections. |
+| `max_connections_per_ip` | integer | `0` | Maximum concurrent connections from one client address; `0` disables the limit. IPv6 clients are grouped by /64. Must not exceed `max_connections`. Set it low enough to stop one source exhausting `max_connections`, but account for clients behind NAT sharing one address. |
 | `handshake_timeout_ms` | integer | `10000` | Timeout for SOCKS5 handshake. |
 | `allow_unsafe_public_proxy` | bool | `false` | Allow a no-auth SOCKS listener on a non-loopback address. Startup fails closed unless this is set explicitly. |
 
@@ -82,6 +83,8 @@ For a full example, see `docs/examples/rustsocks.example.toml`.
 | --- | --- | --- | --- |
 | `client_method` | string | `none` | Client authentication method: `none`, `pam.address`. |
 | `socks_method` | string | `none` | SOCKS authentication method: `none`, `userpass`, `pam.address`, `pam.username`, `gssapi`. |
+
+**Brute-force protection.** For `userpass` and `pam.username`, a source address that fails authentication 10 times within 60 seconds is locked out for the rest of that window: further attempts are rejected without checking credentials (and, for PAM, without calling PAM). A successful login clears the counter. Only genuine credential failures count; PAM or system faults do not. The tracking table is bounded (65,536 addresses). Failures are exported as `rustsocks_socks_auth_failures_total{method}`; see [Metrics & Audit Log](../guides/metrics-and-audit.md). Combine with `server.max_connections_per_ip` to limit parallel guessing from one address.
 
 ### [[auth.users]]
 
