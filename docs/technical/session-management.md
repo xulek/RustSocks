@@ -475,7 +475,7 @@ Use memory-only mode when:
 - Database connection failure
 
 **Solutions**:
-- Limit snapshot retention (not implemented yet)
+- Bound the in-memory history with `sessions.history_max_entries` and `sessions.retention_days`
 - Check database connectivity
 - Monitor batch writer queue size
 - Reduce `traffic_update_packet_interval`

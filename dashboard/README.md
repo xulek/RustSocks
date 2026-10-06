@@ -190,12 +190,11 @@ Edit refresh intervals in component files:
 
 ## Future Enhancements
 
+Done: ACL rule and policy management, user and group management, session termination,
+traffic graphs (Recharts), session export to CSV.
+
 - [ ] Real-time WebSocket updates
-- [ ] Advanced ACL rule editor (add/edit/delete)
-- [ ] User creation and management
-- [ ] Session termination controls
-- [ ] Traffic graphs with Recharts
-- [ ] Export statistics (CSV/JSON)
+- [ ] Export statistics (JSON) and other tables
 - [ ] Dark/light theme toggle
 
 ## Troubleshooting

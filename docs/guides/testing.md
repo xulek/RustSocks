@@ -459,11 +459,25 @@ let session = SessionBuilder::default()
 
 ### Benchmarks
 
-Use Criterion for micro-benchmarks (not implemented yet):
+Criterion micro-benchmarks live in `benches/`:
+
+| Benchmark | Measures |
+| --- | --- |
+| `policy_evaluation` | ACL/policy decision per connection (traffic path and Explain path), admission reservation |
+| `protocol_parsing` | SOCKS parsing, stack vs heap buffers |
+| `udp_serialization` | UDP packet serialization with and without pre-sized buffers |
+| `handshake_latency` | Handshake write strategies |
+| `batch_writer_lock` | `Mutex` vs `OnceLock` access, including contended reads |
+| `session_cloning` | Cost of cloning a session |
 
 ```bash
-cargo bench
+cargo bench --bench policy_evaluation
+# shorter run
+cargo bench --bench policy_evaluation -- --warm-up-time 1 --measurement-time 3
 ```
+
+Pass `--bench <name>` for each benchmark you want; a bare `cargo bench -- <criterion flags>`
+also forwards the flags to the library's unit-test harness, which does not understand them.
 
 ### Profiling
 

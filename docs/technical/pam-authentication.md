@@ -227,7 +227,7 @@ cargo test --all-features pam -- --ignored
 ### 1. Password Transmission
 - ⚠️ **CRITICAL**: SOCKS5 username/password transmits credentials in **clear-text**
 - Use only in trusted networks
-- Recommended: Wrap with SOCKS over TLS (future feature)
+- Recommended: wrap with SOCKS over TLS (`[server.tls]`, including optional client certificates; see [Protocol & TLS](protocol.md))
 
 ### 2. Privilege Management
 - Server must start as **root** for PAM access

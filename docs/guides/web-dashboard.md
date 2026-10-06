@@ -296,10 +296,10 @@ Access: `http://proxy.example.com/rustsocks`
 
 ⚠️ **The dashboard is for administrative use only**
 
-1. **Authentication**: Not built-in (future enhancement)
-   - Deploy behind VPN
-   - Use reverse proxy with authentication
-   - Restrict to trusted networks
+1. **Authentication**: Built in; see [Dashboard Authentication](dashboard-authentication.md)
+   - Login with roles (`viewer`, `operator`, `admin`) or a static `sessions.api_token`
+   - `/api/*` fails closed (403) unless dashboard authentication or an API token is configured
+   - Still deploy behind a VPN or reverse proxy and restrict to trusted networks
 
 2. **Network Exposure**:
    - Bind to `127.0.0.1` by default (localhost only)
@@ -307,9 +307,9 @@ Access: `http://proxy.example.com/rustsocks`
    - Never expose directly to internet
 
 3. **API Security**:
-   - No authentication on API endpoints (yet)
-   - Consider API tokens (future enhancement)
-   - Rate limiting recommended
+   - Every `/api/*` endpoint requires a dashboard session or API token and is authorized by role
+   - State-changing requests are written to the audit log; see [Metrics & Audit Log](metrics-and-audit.md)
+   - Failed dashboard logins are locked out per user and source address; add rate limiting at the reverse proxy for the rest
 
 ### Production Deployment
 
@@ -466,14 +466,14 @@ Typical load times on localhost:
 
 ## Future Enhancements
 
+Already available: session export to CSV, session termination, ACL rule and policy management, user and group management, charts.
+
 Planned features:
 - [ ] WebSocket for real-time updates
 - [ ] Advanced filtering and search
-- [ ] Export to CSV/JSON
+- [ ] Export of statistics (JSON) and of other tables
 - [ ] Dark/light theme toggle
 - [ ] Mobile-responsive design improvements
-- [ ] ACL rule editing interface
-- [ ] User management (add/remove users)
 
 ## Related Documentation
 
