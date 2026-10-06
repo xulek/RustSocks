@@ -1,34 +1,29 @@
-# Scripts Directory
+# Development scripts
 
-This directory contains utility scripts for development and CI/CD.
+The local CI scripts run the same core validation used by the repository CI and fail on the first build/lint command that is not clean. Test commands use Cargo's `--no-fail-fast` so all failing integration-test binaries are reported in a single run.
 
-## Available Scripts
+## Windows PowerShell
 
-### `ci-local.sh`
+```powershell
+.\scripts\ci-local.ps1
+```
 
-Local CI verification script that runs all checks performed by GitHub Actions.
+## Linux/macOS
 
-**Usage:**
 ```bash
 ./scripts/ci-local.sh
 ```
 
-**Checks performed:**
-1. ✅ Code formatting (`cargo fmt --all -- --check`)
-2. ✅ Clippy lints (`cargo clippy --all-features -- -D warnings`)
-3. ✅ Build verification (`cargo build --locked --all-targets --features database`)
-4. ✅ Unit tests (`cargo test --locked --all-targets --features database -- --skip performance`)
-5. ✅ Security audit (`cargo audit`)
+## Validation matrix
 
-**Known allowed vulnerabilities:**
-- `RUSTSEC-2023-0071` (rsa) - Marvin Attack
-- `RUSTSEC-2025-0040` (users) - PAM dependency, no alternative available
-- `RUSTSEC-2024-0370` (proc-macro-error) - Compile-time only, via utoipa
-- `RUSTSEC-2023-0040` (users) - Unmaintained, PAM dependency
-- `RUSTSEC-2023-0059` (users) - Unsound, PAM dependency
+The scripts run:
 
-**Exit codes:**
-- `0` - All checks passed
-- `1` - At least one check failed
+1. `cargo fmt --all -- --check`
+2. `cargo check --locked`
+3. `cargo check --locked --all-features`
+4. `cargo check --locked --no-default-features`
+5. `cargo clippy --locked --all-features -- -D warnings`
+6. `cargo test --locked --no-fail-fast`
+7. `cargo test --locked --all-features --no-fail-fast`
 
-Run this script before pushing code to ensure CI will pass.
+`--no-fail-fast` is intentional. Without it, Cargo can stop after the first failing integration-test binary and hide independent failures in later test targets.
