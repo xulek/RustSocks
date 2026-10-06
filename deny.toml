@@ -10,7 +10,6 @@ all-features = true
 [advisories]
 # Every ignore needs a reason and should be removed once the dependency is updated.
 ignore = [
-    { id = "RUSTSEC-2026-0173", reason = "proc-macro-error2 is unmaintained. Compile-time only (mysql-common-derive, via mysql_async with the `database` feature); not linked into the binary." },
     { id = "RUSTSEC-2025-0134", reason = "rustls-pemfile is unmaintained. Pulled in only by mysql_async (`database` feature) for PEM parsing; no known vulnerability. Drop once mysql_async moves to rustls-pki-types." },
 ]
 
