@@ -2,10 +2,12 @@ mod groups;
 #[cfg(feature = "gssapi")]
 mod gssapi;
 mod pam;
+mod throttle;
 
 #[cfg(feature = "gssapi")]
 use self::gssapi::{GssApiAuthError, GssApiAuthenticator};
 use self::pam::{PamAuthError, PamAuthenticator, PamMethod};
+use self::throttle::AuthThrottle;
 use crate::acl::AclMetrics;
 use crate::config::AuthConfig;
 use crate::protocol::{parse_userpass_auth, send_auth_response, AuthMethod};
@@ -28,6 +30,8 @@ use tracing::{debug, info, warn};
 pub struct AuthManager {
     client_backend: AuthBackend,
     socks_backend: AuthBackend,
+    /// Brute-force protection for PAM username/password authentication.
+    pam_throttle: AuthThrottle,
 }
 
 enum AuthBackend {
@@ -39,19 +43,14 @@ enum AuthBackend {
     Gssapi(GssApiAuthenticator),
 }
 
-#[derive(Clone, Copy)]
-struct LoginAttemptState {
-    failures: u32,
-    first_failure: Instant,
-}
-
 struct UserPassAuthenticator {
     users: HashMap<String, String>,
-    attempts: DashMap<IpAddr, LoginAttemptState>,
+    throttle: AuthThrottle,
 }
 
-const USERPASS_MAX_FAILURES: u32 = 10;
-const USERPASS_LOCKOUT: Duration = Duration::from_secs(60);
+const AUTH_MAX_FAILURES: u32 = 10;
+const AUTH_LOCKOUT: Duration = Duration::from_secs(60);
+const AUTH_THROTTLE_MAX_ENTRIES: usize = 65_536;
 const GROUP_CACHE_TTL: Duration = Duration::from_secs(60);
 const GROUP_CACHE_MAX_ENTRIES: usize = 4096;
 const GROUP_LOOKUP_TIMEOUT: Duration = Duration::from_secs(3);
@@ -156,6 +155,7 @@ impl AuthManager {
         Ok(Self {
             client_backend,
             socks_backend,
+            pam_throttle: new_auth_throttle(),
         })
     }
 
@@ -169,7 +169,7 @@ impl AuthManager {
                 }
                 Ok(AuthBackend::UserPass(UserPassAuthenticator {
                     users,
-                    attempts: DashMap::new(),
+                    throttle: new_auth_throttle(),
                 }))
             }
             "pam.address" => {
@@ -308,7 +308,7 @@ impl AuthManager {
                 debug!("Performing username/password authentication");
 
                 let (username, password) = parse_userpass_auth(stream).await?;
-                if auth.is_rate_limited(client_ip) {
+                if auth.throttle.is_limited(client_ip) {
                     // Perform a dummy verification even while locked to reduce timing leakage.
                     let _ = verify_password(dummy_password_hash(), &password);
                     send_auth_response(stream, false).await?;
@@ -320,9 +320,9 @@ impl AuthManager {
 
                 let is_valid = auth.authenticate(&username, &password);
                 if is_valid {
-                    auth.clear_failures(client_ip);
+                    auth.throttle.clear(client_ip);
                 } else {
-                    auth.record_failure(client_ip);
+                    auth.throttle.record_failure(client_ip);
                 }
                 send_auth_response(stream, is_valid).await?;
 
@@ -352,11 +352,22 @@ impl AuthManager {
                 debug!("Performing PAM username authentication");
                 let (username, password) = parse_userpass_auth(stream).await?;
 
+                if self.pam_throttle.is_limited(client_ip) {
+                    // Reject before invoking PAM so a locked-out source cannot
+                    // consume PAM/NSS resources.
+                    send_auth_response(stream, false).await?;
+                    warn!(client_ip = %client_ip, "PAM authentication rate limited");
+                    return Err(RustSocksError::AuthFailed(
+                        "Too many authentication failures".to_string(),
+                    ));
+                }
+
                 match pam
                     .authenticate_username(client_ip, &username, &password)
                     .await
                 {
                     Ok(()) => {
+                        self.pam_throttle.clear(client_ip);
                         send_auth_response(stream, true).await?;
                         info!(user = %username, "PAM authentication successful");
 
@@ -374,6 +385,10 @@ impl AuthManager {
                         Ok(Some((username, groups)))
                     }
                     Err(e) => {
+                        // Only genuine credential failures count; PAM/system faults do not.
+                        if matches!(e, PamAuthError::AuthFailed(_)) {
+                            self.pam_throttle.record_failure(client_ip);
+                        }
                         send_auth_response(stream, false).await?;
                         warn!(user = %username, error = ?e, "PAM authentication failed");
                         Err(map_pam_runtime_error(e))
@@ -424,41 +439,10 @@ impl UserPassAuthenticator {
             }
         }
     }
+}
 
-    fn is_rate_limited(&self, client_ip: IpAddr) -> bool {
-        let now = Instant::now();
-        if let Some(entry) = self.attempts.get(&client_ip) {
-            if now.duration_since(entry.first_failure) < USERPASS_LOCKOUT {
-                return entry.failures >= USERPASS_MAX_FAILURES;
-            }
-        }
-        self.attempts.remove(&client_ip);
-        false
-    }
-
-    fn record_failure(&self, client_ip: IpAddr) {
-        let now = Instant::now();
-        self.attempts
-            .entry(client_ip)
-            .and_modify(|state| {
-                if now.duration_since(state.first_failure) >= USERPASS_LOCKOUT {
-                    *state = LoginAttemptState {
-                        failures: 1,
-                        first_failure: now,
-                    };
-                } else {
-                    state.failures = state.failures.saturating_add(1);
-                }
-            })
-            .or_insert(LoginAttemptState {
-                failures: 1,
-                first_failure: now,
-            });
-    }
-
-    fn clear_failures(&self, client_ip: IpAddr) {
-        self.attempts.remove(&client_ip);
-    }
+fn new_auth_throttle() -> AuthThrottle {
+    AuthThrottle::new(AUTH_MAX_FAILURES, AUTH_LOCKOUT, AUTH_THROTTLE_MAX_ENTRIES)
 }
 
 fn dummy_password_hash() -> &'static str {
