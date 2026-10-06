@@ -79,6 +79,51 @@ The counters are maintained by a dedicated in-memory policy usage tracker and do
 
 Policy Engine v1 treats these limits as **admission limits**. When a quota becomes exhausted, an already established TCP stream is not terminated mid-transfer; new sessions are denied. UDP destinations continue to receive source/auth/time/target policy checks while transfer quotas are enforced when the association is admitted.
 
+## Running several instances
+
+By default each instance keeps its own counters in memory, so with N instances behind a load
+balancer a limit of 20 active connections effectively allows about 20 x N, and daily/monthly
+quotas reset whenever an instance restarts. To enforce limits for the whole deployment, share
+the counters through Redis:
+
+```toml
+[policy_state]
+backend = "redis"
+redis_url = "redis://:${REDIS_PASSWORD}@redis.internal:6379/0"
+key_prefix = "rustsocks-prod"
+failure_mode = "fail_closed"
+```
+
+Build with the `redis` feature (`cargo build --release --features redis`).
+
+How it behaves:
+
+- **Admission is atomic.** The limit checks and the reservation run as one Redis script, so
+  concurrent connections to different instances cannot all pass the same pre-admission count.
+- **No leaked connections.** Active connections are leases that each instance renews while
+  they are open. If an instance crashes, its connections stop counting once `lease_secs` has
+  elapsed. Graceful closes release immediately.
+- **Quotas lag slightly.** Proxied bytes are batched and flushed about once per second, so
+  another instance may see a user's transfer up to roughly a second late. Quotas are admission
+  limits, so this only affects how soon a new connection is refused.
+- **Redis outages.** With `fail_closed`, new connections under a policy that has limits are
+  denied while Redis is unreachable; with `fail_open` they are admitted using this instance's
+  local counters (limits then apply per instance until Redis returns). Policies without limits
+  are never affected. Watch `rustsocks_policy_usage_store_errors_total`.
+- **Startup.** An unreachable Redis is reported at startup in both modes.
+- **Clock skew** between instances does not matter: lease and rate arithmetic uses Redis time.
+- **Cost.** Each new connection adds two Redis round trips (a usage read and the atomic
+  reservation). On a loopback Redis this measured about 0.2 ms each, and a single instance
+  sustained roughly 12,000 reservations per second over one connection. Expect your network
+  round-trip time on top, and place Redis close to the instances.
+
+Other things to plan for when running several instances:
+
+- UDP ASSOCIATE relays are bound to the instance that accepted the control connection, so the
+  load balancer must keep a client's TCP control connection and its UDP traffic on one instance.
+- Keep the ACL file identical on every instance (for example from a shared config source);
+  policy edits made through the API change only the instance that received them.
+
 ## DNS safety
 
 Domain policy evaluation occurs before resolution and resolved IP addresses are checked again before connecting/sending. An explicit CIDR block therefore cannot be bypassed by a hostname resolving into a blocked private or local network.

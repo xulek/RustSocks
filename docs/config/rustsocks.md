@@ -172,6 +172,21 @@ Used only when `socks_method = "userpass"`.
 | `session_secret` | string | auto | Random secret generated at startup if not set. |
 | `session_duration_hours` | integer | `24` | Session lifetime for dashboard auth. |
 
+## [policy_state]
+
+Where dynamic-policy counters live: active connections, the 60-second connection rate and
+daily/monthly transfer quotas used by [policies](policy-engine.md). Legacy ACL rules do not
+use them.
+
+| Key | Type | Default | Description |
+| --- | --- | --- | --- |
+| `backend` | string | `memory` | `memory` keeps counters in the process (quotas reset on restart, each instance enforces its own limits). `redis` shares them between instances; requires a build with the `redis` feature. |
+| `redis_url` | string | none | Required for `redis`, e.g. `redis://:${REDIS_PASSWORD}@redis:6379/0`. Supports `${ENV}` expansion. |
+| `key_prefix` | string | `rustsocks` | Prefix for every Redis key, so several deployments can share one Redis. No whitespace or braces. |
+| `failure_mode` | string | `fail_closed` | When Redis is unreachable for a policy that has limits: `fail_closed` denies the connection, `fail_open` falls back to this instance's local counters. Connections under policies without limits are always admitted. |
+| `lease_secs` | integer | `60` | Lifetime of an active-connection lease (5-3600). A crashed instance's connections stop counting when their lease expires. |
+| `operation_timeout_ms` | integer | `250` | Upper bound for one Redis operation on the connection path (10-10000). |
+
 ## [metrics]
 
 | Key | Type | Default | Description |

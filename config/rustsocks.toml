@@ -118,3 +118,11 @@ idle_timeout_secs = 5
 [qos.connection_limits]
 max_connections_per_user = 10000
 max_connections_global = 10000
+
+# Shared policy counters for multi-instance deployments (requires the `redis` build feature).
+# [policy_state]
+# backend = "redis"
+# redis_url = "redis://127.0.0.1:6379/0"
+# key_prefix = "rustsocks"
+# failure_mode = "fail_closed"   # or "fail_open"
+# lease_secs = 60

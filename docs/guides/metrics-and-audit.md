@@ -18,6 +18,7 @@ attacker controlled and would create unbounded cardinality.
 | `rustsocks_policy_monitor_matches_total` | counter | none | Monitor-mode policies that would have applied to a request. Use it to judge a policy before switching it to `enforce`. |
 | `rustsocks_policy_admission_denied_total` | counter | `reason` (`active_connections`, `connection_rate`, `daily_quota`, `monthly_quota`) | Sessions denied by policy admission limits. |
 | `rustsocks_socks_auth_failures_total` | counter | `method` (`none`, `userpass`, `pam.address`, `pam.username`, `gssapi`) | Failed SOCKS client authentication attempts. |
+| `rustsocks_policy_usage_store_errors_total` | counter | `op` (`reserve`, `snapshot`, `release`, `heartbeat`, `flush`) | Failed operations against the shared (Redis) policy usage store. Non-zero means limits are degraded; see `policy_state.failure_mode`. |
 | `rustsocks_policy_evaluation_seconds` | histogram | none | Time to evaluate ACL rules and policies for one request. |
 
 Useful queries:
