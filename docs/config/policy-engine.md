@@ -177,7 +177,7 @@ Policy IDs are stable and case-insensitively unique. `PUT` cannot silently renam
 
 The web dashboard exposes the same functionality under **Access Policies**.
 
-The Explain trace is built only for this endpoint. Per-connection evaluation reaches the same decision without it, which keeps the decision path cheap: with 200 rules it takes roughly 8-11 µs, against about 64-88 µs when a full trace is produced.
+The Explain trace is built only for this endpoint. Per-connection evaluation reaches the same decision without it, which keeps the decision path cheap: with 200 rules it takes roughly 8-11 Âµs, against about 64-88 Âµs when a full trace is produced.
 
 ## Legacy ACL compatibility
 
