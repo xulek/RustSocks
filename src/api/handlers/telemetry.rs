@@ -74,7 +74,7 @@ pub async fn get_telemetry_events(
         events.retain(|event| event.category.eq_ignore_ascii_case(&normalized));
     }
 
-    events.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+    events.sort_by_key(|event| std::cmp::Reverse(event.timestamp));
     let limit = params.limit.unwrap_or(100).clamp(1, 500);
     events.truncate(limit);
 
@@ -277,7 +277,7 @@ pub async fn get_telemetry_errors(
             },
         )
         .collect();
-    by_destination.sort_by(|a, b| b.error_count.cmp(&a.error_count));
+    by_destination.sort_by_key(|stat| std::cmp::Reverse(stat.error_count));
     by_destination.truncate(10);
 
     // Recent errors

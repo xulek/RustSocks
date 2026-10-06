@@ -458,7 +458,7 @@ pub async fn get_session_stats(
             bytes_received: received,
         })
         .collect();
-    top_users.sort_by(|a, b| b.session_count.cmp(&a.session_count));
+    top_users.sort_by_key(|stat| std::cmp::Reverse(stat.session_count));
     top_users.truncate(10);
 
     let mut top_destinations: Vec<DestinationStat> = dest_stats
@@ -470,7 +470,7 @@ pub async fn get_session_stats(
             bytes_received: received,
         })
         .collect();
-    top_destinations.sort_by(|a, b| b.session_count.cmp(&a.session_count));
+    top_destinations.sort_by_key(|stat| std::cmp::Reverse(stat.session_count));
     top_destinations.truncate(10);
 
     let response = SessionStatsResponse {
