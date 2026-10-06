@@ -44,6 +44,12 @@ connect_timeout_ms = 5000    # Connection timeout
 - **`idle_timeout_secs`**: How long to keep idle connections alive (default: 90 seconds)
 - **`connect_timeout_ms`**: Timeout for establishing new connections (default: 5000ms)
 
+### Safety behavior
+
+- A pooled connection is probed before it is reused. If the upstream has closed it or left unread data on it, it is discarded and a new connection is opened, so a client never receives a dead or dirty socket
+- BIND never uses the pool: the inbound socket of a BIND is not an outbound connection and is never returned to it
+- Pooling only reuses connections to the same resolved address; ACL and policy decisions are made for every request before the pool is consulted
+
 ## Benefits
 
 - **Reduced Latency**: Reusing connections eliminates TCP handshake overhead

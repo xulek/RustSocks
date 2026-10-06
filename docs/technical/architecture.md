@@ -1,193 +1,148 @@
 # RustSocks Architecture
 
-This document provides a detailed overview of the RustSocks architecture, module structure, and request flow.
+This document describes the module structure of RustSocks and the path a connection takes through it.
 
 ## Module Structure
 
-The codebase follows a modular architecture organized by functionality:
+### `protocol/` - SOCKS wire protocol
+- `types.rs`: protocol structures (greetings, requests, UDP packets, address types)
+- `parser.rs`: async parsers and serializers for SOCKS5, SOCKS4/4a, the username/password sub-negotiation, GSS-API frames and UDP datagrams
+- Rejects malformed input instead of guessing: non-zero reserved fields, empty domains, oversized lengths. The parsers are covered by property tests (`tests/protocol_robustness.rs`)
 
-### `protocol/` - SOCKS5 Protocol Implementation
-- `types.rs`: Core protocol structures (ClientGreeting, Socks5Request, etc.)
-- `parser.rs`: Async parsing logic for SOCKS5 messages
-- Supports IPv4, IPv6, and domain name addressing
-- UDP packet format structures and serialization
+### `auth/` - Authentication
+- `mod.rs`: `AuthManager` with pluggable backends: none, username/password (Argon2 hashes or plain text), PAM (address or username), GSS-API
+- `throttle.rs`: bounded per-address failure throttle shared by the username/password and PAM backends
+- `pam/`: PAM integration (Unix); a stub on other platforms
+- `gssapi.rs`: Kerberos authentication (feature `gssapi`, Unix)
+- `groups.rs`: group lookup through NSS/SSSD with a timeout, a concurrency limit and a short cache
 
-### `auth/` - Authentication Manager
-- `mod.rs`: AuthManager with pluggable backend system
-- `pam.rs`: PAM (Pluggable Authentication Modules) integration
-- `groups.rs`: Dynamic group resolution via getgrouplist()
-- Supports:
-  - NoAuth (0x00)
-  - Username/Password (0x02, RFC 1929)
-  - PAM authentication (pam.address and pam.username)
-  - Two-tier authentication (client-level and SOCKS-level)
+### `acl/` - Access control
+- `types.rs`: configuration types for rules, groups and dynamic policies
+- `matcher.rs`: compiled destination, port and protocol matchers
+- `engine.rs`: evaluation of legacy rules and policies in one priority order
+- `policy.rs`: policy conditions (source network, authentication method, schedule, validity window), admission limits and the in-memory usage tracker
+- `usage.rs`, `usage_redis.rs`: where policy counters live (process memory, or Redis shared between instances)
+- `loader.rs`, `persistence.rs`, `crud.rs`: loading, atomic saving and editing of the ACL file
+- `watcher.rs`: hot reload
+- `stats.rs`, `metrics.rs`: per-user allow/block counters and Prometheus metrics for decisions
 
-### `acl/` - Access Control List Engine
-- `types.rs`: ACL data structures (Action, Protocol, matchers)
-- `matcher.rs`: Pattern matching logic (IP, CIDR, domain wildcards, ports)
-- `engine.rs`: Rule evaluation with priority ordering (BLOCK rules first)
-- `loader.rs`: TOML config parsing and validation
-- `watcher.rs`: Hot-reload support with zero-downtime updates
-- `stats.rs`: Per-user allow/block statistics
+See [ACL Engine](acl-engine.md) and the [policy engine guide](../config/policy-engine.md).
 
-See [ACL Engine Documentation](acl-engine.md) for detailed implementation.
+### `session/` - Session tracking
+- `manager.rs`: active sessions in a concurrent map, bounded in-memory history, traffic accounting and policy usage
+- `store/`: SQLite and MySQL/MariaDB persistence through sqlx and `mysql_async` (feature `database`)
+- `batch.rs`: batch writer with a bounded queue and backpressure (feature `database`)
+- `history.rs`: rolling metric snapshots for the dashboard
+- `metrics.rs`: Prometheus session metrics (feature `metrics`)
 
-### `session/` - Session Tracking and Metrics
-- `types.rs`: Session data structures and filters
-- `manager.rs`: In-memory session tracking using DashMap
-- `store.rs`: SQLite persistence with sqlx (feature-gated: `database`)
-- `batch.rs`: Batch writer for efficient database writes (feature-gated: `database`)
-- `metrics.rs`: Prometheus metrics integration (feature-gated: `metrics`)
+See [Session Management](session-management.md).
 
-See [Session Management Documentation](session-management.md) for detailed implementation.
+### `server/` - Network layer
+- `listener.rs`: accept loop, TLS, global and per-address connection limits, startup wiring
+- `handler.rs`: the SOCKS5 and SOCKS4/4a state machines: authentication, ACL and policy decision, CONNECT
+- `bind.rs`, `udp.rs`: BIND and UDP ASSOCIATE
+- `resolver.rs`: DNS with a timeout, a bounded cache and a lookup concurrency limit
+- `pool.rs`: reusable upstream TCP connections (disabled by default)
+- `proxy.rs`: bidirectional relay with half-close semantics, traffic updates and QoS
+- `net.rs`: socket tuning
 
-### `server/` - Server Implementation
-- `listener.rs`: TCP listener setup and TLS acceptor
-- `handler.rs`: Connection handler orchestrating auth → ACL → connect → proxy
-- `proxy.rs`: Bidirectional data transfer with traffic tracking
-- `resolver.rs`: DNS resolution supporting IPv4/IPv6/domains
-- `pool.rs`: Connection pool for upstream TCP connections
-- `stats.rs`: Statistics API (HTTP endpoint)
-- `udp.rs`: UDP ASSOCIATE implementation
-- `bind.rs`: BIND command implementation
+### `api/` - Management API and dashboard
+- `server.rs`: axum router, dashboard and Swagger page, authentication and role middleware, audit log
+- `auth.rs`: dashboard login, sessions, lockout and optional Altcha challenge
+- `handlers/`: sessions, statistics, telemetry, ACL and policy management, configuration, SMTP, diagnostics, system resources, pool
 
-### `config/` - Configuration Management
-- TOML-based configuration with validation
-- CLI argument overrides
-- Nested configs for server, auth, ACL, sessions
-- Feature flags and platform-specific settings
+### `qos/`, `smtp/`, `telemetry.rs`, `utils/`
+- `qos/`: hierarchical token bucket bandwidth limiting and per-user connection limits
+- `smtp/`: encrypted SMTP settings and e-mail notifications (resource alerts, cooldowns)
+- `telemetry.rs`: in-memory buffer of operational events (pool pressure, upstream failures)
+- `utils/`: error type, system resource probes, `crypto` helpers (OS randomness, hex)
+
+### `config/`
+TOML configuration with defaults, `${ENV}` expansion for secrets, validation (`validate_effective`) and CLI overrides.
 
 ## Request Flow
 
-### 1. TCP Accept (`listener.rs`)
-- Accept incoming connection
-- Apply TLS if enabled
-- Spawn handler task
+### 1. Accept (`listener.rs`)
+- A slot is taken from the global connection limit and, when `server.max_connections_per_ip` is set, from the per-address limit; otherwise the connection is dropped
+- TLS is negotiated with its own timeout when enabled
+- Client-level authentication (`pam.address`) runs before any SOCKS bytes are read
 
-### 2. SOCKS5 Handshake (`handler.rs`)
-- Parse client greeting
-- Negotiate authentication method
-- Authenticate user (if required)
-  - Client-level authentication (before handshake)
-  - SOCKS-level authentication (after handshake)
+### 2. Handshake and authentication (`handler.rs`)
+- The first byte selects SOCKS5 (`0x05`) or SOCKS4/4a (`0x04`), both under the handshake timeout
+- SOCKS5: method negotiation, then username/password (throttled per address), PAM or GSS-API
+- SOCKS4/4a only works when no authentication is configured, and its USERID is treated as untrusted text, never as an identity
 
-### 3. ACL Evaluation (`handler.rs` + `acl/engine.rs`)
-- Extract destination and protocol from SOCKS5 request
-- Resolve user groups (if using PAM/LDAP)
-- Evaluate per-user and per-group rules
-- BLOCK rules take priority over ALLOW rules
-- Log decision and update ACL statistics
-- If blocked: send `ConnectionNotAllowed`, track rejected session, close connection
+### 3. ACL and policy decision
+- The user's groups (static `[[users]].groups` plus dynamic NSS/LDAP groups) are resolved
+- `AclEngine::evaluate_policy_for_traffic` evaluates legacy rules and dynamic policies together and returns allow or block, the matched rule or policy and any admission limits
+- A blocked request gets `ConnectionNotAllowed` and is recorded as a rejected session
+- An allowed request reserves capacity against the policy limits (active connections, rate, quotas); if a limit is reached it is rejected the same way
+- The decision is counted in `rustsocks_acl_decisions_total`
 
-### 4. Connection Establishment (`handler.rs` + `resolver.rs`)
-- Resolve destination (IPv4/IPv6/domain)
-- Check connection pool for reusable connection
-- Connect to target server (or reuse pooled connection)
-- Create session in SessionManager
+### 4. Connection establishment
+- The destination is resolved (timeout, bounded cache)
+- Every resolved address is checked again against explicit block rules, so a hostname cannot reach a blocked CIDR
+- A pooled connection is reused when pooling is enabled, otherwise a new one is opened; the session is created
 
-### 5. Data Proxying (`proxy.rs`)
-- Bidirectional copy between client and target
-- Track traffic (bytes/packets sent/received)
-- Update session metrics periodically (configurable interval)
-- Apply QoS/rate limiting if enabled
-- Final flush on connection close
+### 5. Data proxying (`proxy.rs`)
+- Bidirectional copy; EOF in one direction does not cancel the other
+- Traffic counters are updated every N packets and flushed on close; they also feed policy transfer quotas
+- QoS limits bandwidth when enabled
 
-### 6. Session Lifecycle (`session/manager.rs`)
-- `new_session()`: Create active session
-- `update_traffic()`: Increment traffic counters
-- `close_session()`: Mark completed, record duration
-- `track_rejected_session()`: Record ACL rejections
+### 6. Close
+- The session is marked closed, the final traffic snapshot is persisted, the policy admission slot is released
 
-### 7. Persistence (`session/store.rs`, `session/batch.rs`)
-- Batch writer queues sessions
-- Auto-flush on batch_size or batch_interval_ms
-- Background cleanup task removes old records (retention_days)
+BIND validates the accepted peer against the ACL, and UDP ASSOCIATE checks each datagram (and its resolved address) against the ACL, with the same decision path.
 
 ## ACL Engine Design
 
-**Key Design Principles:**
-- **Priority-based evaluation**: BLOCK rules are checked before ALLOW rules
-- **Group inheritance**: Users inherit rules from their groups
-- **Thread-safe**: Uses `Arc<RwLock>` for concurrent access
-- **Hot-reload capable**: `AclWatcher` atomically swaps config on file changes
-- **Default policy**: Configurable allow/block for unmatched connections
+- **One priority order:** legacy rules and policies are evaluated by `priority`, highest first. At equal priority `block` wins over `allow`, and then a policy is evaluated before a legacy rule. This is *not* "all blocks first"; a higher-priority `allow` beats a lower-priority `block`
+- **No per-request sorting:** each source (a user's rules, each group's rules, the policy list) is sorted once when the configuration is compiled, and evaluation merges those sorted lists lazily and stops at the first match
+- **Prepared destination:** the destination is lowercased and parsed once per request, not once per rule
+- **Concurrency:** the compiled configuration sits behind `Arc<RwLock<...>>`; evaluation takes a read lock and reloads swap it atomically
+- **Two evaluation paths:** the per-connection path builds no explanation trace; the Explain API builds a full trace
 
-**Rule Matching:**
-- IP exact match (IPv4/IPv6)
-- CIDR ranges (`10.0.0.0/8`, `2001:db8::/32`)
-- Domain exact match (case-insensitive)
-- Wildcard domains (`*.example.com`, `api.*.com`)
-- Port ranges (`8000-9000`), multiple (`80,443,8080`), or any (`*`)
-- Protocol filtering (TCP, UDP, Both)
-
-**Evaluation Algorithm** (in `engine.rs`):
-1. Collect all applicable rules (user rules + group rules)
-2. Sort by priority (higher priority first, BLOCK action first)
-3. Iterate rules until first match
-4. Return decision (Allow/Block) and matched rule description
-5. Fall back to `default_policy` if no rules match
-
-See [ACL Engine Documentation](acl-engine.md) for comprehensive details.
+See [ACL Engine](acl-engine.md) for details.
 
 ## Session Manager Design
 
-**In-Memory Storage:**
-- Active sessions stored in `DashMap<String, Session>` (concurrent hashmap)
-- Session snapshots (closed/rejected) in `RwLock<Vec<Session>>`
-- Efficient lookups and updates without blocking
+- Active sessions: concurrent map keyed by session id, each behind its own lock
+- Closed and rejected sessions are kept in memory in bounded lists (`sessions.history_max_entries` and `retention_days`)
+- Traffic updates go through a queue to a worker; when the queue is full, updates are coalesced per session instead of spawning tasks
+- With the `database` feature, finished sessions are written in batches (`batch_size`, `batch_interval_ms`) through a bounded queue; on shutdown the queue is drained
+- `GET /api/sessions/stats?window_hours=N` aggregates a rolling window
 
-**Traffic Tracking:**
-- Proxy loop calls `update_traffic()` every N packets (configurable)
-- Reduces write amplification while maintaining accuracy
-- Final flush ensures no data loss on connection close
+## Metrics (feature `metrics`)
 
-**Statistics API:**
-- `get_stats(window)` aggregates rolling window metrics
-- Returns active count, total sessions/bytes, top users/destinations
-- HTTP endpoint: `GET /api/sessions/stats?window_hours=48`
-
-**Database Integration (feature: `database`):**
-- SQLite backend via sqlx
-- Async migrations in `migrations/` directory
-- Batch writer for performance (configurable batch size and interval)
-- Automatic cleanup of old records
-
-See [Session Management Documentation](session-management.md) for implementation details.
-
-## Metrics (feature: `metrics`)
-
-Prometheus metrics exported via `prometheus` crate:
-- `rustsocks_active_sessions` - Gauge of active sessions
-- `rustsocks_sessions_total` - Counter of accepted sessions
-- `rustsocks_sessions_rejected_total` - Counter of rejected sessions
-- `rustsocks_session_duration_seconds` - Histogram of session durations
-- `rustsocks_bytes_sent_total` / `rustsocks_bytes_received_total` - Traffic counters
+Prometheus metrics are exported at `/metrics`: sessions, traffic, QoS, ACL and policy decisions, admission denials, authentication failures, evaluation latency and shared-state errors. See [Metrics & Audit Log](../guides/metrics-and-audit.md) for the full list.
 
 ## Operational Telemetry
 
-- `telemetry.rs` buffers recent events in memory (`TelemetryHistory`) so the dashboard and API can surface actionable warnings.
-- Events include connection pool drops/evictions and upstream connection failures; each event carries a timestamp, severity, category, message, and optional JSON details.
-- The telemetry buffer is configurable (`telemetry.max_events`, `telemetry.retention_hours`) and exposed via `GET /api/telemetry/events`.
+- `telemetry.rs` keeps recent events in memory (`TelemetryHistory`) for the dashboard and API
+- Events cover connection pool drops/evictions and upstream connection failures, each with a timestamp, severity, category and message
+- The buffer is configured by `telemetry.max_events` and `telemetry.retention_hours` and served at `GET /api/telemetry/events`
 
 ## Thread Safety
 
 - `Arc<T>` for shared ownership across tasks
-- `RwLock` for ACL config (rare writes, frequent reads)
-- `DashMap` for concurrent session access without locking
-- `Mutex` for batch writer queue
+- `RwLock` for the compiled ACL (frequent reads, rare writes)
+- `DashMap` for concurrent session and per-address state
+- Bounded queues and semaphores wherever input can arrive faster than it is processed (traffic updates, batch writer, DNS lookups, group lookups, connections)
 
-## Hot Reload Mechanism (`acl/watcher.rs`)
+## Hot Reload (`acl/watcher.rs`)
 
-1. Watch ACL config file using `notify` crate
-2. On file change, load and validate new config
-3. Compile new ACL rules
-4. Atomically swap `Arc<RwLock<CompiledAclConfig>>`
-5. Rollback on validation errors
-6. Typical reload time: <100ms
+1. The ACL file is watched with `notify`, with a polling fallback and a content fingerprint to avoid duplicate reloads
+2. A change is loaded and validated
+3. The new rules are compiled
+4. The compiled configuration is swapped in atomically
+5. On any error the previous configuration stays active
+6. A reload can also be triggered with `POST /api/admin/reload-acl`
+
+Dynamic policies are only evaluated when a new session is opened; a reload does not terminate sessions that are already established.
 
 ## Related Documentation
 
-- [ACL Engine Details](acl-engine.md)
+- [ACL Engine](acl-engine.md)
 - [PAM Authentication](pam-authentication.md)
 - [Session Management](session-management.md)
 - [Connection Pool](connection-pool.md)

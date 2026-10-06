@@ -63,11 +63,12 @@ For a full example, see `docs/examples/rustsocks.example.toml`.
 | `enabled` | bool | `false` | Enable TLS wrapping for incoming connections. |
 | `certificate_path` | string | none | Server certificate path. |
 | `private_key_path` | string | none | Server private key path. |
-| `key_password` | string | none | Password for encrypted private key. |
+| `key_password` | string | none | Not supported: startup fails if this is set. Use an unencrypted private key (restrict its file permissions). |
 | `require_client_auth` | bool | `false` | Require client certificate authentication (mTLS). |
 | `client_ca_path` | string | none | CA certificate to validate client certs. |
 | `alpn_protocols` | array | `[]` | ALPN protocols (optional). |
-| `min_protocol_version` | string | none | Minimum TLS version, e.g. `TLS13`. |
+| `min_protocol_version` | string | none | Minimum TLS version, e.g. `TLS13`. TLS 1.2 and 1.3 are accepted by default. |
+| `handshake_timeout_ms` | integer | `10000` | Time allowed for the TLS handshake before the connection is dropped. |
 
 ### [server.pool]
 
@@ -168,11 +169,12 @@ The level can also be given as a filter directive (for example `warn,rustsocks::
 
 | Key | Type | Default | Description |
 | --- | --- | --- | --- |
-| `enabled` | bool | `false` | Enable dashboard Basic Auth. |
-| `users` | array | `[]` | Users list (same fields as `auth.users`). |
+| `enabled` | bool | `false` | Enable the dashboard login. Without it (and without `sessions.api_token`) every `/api/*` request is rejected. |
+| `users` | array | `[]` | Users list (`[[sessions.dashboard_auth.users]]`, same fields as `auth.users`). |
+| `roles` | array | `[]` | Role assignments (`[[sessions.dashboard_auth.roles]]` with `username` and `role` = `viewer`, `operator` or `admin`). A user without an entry is a `viewer`. |
 | `altcha_enabled` | bool | `true` | Enable Altcha proof-of-work challenge. |
 | `altcha_challenge_url` | string | none | External Altcha endpoint (optional). |
-| `cookie_secure` | bool | `false` | Set cookies as Secure (HTTPS). |
+| `cookie_secure` | bool | `true` | Mark the session cookie `Secure`, so browsers send it only over HTTPS. Set `false` only when serving the dashboard over plain HTTP (for example on localhost). |
 | `session_secret` | string | auto | Random secret generated at startup if not set. |
 | `session_duration_hours` | integer | `24` | Session lifetime for dashboard auth. |
 

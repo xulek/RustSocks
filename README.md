@@ -735,7 +735,6 @@ rustsocks/
 │   ├── server/            # Server logic & connection pool (listener, handler, proxy, pool)
 │   ├── api/               # REST API handlers (endpoints, types, middleware)
 │   ├── config/            # Configuration management (parsing, validation)
-│   ├── metrics/           # Prometheus metrics collection
 │   ├── qos/               # QoS & rate limiting (Token Bucket algorithm)
 │   ├── smtp/              # SMTP notifications (encrypted settings, alerts)
 │   ├── telemetry.rs       # Error and latency history for the dashboard

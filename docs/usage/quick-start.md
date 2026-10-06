@@ -5,7 +5,7 @@ This guide gets a basic RustSocks server running from source.
 ## Prerequisites
 
 - Rust toolchain (stable)
-- Node.js 18+ (only required if you want the web dashboard)
+- Node.js 20.19+ or 22.12+ (only required if you want the web dashboard)
 
 ## Build and Run
 

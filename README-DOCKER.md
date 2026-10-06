@@ -21,8 +21,8 @@ Complete guide for deploying RustSocks SOCKS5 proxy using Docker.
 
 ```bash
 # Clone repository (if not already)
-git clone https://github.com/your-org/rustsocks.git
-cd rustsocks
+git clone https://github.com/xulek/RustSocks.git
+cd RustSocks
 
 # Build Docker image
 docker build -t rustsocks:latest .

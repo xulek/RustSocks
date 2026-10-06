@@ -1,6 +1,20 @@
 # Protocol Implementation
 
-This document covers the detailed implementation of SOCKS5 protocol extensions: UDP ASSOCIATE, BIND command, and SOCKS over TLS.
+This document covers the detailed implementation of SOCKS5 protocol extensions (UDP ASSOCIATE, BIND command, SOCKS over TLS) and the SOCKS4/4a support.
+
+## SOCKS4 and SOCKS4a
+
+The first byte of a connection selects the protocol: `0x05` is SOCKS5 and `0x04` is SOCKS4/4a.
+
+- **Supported:** the CONNECT command, with an IPv4 address (SOCKS4) or a domain name (SOCKS4a)
+- **Not supported:** BIND (the reply is `CommandNotSupported`) and UDP
+- **Authentication:** SOCKS4 has no real authentication, so it is only accepted when `socks_method = "none"` (or `pam.address`, which authenticates the client address). Otherwise the request is refused with `ConnectionNotAllowed`
+- **USERID:** the identification string in a SOCKS4 request is untrusted client input. It is never used as the authenticated user for ACLs, QoS or sessions, so a client cannot pick its own identity
+- ACL and policy checks, the post-DNS check and limits apply exactly as for SOCKS5
+
+## Parser strictness
+
+The parsers reject input that is malformed rather than guessing: non-zero reserved fields (SOCKS5 requests and UDP datagrams), empty domain names, truncated or oversized fields, and invalid UTF-8 in domains. They are covered by property tests (`tests/protocol_robustness.rs`) that feed arbitrary and mutated bytes and require that they never panic and always terminate.
 
 ## UDP ASSOCIATE Command
 
@@ -126,6 +140,8 @@ RustSocks supports full TLS encryption for SOCKS5 connections, including mutual 
 - ✅ Server certificate configuration
 - ✅ Mutual TLS (mTLS) with client authentication
 - ✅ Configurable protocol versions
+- ✅ Handshake timeout (`server.tls.handshake_timeout_ms`, default 10 s), so a stalled handshake cannot hold a connection slot
+- ⚠️ Private keys must be unencrypted: `server.tls.key_password` is rejected at startup. Protect the key file with file permissions
 - ✅ Integration with all authentication methods
 - ✅ Session tracking with encrypted connections
 

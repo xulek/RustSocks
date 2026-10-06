@@ -28,7 +28,7 @@ RustSocks supports deployment under any URL path through intelligent frontend-ba
 
 ### Frontend (React)
 
-1. **Auto-detection**: `src/lib/basePath.js` automatically detects base path from:
+1. **Auto-detection**: `dashboard/src/lib/basePath.js` automatically detects base path from:
    - `window.__RUSTSOCKS_BASE_PATH__` (injected by backend)
    - Or from script location (parses `/assets/index-*.js` URL)
    - Or from `window.location.pathname` (fallback)

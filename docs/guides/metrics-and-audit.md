@@ -13,7 +13,9 @@ attacker controlled and would create unbounded cardinality.
 | `rustsocks_sessions_rejected_total` | counter | none | Sessions rejected (for example by ACL). |
 | `rustsocks_session_duration_seconds` | histogram | none | Session duration. |
 | `rustsocks_bytes_sent_total` / `rustsocks_bytes_received_total` | counter | none | Proxied traffic. |
-| `rustsocks_qos_*` | various | `direction` | QoS allocation and wait time. |
+| `rustsocks_qos_active_users` | gauge | none | Users with at least one QoS-managed connection. |
+| `rustsocks_qos_bandwidth_allocated_bytes_total` | counter | `direction` (`upload`, `download`) | Bytes allocated by the QoS engine. |
+| `rustsocks_qos_allocation_wait_seconds` | histogram | none | Time spent throttling traffic for QoS allocations. |
 | `rustsocks_acl_decisions_total` | counter | `decision` (`allow`, `block`), `source` | Primary decision per request. `source` is `legacy_acl`, `policy`, `default` or `post_dns` (block after DNS resolution hit an explicit block rule). |
 | `rustsocks_policy_monitor_matches_total` | counter | none | Monitor-mode policies that would have applied to a request. Use it to judge a policy before switching it to `enforce`. |
 | `rustsocks_policy_admission_denied_total` | counter | `reason` (`active_connections`, `connection_rate`, `daily_quota`, `monthly_quota`) | Sessions denied by policy admission limits. |

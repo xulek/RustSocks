@@ -911,8 +911,6 @@ stats_api_enabled = true
 stats_api_bind_address = "0.0.0.0"
 stats_api_port = 9090
 
-**Note**: Database-backed session storage requires building with the `database` feature (or `--all-features`).
-
 [server.pool]
 enabled = true
 max_idle_per_dest = 4
@@ -924,6 +922,8 @@ connect_timeout_ms = 5000
 level = "info"
 format = "pretty"
 ```
+
+**Note**: Database-backed session storage requires building with the `database` feature (or `--all-features`).
 
 **Key settings**:
 
@@ -1035,10 +1035,8 @@ sudo pamtester rustsocks alice authenticate
 #### 8. Verify RustSocks Configuration
 
 ```bash
-# Check config syntax
-./rustsocks --config config/rustsocks.toml --check
-
-# Start RustSocks
+# Start RustSocks. The configuration is validated at startup: a problem is
+# reported and the server exits instead of running with a bad configuration.
 ./rustsocks --config config/rustsocks.toml --log-level debug
 
 # Check startup logs for:

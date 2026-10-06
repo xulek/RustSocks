@@ -61,13 +61,15 @@ bind_port = 1080
 [auth]
 # Client-level auth (before SOCKS handshake)
 client_method = "none"        # or "pam.address"
-client_pam_service = "rustsocks-client"
 
 # SOCKS-level auth (after SOCKS handshake)
 socks_method = "pam.username" # or "pam.address", "userpass", "none"
-socks_pam_service = "rustsocks"
 
 [auth.pam]
+# PAM service names (files in /etc/pam.d/)
+username_service = "rustsocks"          # used by pam.username (default)
+address_service = "rustsocks-client"    # used by pam.address (default)
+
 # Default user for pam.address
 default_user = "rhostusr"
 default_ruser = "rhostusr"
@@ -131,7 +133,9 @@ Performed before SOCKS handshake when client connects:
 ```toml
 [auth]
 client_method = "pam.address"    # Authenticate based on IP
-client_pam_service = "rustsocks-client"
+
+[auth.pam]
+address_service = "rustsocks-client"   # PAM service file /etc/pam.d/rustsocks-client
 ```
 
 Benefits:
@@ -146,7 +150,9 @@ Performed after SOCKS handshake:
 ```toml
 [auth]
 socks_method = "pam.username"    # Authenticate with username/password
-socks_pam_service = "rustsocks"
+
+[auth.pam]
+username_service = "rustsocks"         # PAM service file /etc/pam.d/rustsocks
 ```
 
 ### Combined (Defense in Depth)
@@ -180,19 +186,17 @@ curl -X POST http://127.0.0.1:9090/api/auth/pam/test \
 
 ## Monitoring & Logging
 
-PAM authentication attempts are logged and metered:
+PAM authentication attempts are logged by the system and by RustSocks:
 
 ```bash
 # View PAM logs
 sudo tail -f /var/log/auth.log
 
-# Check PAM metrics
-curl http://127.0.0.1:9090/metrics | grep pam
+# Failed SOCKS logins (all credential-based methods, including PAM)
+curl http://127.0.0.1:9090/metrics | grep rustsocks_socks_auth_failures_total
 ```
 
-Expected metrics:
-- `rustsocks_pam_auth_total{method,service,result}` - Authentication attempts
-- `rustsocks_pam_auth_duration_seconds{method,service}` - Auth latency
+Failed attempts are counted in `rustsocks_socks_auth_failures_total{method="pam.username"}` (or `pam.address`). There are no PAM-specific latency metrics. Repeated failures from one address are throttled: after 10 failures within 60 seconds the address is rejected without calling PAM until the window expires. See [Metrics & Audit Log](../guides/metrics-and-audit.md).
 
 ## Testing PAM Setup
 
@@ -356,9 +360,9 @@ session    optional     pam_limits.so
 ```toml
 [auth]
 socks_method = "pam.username"
-socks_pam_service = "rustsocks"
 
 [auth.pam]
+username_service = "rustsocks"
 default_user = "rhostusr"
 verbose = true
 verify_service = true

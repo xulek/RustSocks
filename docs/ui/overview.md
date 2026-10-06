@@ -12,6 +12,7 @@ swagger_enabled = true
 stats_api_bind_address = "127.0.0.1"
 stats_api_port = 9090
 base_path = "/"
+api_token = "change-me"   # or enable [sessions.dashboard_auth]; /api/* is rejected without one of them
 ```
 
 Build the frontend once:
@@ -34,6 +35,7 @@ A live operational overview with:
 - Bandwidth totals (sent/received)
 - Top users by bandwidth
 - Top destinations by session count
+- System resources (CPU and memory, system-wide and for the RustSocks process) and connection pool statistics
 - Auto-refresh every few seconds
 
 ### Sessions
@@ -55,13 +57,22 @@ Manage access control lists visually:
 - Create, edit, delete ACL rules
 - Immediate effect when ACL watching is enabled
 
+### Access Policies
+
+Manage dynamic policies (see the [policy engine guide](../config/policy-engine.md)):
+
+- Create, edit and delete policies: subjects (users and groups), destinations, ports, protocols and priority
+- Choose `enforce` or `monitor` mode and enable or disable each policy
+- Add conditions: source networks, authentication method, weekday and time schedule, validity window, connection limits and daily/monthly transfer quotas
+- **Explain simulator:** enter a user, destination, source IP, authentication method and time, and see the decision with a step-by-step trace of every rule and policy considered
+
 ### Users
 
 User and group management:
 
 - List users and group membership
 - View per-user statistics
-- Manage group assignments and per-user rules
+- Create and delete users, manage group assignments and per-user rules
 
 ### Statistics
 
@@ -82,11 +93,11 @@ Operational telemetry stream:
 
 ### Diagnostics
 
-System and server health at a glance:
+Ad-hoc connectivity checks from the server (administrators only):
 
-- Health check status
-- Process and system resource metrics
-- Quick validation of service state
+- Test whether the server can open a TCP connection to an IP address and port
+- Choose the timeout and see the result and latency
+- Useful for telling a firewall or routing problem from an ACL decision
 
 ### Configuration
 
@@ -108,13 +119,29 @@ Runtime fields exposed in the UI:
 
 Changes are validated and written atomically to `config/rustsocks.toml` when a config file is in use. When no config file is active, the editor becomes read-only.
 
+### SMTP
+
+Configure e-mail notifications: connection mode and server, sender, credentials, recipients, the alert types to send, cooldowns, and a test e-mail. See the [SMTP guide](../guides/smtp-configuration.md).
+
 ### Login
 
-If dashboard authentication is enabled, a login screen prompts for credentials configured in `sessions.dashboard_auth`.
+If dashboard authentication is enabled, a login screen prompts for credentials configured in `sessions.dashboard_auth`. What each user can do depends on their role:
+
+| Role | Can do |
+| --- | --- |
+| `viewer` | Read sessions, statistics, telemetry, metrics and ACL rules and policies (default for users without an assigned role) |
+| `operator` | Everything a viewer can, plus terminate sessions and acknowledge alerts |
+| `admin` | Everything, including ACL and policy changes, and the only role with access to the configuration (`/api/admin/*`), SMTP and diagnostics pages |
+
+## API documentation
+
+Swagger UI is served at `/swagger-ui/` and the OpenAPI document at `/openapi.json` when `swagger_enabled = true`.
 
 ## Security Notes
 
-- The dashboard can be protected with Basic Auth and optional Altcha.
-- For production, bind the API to localhost or protect it behind a reverse proxy.
+- `/api/*` fails closed: requests are rejected unless dashboard authentication or `sessions.api_token` is configured.
+- Dashboard logins are protected by a per-user and per-address lockout and optional Altcha proof-of-work.
+- Every state-changing request is written to the audit log; see [Metrics & Audit Log](../guides/metrics-and-audit.md).
+- For production, bind the API to localhost or protect it behind a reverse proxy with TLS.
 
 See [Dashboard Authentication](../guides/dashboard-authentication.md) for details.
