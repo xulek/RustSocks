@@ -178,3 +178,103 @@ socks_method = "none"
     let config = Config::from_toml_str(toml).expect("config parses");
     assert_eq!(config.server.max_connections_per_ip, 25);
 }
+
+#[test]
+fn policy_state_defaults_to_memory_backend() {
+    let config = Config::default();
+    assert_eq!(config.policy_state.backend, "memory");
+    assert_eq!(config.policy_state.failure_mode, "fail_closed");
+    assert!(config.validate_effective().is_ok());
+}
+
+#[test]
+fn policy_state_rejects_unknown_backend_and_failure_mode() {
+    let mut config = Config::default();
+    config.policy_state.backend = "etcd".to_string();
+    assert_config_error(
+        &config,
+        "policy_state.backend must be \"memory\" or \"redis\", got \"etcd\"",
+    );
+
+    let mut config = Config::default();
+    config.policy_state.failure_mode = "ignore".to_string();
+    assert_config_error(
+        &config,
+        "policy_state.failure_mode must be \"fail_open\" or \"fail_closed\"",
+    );
+}
+
+#[test]
+fn policy_state_validates_tuning_values() {
+    let mut config = Config::default();
+    config.policy_state.lease_secs = 2;
+    assert_config_error(
+        &config,
+        "policy_state.lease_secs must be between 5 and 3600",
+    );
+
+    let mut config = Config::default();
+    config.policy_state.operation_timeout_ms = 5;
+    assert_config_error(
+        &config,
+        "policy_state.operation_timeout_ms must be between 10 and 10000",
+    );
+
+    let mut config = Config::default();
+    config.policy_state.key_prefix = "bad{prefix}".to_string();
+    assert_config_error(
+        &config,
+        "policy_state.key_prefix must be non-empty and contain no whitespace or braces",
+    );
+}
+
+#[test]
+fn policy_state_redis_backend_requires_feature_and_url() {
+    let mut config = Config::default();
+    config.policy_state.backend = "redis".to_string();
+
+    if cfg!(feature = "redis") {
+        assert_config_error(
+            &config,
+            "policy_state.redis_url must be set when policy_state.backend is \"redis\"",
+        );
+
+        config.policy_state.redis_url = Some("http://localhost".to_string());
+        assert_config_error(
+            &config,
+            "policy_state.redis_url must start with redis://, rediss:// or unix://",
+        );
+
+        config.policy_state.redis_url = Some("redis://127.0.0.1:6379/0".to_string());
+        assert!(config.validate_effective().is_ok());
+    } else {
+        config.policy_state.redis_url = Some("redis://127.0.0.1:6379/0".to_string());
+        assert_config_error(
+            &config,
+            "policy_state.backend = \"redis\" requires building with the `redis` feature",
+        );
+    }
+}
+
+#[test]
+fn policy_state_is_read_from_toml() {
+    let toml = r#"
+[server]
+bind_address = "127.0.0.1"
+bind_port = 1080
+
+[auth]
+client_method = "none"
+socks_method = "none"
+
+[policy_state]
+backend = "memory"
+key_prefix = "prod-eu"
+failure_mode = "fail_open"
+lease_secs = 30
+"#;
+    let config = Config::from_toml_str(toml).expect("config parses");
+    assert_eq!(config.policy_state.key_prefix, "prod-eu");
+    assert_eq!(config.policy_state.failure_mode, "fail_open");
+    assert_eq!(config.policy_state.lease_secs, 30);
+}
