@@ -9,6 +9,7 @@ RustSocks loads configuration from a TOML file passed via `--config`. When no fi
 The file is grouped into blocks:
 
 - `[server]` core listener settings
+- `[server.resolver]` DNS timeouts, cache and concurrency
 - `[server.tls]` TLS configuration
 - `[server.pool]` connection pooling
 - `[auth]` authentication strategy
@@ -16,6 +17,7 @@ The file is grouped into blocks:
 - `[acl]` ACL system and hot reload
 - `[sessions]` session tracking + API/dashboard
 - `[sessions.dashboard_auth]` dashboard authentication
+- `[policy_state]` where dynamic-policy counters live (memory or Redis)
 - `[metrics]` metrics retention and storage
 - `[telemetry]` operational event feed
 - `[qos]` rate limiting and connection limits
