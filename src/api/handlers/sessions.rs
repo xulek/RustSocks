@@ -368,7 +368,7 @@ fn matches_history_filters(
 pub async fn get_session_detail(
     State(state): State<ApiState>,
     Path(id): Path<String>,
-) -> axum::response::Result<(StatusCode, Json<SessionResponse>)> {
+) -> Result<(StatusCode, Json<SessionResponse>), (StatusCode, &'static str)> {
     if let Ok(session_id) = Uuid::parse_str(&id) {
         if let Some(session) = state
             .session_manager
@@ -393,13 +393,13 @@ pub async fn get_session_detail(
                     }
                 },
                 Err(_) => {
-                    return Err((StatusCode::BAD_REQUEST, "Invalid session id").into());
+                    return Err((StatusCode::BAD_REQUEST, "Invalid session id"));
                 }
             }
         }
     }
 
-    Err((StatusCode::NOT_FOUND, "Session not found").into())
+    Err((StatusCode::NOT_FOUND, "Session not found"))
 }
 
 /// GET /api/sessions/stats - Get aggregated session statistics

@@ -1562,7 +1562,7 @@ pub async fn start_api_server(
         app
     } else {
         // Add explicit redirect from /prefix/ to /prefix (Axum nest quirk)
-        let base_with_slash = format!("{}/", &base_path);
+        let base_with_slash = format!("{}/", base_path);
         let redirect_target = base_path.clone();
         Router::new()
             .route(
