@@ -79,7 +79,7 @@ async fn main() -> std::io::Result<()> {
     socket.set_reuse_address(true)?;
     socket.set_recv_buffer_size(262144)?; // 256 KB
     socket.set_send_buffer_size(262144)?; // 256 KB
-    socket.set_nodelay(true)?;
+    socket.set_tcp_nodelay(true)?;
     socket.bind(&addr.into())?;
     socket.listen(1024)?; // Increased backlog
 

@@ -14,13 +14,13 @@ tokio-rustls = "0.26"
 
 # Networking
 bytes = "1.5"
-base64 = "0.21"
+base64 = "0.23"
 futures = "0.3"
 axum = { version = "0.8", features = ["json"] }
 tower = { version = "0.5", features = ["util"] }
 tower-http = { version = "0.7", features = ["fs", "trace", "normalize-path"] }
 rustls = { version = "0.23", features = ["ring"] }
-socket2 = "0.5"  # Low-level socket configuration (SO_REUSEADDR, buffers)
+socket2 = "0.6"  # Low-level socket configuration (SO_REUSEADDR, buffers)
 
 # API Documentation
 utoipa = "6.0"
