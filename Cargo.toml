@@ -49,7 +49,7 @@ dashmap = "6.1"         # Concurrent hashmap for active sessions
 uuid = { version = "1.11", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 regex = "1.11"          # For wildcard domain matching
-sysinfo = "0.34"        # System and process resource monitoring
+sysinfo = "0.38"        # System and process resource monitoring
 sha2 = "0.10"           # SHA-256 for session tokens
 hmac = "0.12"           # HMAC for Altcha signatures
 rand = "0.8"            # CSPRNG for session secrets/tokens
