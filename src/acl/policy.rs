@@ -1,4 +1,4 @@
-use super::matcher::CompiledAclRule;
+use super::matcher::{CompiledAclRule, PreparedDestination};
 use super::metrics::AclMetrics;
 use super::types::{
     AccessPolicy, AclDecision, Action, PolicyConditions, PolicyMode, PolicySchedule, Protocol,
@@ -50,12 +50,31 @@ pub struct PolicyTraceEntry {
     pub reason: String,
 }
 
+/// Which part of the engine produced a decision.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DecisionSource {
+    /// A legacy `[[users]]` / `[[groups]]` rule matched.
+    LegacyAcl,
+    /// A dynamic policy decided (including a failed gate condition).
+    Policy,
+    /// Nothing matched; `global.default_policy` applied.
+    Default,
+}
+
 #[derive(Debug, Clone)]
 pub struct PolicyEvaluationOutcome {
     pub decision: AclDecision,
     pub matched_rule: Option<String>,
     pub matched_policy_id: Option<String>,
     pub admission_limits: PolicyAdmissionLimits,
+    /// What decided. `Default` means no explicit rule or policy applied.
+    pub source: DecisionSource,
+    /// Monitor-mode policies whose target and conditions matched (would have applied).
+    pub monitor_matches: u32,
+    /// Ordered explanation of every candidate considered. Only populated by
+    /// [`AclEngine::evaluate_policy_with_context`](super::engine::AclEngine::evaluate_policy_with_context);
+    /// the traffic path leaves it empty because building it costs several allocations
+    /// per candidate.
     pub trace: Vec<PolicyTraceEntry>,
 }
 
@@ -80,6 +99,46 @@ pub struct CompiledAccessPolicy {
     groups_lower: Vec<String>,
     source_networks: Vec<IpNet>,
     auth_methods_lower: Vec<String>,
+    schedule: Option<CompiledSchedule>,
+}
+
+/// A schedule parsed once at compile time: weekday bitmask (bit 1 = Monday .. bit 7 = Sunday,
+/// `0` = every day) and start/end in minutes since midnight.
+#[derive(Debug, Clone)]
+struct CompiledSchedule {
+    days_mask: u8,
+    start: u32,
+    end: u32,
+    utc_offset_minutes: i64,
+}
+
+impl CompiledSchedule {
+    fn compile(schedule: &PolicySchedule) -> Option<Self> {
+        let mut days_mask = 0u8;
+        for day in &schedule.days {
+            days_mask |= 1 << weekday_number(day)?;
+        }
+        Some(Self {
+            days_mask,
+            start: parse_hhmm(&schedule.start)?,
+            end: parse_hhmm(&schedule.end)?,
+            utc_offset_minutes: i64::from(schedule.utc_offset_minutes),
+        })
+    }
+
+    fn matches(&self, now: DateTime<Utc>) -> bool {
+        let local = now + ChronoDuration::minutes(self.utc_offset_minutes);
+        if self.days_mask != 0 && self.days_mask & (1 << local.weekday().number_from_monday()) == 0
+        {
+            return false;
+        }
+        let current = local.hour() * 60 + local.minute();
+        if self.start < self.end {
+            current >= self.start && current < self.end
+        } else {
+            current >= self.start || current < self.end
+        }
+    }
 }
 
 impl CompiledAccessPolicy {
@@ -111,9 +170,13 @@ impl CompiledAccessPolicy {
             })?);
         }
 
-        if let Some(schedule) = &policy.conditions.schedule {
-            validate_schedule(&policy.id, schedule)?;
-        }
+        let schedule = match &policy.conditions.schedule {
+            Some(schedule) => {
+                validate_schedule(&policy.id, schedule)?;
+                CompiledSchedule::compile(schedule)
+            }
+            None => None,
+        };
 
         Ok(Self {
             users_lower: policy
@@ -135,37 +198,73 @@ impl CompiledAccessPolicy {
             policy: policy.clone(),
             target,
             source_networks,
+            schedule,
         })
     }
 
     pub fn subject_matches(&self, user: &str, groups: &[String]) -> bool {
+        let user_lower = user.to_ascii_lowercase();
+        let groups_lower: Vec<String> = groups.iter().map(|g| g.to_ascii_lowercase()).collect();
+        self.subject_matches_lowered(&user_lower, &groups_lower)
+    }
+
+    /// Whether the policy names any group (so group membership must be resolved to evaluate it).
+    pub fn has_group_subjects(&self) -> bool {
+        !self.groups_lower.is_empty()
+    }
+
+    /// Subject match for an already lowercased user and group list (the hot path).
+    pub fn subject_matches_lowered(&self, user_lower: &str, groups_lower: &[String]) -> bool {
         if self.users_lower.is_empty() && self.groups_lower.is_empty() {
             return true;
         }
-
-        let user_lower = user.to_ascii_lowercase();
         if self
             .users_lower
             .iter()
-            .any(|candidate| candidate == &user_lower)
+            .any(|candidate| candidate == user_lower)
         {
             return true;
         }
-
-        groups.iter().any(|group| {
-            let lower = group.to_ascii_lowercase();
-            self.groups_lower
-                .iter()
-                .any(|candidate| candidate == &lower)
-        })
+        groups_lower
+            .iter()
+            .any(|group| self.groups_lower.iter().any(|candidate| candidate == group))
     }
 
     pub fn target_matches(&self, dest: &Address, port: u16, protocol: &Protocol) -> bool {
         self.target.matches(dest, port, protocol)
     }
 
+    /// Target match for a destination analysed once per request (the hot path).
+    pub fn target_matches_prepared(
+        &self,
+        dest: &PreparedDestination<'_>,
+        port: u16,
+        protocol: &Protocol,
+    ) -> bool {
+        self.target.matches_prepared(dest, port, protocol)
+    }
+
+    /// Evaluate the dynamic conditions and explain the result.
     pub fn conditions_match(&self, ctx: &PolicyEvaluationContext<'_>) -> (bool, String) {
+        self.check_conditions(ctx, true)
+    }
+
+    /// Evaluate the dynamic conditions without building an explanation (the hot path).
+    pub fn conditions_hold(&self, ctx: &PolicyEvaluationContext<'_>) -> bool {
+        self.check_conditions(ctx, false).0
+    }
+
+    /// Shared implementation. The reason string is only built when `want_reason` is set, so
+    /// the traffic path does not allocate.
+    fn check_conditions(
+        &self,
+        ctx: &PolicyEvaluationContext<'_>,
+        want_reason: bool,
+    ) -> (bool, String) {
         let conditions = &self.policy.conditions;
+        let fail = |reason: &dyn Fn() -> String| {
+            (false, if want_reason { reason() } else { String::new() })
+        };
 
         if !self.source_networks.is_empty()
             && !self
@@ -173,13 +272,12 @@ impl CompiledAccessPolicy {
                 .iter()
                 .any(|net| net.contains(&ctx.source_ip))
         {
-            return (
-                false,
+            return fail(&|| {
                 format!(
                     "source IP {} is outside allowed source networks",
                     ctx.source_ip
-                ),
-            );
+                )
+            });
         }
 
         if !self.auth_methods_lower.is_empty()
@@ -188,79 +286,79 @@ impl CompiledAccessPolicy {
                 .iter()
                 .any(|method| method.eq_ignore_ascii_case(ctx.auth_method))
         {
-            return (
-                false,
-                format!("authentication method '{}' is not allowed", ctx.auth_method),
-            );
+            return fail(&|| format!("authentication method '{}' is not allowed", ctx.auth_method));
         }
 
         if let Some(not_before) = conditions.not_before {
             if ctx.now < not_before {
-                return (false, format!("policy is not active before {}", not_before));
+                return fail(&|| format!("policy is not active before {}", not_before));
             }
         }
 
         if let Some(expires_at) = conditions.expires_at {
             if ctx.now >= expires_at {
-                return (false, format!("policy expired at {}", expires_at));
+                return fail(&|| format!("policy expired at {}", expires_at));
             }
         }
 
-        if let Some(schedule) = &conditions.schedule {
-            if !schedule_matches(schedule, ctx.now) {
-                return (false, "current time is outside policy schedule".to_string());
+        if let Some(schedule) = &self.schedule {
+            if !schedule.matches(ctx.now) {
+                return fail(&|| "current time is outside policy schedule".to_string());
             }
         }
 
         if let Some(limit) = conditions.max_active_connections {
             if ctx.usage.active_connections >= limit {
-                return (
-                    false,
+                return fail(&|| {
                     format!(
                         "active connection limit reached ({}/{})",
                         ctx.usage.active_connections, limit
-                    ),
-                );
+                    )
+                });
             }
         }
 
         if let Some(limit) = conditions.max_connections_per_minute {
             if ctx.usage.connections_last_minute >= limit {
-                return (
-                    false,
+                return fail(&|| {
                     format!(
                         "connection rate limit reached ({}/{}/min)",
                         ctx.usage.connections_last_minute, limit
-                    ),
-                );
+                    )
+                });
             }
         }
 
         if let Some(limit) = conditions.daily_transfer_limit_bytes {
             if ctx.usage.bytes_today >= limit {
-                return (
-                    false,
+                return fail(&|| {
                     format!(
                         "daily transfer quota reached ({}/{})",
                         ctx.usage.bytes_today, limit
-                    ),
-                );
+                    )
+                });
             }
         }
 
         if let Some(limit) = conditions.monthly_transfer_limit_bytes {
             if ctx.usage.bytes_this_month >= limit {
-                return (
-                    false,
+                return fail(&|| {
                     format!(
                         "monthly transfer quota reached ({}/{})",
                         ctx.usage.bytes_this_month, limit
-                    ),
-                );
+                    )
+                });
             }
         }
 
-        (true, "all dynamic conditions matched".to_string())
+        (
+            true,
+            if want_reason {
+                "all dynamic conditions matched".to_string()
+            } else {
+                String::new()
+            },
+        )
     }
 
     pub fn admission_limits(&self) -> PolicyAdmissionLimits {
@@ -329,34 +427,6 @@ fn weekday_number(value: &str) -> Option<u32> {
         "sat" | "saturday" => Some(6),
         "sun" | "sunday" => Some(7),
         _ => None,
-    }
-}
-
-fn schedule_matches(schedule: &PolicySchedule, now: DateTime<Utc>) -> bool {
-    let local = now + ChronoDuration::minutes(schedule.utc_offset_minutes as i64);
-    let weekday = local.weekday().number_from_monday();
-    if !schedule.days.is_empty()
-        && !schedule
-            .days
-            .iter()
-            .filter_map(|day| weekday_number(day))
-            .any(|day| day == weekday)
-    {
-        return false;
-    }
-
-    let Some(start) = parse_hhmm(&schedule.start) else {
-        return false;
-    };
-    let Some(end) = parse_hhmm(&schedule.end) else {
-        return false;
-    };
-    let current = local.hour() * 60 + local.minute();
-
-    if start < end {
-        current >= start && current < end
-    } else {
-        current >= start || current < end
     }
 }
 

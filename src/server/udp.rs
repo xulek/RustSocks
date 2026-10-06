@@ -280,7 +280,7 @@ async fn handle_client_packet(
 
     if let Some(engine) = udp_ctx.acl_engine.as_ref() {
         let outcome = engine
-            .evaluate_policy_with_context(PolicyEvaluationContext {
+            .evaluate_policy_for_traffic(PolicyEvaluationContext {
                 user: udp_ctx.user.as_ref(),
                 groups: udp_ctx.user_groups.as_ref(),
                 source_ip: udp_ctx.source_ip,

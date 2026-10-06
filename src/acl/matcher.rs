@@ -23,6 +23,39 @@ struct WildcardPattern {
     regex: Regex,
 }
 
+/// A request destination analysed once, so evaluating many rules against it does not
+/// repeat per-rule work (IP parsing of a domain string, lowercasing for wildcard matching).
+#[derive(Debug)]
+pub struct PreparedDestination<'a> {
+    addr: &'a Address,
+    /// The destination as an IP address (directly, or parsed from a domain-typed address).
+    ip: Option<IpAddr>,
+    /// Lowercased domain, for wildcard matching.
+    domain_lower: Option<String>,
+}
+
+impl<'a> PreparedDestination<'a> {
+    pub fn new(addr: &'a Address) -> Self {
+        match addr {
+            Address::IPv4(octets) => Self {
+                addr,
+                ip: Some(IpAddr::V4(Ipv4Addr::from(*octets))),
+                domain_lower: None,
+            },
+            Address::IPv6(octets) => Self {
+                addr,
+                ip: Some(IpAddr::V6(Ipv6Addr::from(*octets))),
+                domain_lower: None,
+            },
+            Address::Domain(domain) => Self {
+                addr,
+                ip: domain.parse::<IpAddr>().ok(),
+                domain_lower: Some(domain.to_lowercase()),
+            },
+        }
+    }
+}
+
 impl CompiledDestinationMatcher {
     /// Compile from string
     pub fn compile(s: &str) -> Result<Self, String> {
@@ -51,68 +84,30 @@ impl CompiledDestinationMatcher {
     }
 
     /// Check if address matches this matcher
-    #[inline(always)]
+    #[inline]
     pub fn matches(&self, addr: &Address) -> bool {
+        self.matches_prepared(&PreparedDestination::new(addr))
+    }
+
+    /// Check a pre-analysed destination (the hot path).
+    #[inline(always)]
+    pub fn matches_prepared(&self, dest: &PreparedDestination<'_>) -> bool {
         match &self.matcher {
             DestinationMatcherType::MatchAll => true, // "*" matches everything
-            DestinationMatcherType::Ip(ip) => Self::match_ip(ip, addr),
-            DestinationMatcherType::Cidr(cidr) => Self::match_cidr(cidr, addr),
-            DestinationMatcherType::Domain(domain) => Self::match_domain(domain, addr),
-            DestinationMatcherType::WildcardDomain(pattern) => Self::match_wildcard(pattern, addr),
-        }
-    }
-
-    #[inline]
-    fn match_ip(ip: &IpAddr, addr: &Address) -> bool {
-        match (ip, addr) {
-            (IpAddr::V4(matcher_ip), Address::IPv4(octets)) => {
-                let addr_ip = Ipv4Addr::from(*octets);
-                matcher_ip == &addr_ip
+            DestinationMatcherType::Ip(ip) => {
+                dest.ip.as_ref().is_some_and(|d| matcher_ip_eq(ip, d))
             }
-            (IpAddr::V6(matcher_ip), Address::IPv6(octets)) => {
-                let addr_ip = Ipv6Addr::from(*octets);
-                matcher_ip == &addr_ip
+            DestinationMatcherType::Cidr(cidr) => {
+                dest.ip.as_ref().is_some_and(|d| cidr.contains(d))
             }
-            (_, Address::Domain(domain)) => {
-                if let Ok(parsed) = domain.parse::<IpAddr>() {
-                    matcher_ip_eq(ip, &parsed)
-                } else {
-                    false
-                }
-            }
-            _ => false,
-        }
-    }
-
-    #[inline]
-    fn match_cidr(cidr: &ipnet::IpNet, addr: &Address) -> bool {
-        let ip = match addr {
-            Address::IPv4(octets) => IpAddr::V4(Ipv4Addr::from(*octets)),
-            Address::IPv6(octets) => IpAddr::V6(Ipv6Addr::from(*octets)),
-            Address::Domain(domain) => match domain.parse::<IpAddr>() {
-                Ok(parsed) => parsed,
-                Err(_) => return false,
+            DestinationMatcherType::Domain(domain) => match dest.addr {
+                Address::Domain(addr_domain) => domain.eq_ignore_ascii_case(addr_domain),
+                _ => false,
             },
-        };
-
-        cidr.contains(&ip)
-    }
-
-    #[inline]
-    fn match_domain(domain: &str, addr: &Address) -> bool {
-        if let Address::Domain(addr_domain) = addr {
-            domain.eq_ignore_ascii_case(addr_domain)
-        } else {
-            false
-        }
-    }
-
-    #[inline]
-    fn match_wildcard(pattern: &WildcardPattern, addr: &Address) -> bool {
-        if let Address::Domain(addr_domain) = addr {
-            pattern.regex.is_match(&addr_domain.to_lowercase())
-        } else {
-            false
+            DestinationMatcherType::WildcardDomain(pattern) => dest
+                .domain_lower
+                .as_deref()
+                .is_some_and(|lower| pattern.regex.is_match(lower)),
         }
     }
 }
@@ -234,6 +229,16 @@ impl CompiledAclRule {
 
     /// Check if this rule matches the given connection parameters
     pub fn matches(&self, addr: &Address, port: u16, protocol: &Protocol) -> bool {
+        self.matches_prepared(&PreparedDestination::new(addr), port, protocol)
+    }
+
+    /// Same as [`Self::matches`] for a destination analysed once per request.
+    pub fn matches_prepared(
+        &self,
+        dest: &PreparedDestination<'_>,
+        port: u16,
+        protocol: &Protocol,
+    ) -> bool {
         // Check protocol
         if !self.protocols.iter().any(|p| p.matches(protocol)) {
             return false;
@@ -242,7 +247,7 @@ impl CompiledAclRule {
         // Check destination
         // Empty list = match nothing
         // Use ["*"] to match all destinations
-        let dest_match = self.destinations.iter().any(|d| d.matches(addr));
+        let dest_match = self.destinations.iter().any(|d| d.matches_prepared(dest));
 
         // Check port
         // Empty list = match nothing

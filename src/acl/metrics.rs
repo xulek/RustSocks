@@ -8,6 +8,7 @@ use super::policy::PolicyEvaluationOutcome;
 #[cfg(feature = "metrics")]
 mod enabled {
     use super::*;
+    use crate::acl::DecisionSource;
 
     /// Decision source label values.
     pub(crate) const USAGE_STORE_OPS: [&str; 5] =
@@ -22,35 +23,6 @@ mod enabled {
     ];
     /// Authentication methods reported by `AuthManager::socks_method_name`.
     const AUTH_METHODS: [&str; 5] = ["none", "userpass", "pam.address", "pam.username", "gssapi"];
-
-    /// Classify which part of the engine produced a decision.
-    pub(crate) fn decision_source(outcome: &PolicyEvaluationOutcome) -> &'static str {
-        if outcome.matched_policy_id.is_some() {
-            "policy"
-        } else if outcome
-            .trace
-            .last()
-            .is_some_and(|entry| entry.effective && entry.source == "legacy_acl")
-        {
-            "legacy_acl"
-        } else {
-            "default"
-        }
-    }
-
-    /// Number of monitor-mode policies that matched the target and conditions
-    /// (i.e. would have applied had they been enforced).
-    pub(crate) fn monitor_matches(outcome: &PolicyEvaluationOutcome) -> usize {
-        outcome
-            .trace
-            .iter()
-            .filter(|entry| {
-                entry.mode == Some(crate::acl::types::PolicyMode::Monitor)
-                    && entry.target_matched
-                    && entry.conditions_matched == Some(true)
-            })
-            .count()
-    }
 
     use lazy_static::lazy_static;
     use prometheus::{
@@ -110,12 +82,14 @@ mod enabled {
                 crate::acl::AclDecision::Allow => "allow",
                 crate::acl::AclDecision::Block => "block",
             };
-            ACL_DECISIONS
-                .with_label_values(&[decision, decision_source(outcome)])
-                .inc();
-            let monitored = monitor_matches(outcome);
-            if monitored > 0 {
-                POLICY_MONITOR_MATCHES.inc_by(monitored as u64);
+            let source = match outcome.source {
+                DecisionSource::LegacyAcl => "legacy_acl",
+                DecisionSource::Policy => "policy",
+                DecisionSource::Default => "default",
+            };
+            ACL_DECISIONS.with_label_values(&[decision, source]).inc();
+            if outcome.monitor_matches > 0 {
+                POLICY_MONITOR_MATCHES.inc_by(u64::from(outcome.monitor_matches));
             }
         }
 
@@ -228,84 +202,50 @@ pub use enabled::*;
 #[cfg(all(test, feature = "metrics"))]
 mod tests {
     use super::*;
-    use crate::acl::types::{Action, PolicyMode};
-    use crate::acl::{AclDecision, PolicyAdmissionLimits, PolicyTraceEntry};
+    use crate::acl::{AclDecision, DecisionSource, PolicyAdmissionLimits};
     use prometheus::{Encoder, TextEncoder};
 
     fn outcome(
         decision: AclDecision,
-        policy_id: Option<&str>,
-        trace: Vec<PolicyTraceEntry>,
+        source: DecisionSource,
+        monitor_matches: u32,
     ) -> PolicyEvaluationOutcome {
         PolicyEvaluationOutcome {
             decision,
             matched_rule: None,
-            matched_policy_id: policy_id.map(str::to_string),
+            matched_policy_id: None,
             admission_limits: PolicyAdmissionLimits::default(),
-            trace,
-        }
-    }
-
-    fn entry(
-        source: &str,
-        mode: Option<PolicyMode>,
-        conditions: Option<bool>,
-        effective: bool,
-    ) -> PolicyTraceEntry {
-        PolicyTraceEntry {
-            source: source.to_string(),
-            id: None,
-            description: String::new(),
-            priority: 0,
-            action: Action::Allow,
-            mode,
-            target_matched: true,
-            conditions_matched: conditions,
-            effective,
-            reason: String::new(),
+            source,
+            monitor_matches,
+            trace: Vec::new(),
         }
     }
 
     #[test]
-    fn classifies_decision_source() {
-        assert_eq!(
-            decision_source(&outcome(AclDecision::Allow, Some("p1"), vec![])),
-            "policy"
+    fn outcome_is_counted_under_its_decision_source() {
+        let count = |decision: &str, source: &str| {
+            ACL_DECISIONS.with_label_values(&[decision, source]).get()
+        };
+        let before = (
+            count("block", "legacy_acl"),
+            count("allow", "policy"),
+            count("block", "default"),
         );
-        assert_eq!(
-            decision_source(&outcome(
-                AclDecision::Block,
-                None,
-                vec![entry("legacy_acl", None, None, true)]
-            )),
-            "legacy_acl"
-        );
-        assert_eq!(
-            decision_source(&outcome(AclDecision::Block, None, vec![])),
-            "default"
-        );
-        // A non-effective legacy trace entry means the default policy decided.
-        assert_eq!(
-            decision_source(&outcome(
-                AclDecision::Block,
-                None,
-                vec![entry("legacy_acl", None, None, false)]
-            )),
-            "default"
-        );
+
+        AclMetrics::record_outcome(&outcome(AclDecision::Block, DecisionSource::LegacyAcl, 0));
+        AclMetrics::record_outcome(&outcome(AclDecision::Allow, DecisionSource::Policy, 0));
+        AclMetrics::record_outcome(&outcome(AclDecision::Block, DecisionSource::Default, 0));
+
+        assert_eq!(count("block", "legacy_acl"), before.0 + 1);
+        assert_eq!(count("allow", "policy"), before.1 + 1);
+        assert_eq!(count("block", "default"), before.2 + 1);
     }
 
     #[test]
-    fn counts_only_matching_monitor_policies() {
-        let trace = vec![
-            entry("policy", Some(PolicyMode::Monitor), Some(true), false),
-            entry("policy", Some(PolicyMode::Monitor), Some(false), false),
-            entry("policy", Some(PolicyMode::Enforce), Some(true), true),
-        ];
-        assert_eq!(
-            monitor_matches(&outcome(AclDecision::Allow, None, trace)),
-            1
-        );
+    fn monitor_matches_are_added_to_the_counter() {
+        let before = POLICY_MONITOR_MATCHES.get();
+        AclMetrics::record_outcome(&outcome(AclDecision::Allow, DecisionSource::Default, 3));
+        assert_eq!(POLICY_MONITOR_MATCHES.get(), before + 3);
     }
 
     #[test]
@@ -340,7 +280,7 @@ mod tests {
         );
 
         let allow_before = ACL_DECISIONS.with_label_values(&["allow", "policy"]).get();
-        AclMetrics::record_outcome(&outcome(AclDecision::Allow, Some("p"), vec![]));
+        AclMetrics::record_outcome(&outcome(AclDecision::Allow, DecisionSource::Policy, 0));
         assert_eq!(
             ACL_DECISIONS.with_label_values(&["allow", "policy"]).get(),
             allow_before + 1

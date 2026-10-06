@@ -218,7 +218,7 @@ where
                 .policy_usage_snapshot(acl_user.as_ref())
                 .await;
             let outcome = engine
-                .evaluate_policy_with_context(PolicyEvaluationContext {
+                .evaluate_policy_for_traffic(PolicyEvaluationContext {
                     user: acl_user.as_ref(),
                     groups: &user_groups,
                     source_ip: client_addr.ip(),
@@ -495,7 +495,7 @@ where
                 .policy_usage_snapshot(acl_user.as_ref())
                 .await;
             let outcome = engine
-                .evaluate_policy_with_context(PolicyEvaluationContext {
+                .evaluate_policy_for_traffic(PolicyEvaluationContext {
                     user: acl_user.as_ref(),
                     groups: &user_groups,
                     source_ip: client_addr.ip(),

@@ -18,8 +18,8 @@ pub use loader::{create_example_acl_config, load_acl_config, load_acl_config_syn
 pub use metrics::AclMetrics;
 pub use persistence::{load_config, save_config};
 pub use policy::{
-    PolicyAdmissionGuard, PolicyAdmissionLimits, PolicyEvaluationContext, PolicyEvaluationOutcome,
-    PolicyTraceEntry, PolicyUsageSnapshot, PolicyUsageTracker,
+    DecisionSource, PolicyAdmissionGuard, PolicyAdmissionLimits, PolicyEvaluationContext,
+    PolicyEvaluationOutcome, PolicyTraceEntry, PolicyUsageSnapshot, PolicyUsageTracker,
 };
 pub use stats::{AclStats, AclStatsSnapshot};
 pub use types::{
