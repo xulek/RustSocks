@@ -112,12 +112,11 @@ async fn test_metrics_endpoint() {
         assert!(metrics.contains("rustsocks_bytes_sent_total"));
         assert!(metrics.contains("rustsocks_bytes_received_total"));
         assert!(metrics.contains("rustsocks_qos_active_users"));
-        assert!(metrics.contains(
-            "rustsocks_qos_bandwidth_allocated_bytes_total{direction=\"upload\"}"
-        ));
-        assert!(metrics.contains(
-            "rustsocks_qos_bandwidth_allocated_bytes_total{direction=\"download\"}"
-        ));
+        assert!(
+            metrics.contains("rustsocks_qos_bandwidth_allocated_bytes_total{direction=\"upload\"}")
+        );
+        assert!(metrics
+            .contains("rustsocks_qos_bandwidth_allocated_bytes_total{direction=\"download\"}"));
     }
 }
 

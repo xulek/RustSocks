@@ -869,7 +869,8 @@ impl Config {
         let socks_method_valid = matches!(
             self.auth.socks_method.as_str(),
             "none" | "userpass" | "pam.address" | "pam.username"
-        ) || cfg!(feature = "gssapi") && self.auth.socks_method == "gssapi";
+        ) || cfg!(feature = "gssapi")
+            && self.auth.socks_method == "gssapi";
 
         if !socks_method_valid {
             let supported = if cfg!(feature = "gssapi") {
@@ -910,13 +911,19 @@ impl Config {
             ));
         }
         for (name, value) in [
-            ("sessions.database_url", self.sessions.database_url.as_deref()),
+            (
+                "sessions.database_url",
+                self.sessions.database_url.as_deref(),
+            ),
             ("sessions.api_token", self.sessions.api_token.as_deref()),
             (
                 "sessions.smtp_encryption_key",
                 self.sessions.smtp_encryption_key.as_deref(),
             ),
-            ("server.tls.key_password", self.server.tls.key_password.as_deref()),
+            (
+                "server.tls.key_password",
+                self.server.tls.key_password.as_deref(),
+            ),
         ] {
             if value.map(unresolved_env).unwrap_or(false) {
                 return Err(RustSocksError::Config(format!(
@@ -1171,9 +1178,12 @@ impl Config {
             ));
         }
 
-        if self.server.tls.handshake_timeout_ms == 0 || self.server.tls.handshake_timeout_ms > 300_000 {
+        if self.server.tls.handshake_timeout_ms == 0
+            || self.server.tls.handshake_timeout_ms > 300_000
+        {
             return Err(RustSocksError::Config(
-                "server.tls.handshake_timeout_ms must be between 1 and 300000 milliseconds".to_string(),
+                "server.tls.handshake_timeout_ms must be between 1 and 300000 milliseconds"
+                    .to_string(),
             ));
         }
 
@@ -1182,8 +1192,7 @@ impl Config {
                 "server.resolver.timeout_ms must be between 1 and 60000 milliseconds".to_string(),
             ));
         }
-        if self.server.resolver.cache_ttl_secs == 0
-            || self.server.resolver.cache_ttl_secs > 86_400
+        if self.server.resolver.cache_ttl_secs == 0 || self.server.resolver.cache_ttl_secs > 86_400
         {
             return Err(RustSocksError::Config(
                 "server.resolver.cache_ttl_secs must be between 1 and 86400 seconds".to_string(),
@@ -1207,25 +1216,32 @@ impl Config {
         if self.server.pool.enabled {
             if self.server.pool.max_idle_per_dest == 0 {
                 return Err(RustSocksError::Config(
-                    "server.pool.max_idle_per_dest must be greater than 0 when pooling is enabled".to_string(),
+                    "server.pool.max_idle_per_dest must be greater than 0 when pooling is enabled"
+                        .to_string(),
                 ));
             }
             if self.server.pool.max_total_idle == 0 {
                 return Err(RustSocksError::Config(
-                    "server.pool.max_total_idle must be greater than 0 when pooling is enabled".to_string(),
+                    "server.pool.max_total_idle must be greater than 0 when pooling is enabled"
+                        .to_string(),
                 ));
             }
             if self.server.pool.max_idle_per_dest > self.server.pool.max_total_idle {
                 return Err(RustSocksError::Config(
-                    "server.pool.max_idle_per_dest must not exceed server.pool.max_total_idle".to_string(),
+                    "server.pool.max_idle_per_dest must not exceed server.pool.max_total_idle"
+                        .to_string(),
                 ));
             }
-            if self.server.pool.connect_timeout_ms == 0 || self.server.pool.connect_timeout_ms > 300_000 {
+            if self.server.pool.connect_timeout_ms == 0
+                || self.server.pool.connect_timeout_ms > 300_000
+            {
                 return Err(RustSocksError::Config(
                     "server.pool.connect_timeout_ms must be between 1 and 300000 milliseconds when pooling is enabled".to_string(),
                 ));
             }
-            if self.server.pool.idle_timeout_secs == 0 || self.server.pool.idle_timeout_secs > 86_400 {
+            if self.server.pool.idle_timeout_secs == 0
+                || self.server.pool.idle_timeout_secs > 86_400
+            {
                 return Err(RustSocksError::Config(
                     "server.pool.idle_timeout_secs must be between 1 and 86400 seconds when pooling is enabled".to_string(),
                 ));

@@ -11,11 +11,16 @@ pub struct SmtpRepository {
 
 impl SmtpRepository {
     pub fn new(store: Arc<crate::session::SessionStore>, encryption_key: Option<String>) -> Self {
-        Self { store, encryption_key }
+        Self {
+            store,
+            encryption_key,
+        }
     }
 
     pub async fn get_config(&self) -> Result<SmtpConfig, String> {
-        self.store.load_smtp_config(self.encryption_key.as_deref()).await
+        self.store
+            .load_smtp_config(self.encryption_key.as_deref())
+            .await
     }
 
     pub async fn save_config(

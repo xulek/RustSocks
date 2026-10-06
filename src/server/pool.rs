@@ -534,10 +534,7 @@ impl ConnectionPool {
             }
 
             if !conn.is_clean_idle() {
-                trace!(
-                    "Discarding stale or dirty pooled connection to {}",
-                    addr
-                );
+                trace!("Discarding stale or dirty pooled connection to {}", addr);
                 expired += 1;
                 continue;
             }

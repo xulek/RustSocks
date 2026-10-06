@@ -133,19 +133,20 @@ pub async fn resolve_address(address: &Address, port: u16) -> Result<Vec<SocketA
             let ips = if let Some(ips) = cached_ips(domain, runtime.cache_ttl) {
                 ips
             } else {
-                let permit = timeout(runtime.timeout, runtime.lookup_limit.clone().acquire_owned())
-                    .await
-                    .map_err(|_| {
-                        RustSocksError::Io(std::io::Error::new(
-                            std::io::ErrorKind::TimedOut,
-                            "DNS resolver concurrency limit timed out",
-                        ))
-                    })?
-                    .map_err(|_| {
-                        RustSocksError::Io(std::io::Error::other(
-                            "DNS resolver semaphore closed",
-                        ))
-                    })?;
+                let permit = timeout(
+                    runtime.timeout,
+                    runtime.lookup_limit.clone().acquire_owned(),
+                )
+                .await
+                .map_err(|_| {
+                    RustSocksError::Io(std::io::Error::new(
+                        std::io::ErrorKind::TimedOut,
+                        "DNS resolver concurrency limit timed out",
+                    ))
+                })?
+                .map_err(|_| {
+                    RustSocksError::Io(std::io::Error::other("DNS resolver semaphore closed"))
+                })?;
 
                 let lookup = timeout(
                     runtime.timeout,

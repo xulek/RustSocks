@@ -56,20 +56,22 @@ pub(super) struct SmtpConfigRow {
 }
 
 impl SmtpConfigRow {
-    pub(super) fn into_smtp_config(self, encryption_key: Option<&str>) -> Result<SmtpConfig, String> {
+    pub(super) fn into_smtp_config(
+        self,
+        encryption_key: Option<&str>,
+    ) -> Result<SmtpConfig, String> {
         let mode: SmtpMode = self.mode.parse().unwrap_or_default();
         let has_password = self.password_encrypted.is_some();
         let notify_recipients = parse_recipients(self.notify_recipients.as_deref().unwrap_or(""));
-        let password = match (&self.password_encrypted, encryption_key) {
-            (Some(encrypted), Some(key)) => Some(decrypt_password(encrypted, key)?),
-            (Some(_), None) => {
-                return Err(
+        let password =
+            match (&self.password_encrypted, encryption_key) {
+                (Some(encrypted), Some(key)) => Some(decrypt_password(encrypted, key)?),
+                (Some(_), None) => return Err(
                     "sessions.smtp_encryption_key is required to decrypt the stored SMTP password"
                         .to_string(),
-                )
-            }
-            (None, _) => None,
-        };
+                ),
+                (None, _) => None,
+            };
 
         Ok(SmtpConfig {
             enabled: self.enabled != 0,

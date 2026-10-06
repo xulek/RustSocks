@@ -15,11 +15,7 @@ pub struct BatchConfig {
 }
 
 impl BatchConfig {
-    pub fn from_settings(
-        batch_size: usize,
-        batch_interval_ms: u64,
-        queue_capacity: usize,
-    ) -> Self {
+    pub fn from_settings(batch_size: usize, batch_interval_ms: u64, queue_capacity: usize) -> Self {
         Self {
             batch_size,
             batch_interval: Duration::from_millis(batch_interval_ms),
@@ -208,7 +204,10 @@ impl BatchWriter {
 
     pub async fn shutdown(&self) {
         self.shutdown_notify.notify_waiters();
-        if timeout(SHUTDOWN_FLUSH_TIMEOUT, self.flush_all()).await.is_err() {
+        if timeout(SHUTDOWN_FLUSH_TIMEOUT, self.flush_all())
+            .await
+            .is_err()
+        {
             error!(
                 timeout_secs = SHUTDOWN_FLUSH_TIMEOUT.as_secs(),
                 "Timed out while flushing the session persistence queue during shutdown"
@@ -300,5 +299,4 @@ mod tests {
         assert_eq!(writer.queue_len().await, 0);
         assert_eq!(writer.dropped_sessions(), 0);
     }
-
 }

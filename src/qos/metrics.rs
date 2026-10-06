@@ -61,9 +61,7 @@ mod enabled {
         // Counter vectors only expose concrete series after their label values are
         // instantiated. Register the two supported directions up front so /metrics
         // has a stable schema even before the first proxied byte.
-        BANDWIDTH_ALLOCATED
-            .with_label_values(&["upload"])
-            .inc_by(0);
+        BANDWIDTH_ALLOCATED.with_label_values(&["upload"]).inc_by(0);
         BANDWIDTH_ALLOCATED
             .with_label_values(&["download"])
             .inc_by(0);
@@ -115,11 +113,10 @@ mod tests {
         let output = String::from_utf8(buffer).expect("metrics output is UTF-8");
 
         assert!(output.contains("rustsocks_qos_active_users"));
-        assert!(output.contains(
-            "rustsocks_qos_bandwidth_allocated_bytes_total{direction=\"upload\"}"
-        ));
-        assert!(output.contains(
-            "rustsocks_qos_bandwidth_allocated_bytes_total{direction=\"download\"}"
-        ));
+        assert!(
+            output.contains("rustsocks_qos_bandwidth_allocated_bytes_total{direction=\"upload\"}")
+        );
+        assert!(output
+            .contains("rustsocks_qos_bandwidth_allocated_bytes_total{direction=\"download\"}"));
     }
 }

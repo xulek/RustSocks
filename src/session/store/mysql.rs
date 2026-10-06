@@ -91,7 +91,10 @@ where
 {
     match row.take_opt::<T, _>(column) {
         Some(Ok(value)) => Ok(value),
-        Some(Err(err)) => Err(decode_error(column, format!("failed to decode value: {err}"))),
+        Some(Err(err)) => Err(decode_error(
+            column,
+            format!("failed to decode value: {err}"),
+        )),
         None => Err(decode_error(column, format!("missing column: {column}"))),
     }
 }
@@ -102,7 +105,10 @@ where
 {
     match row.take_opt::<Option<T>, _>(column) {
         Some(Ok(value)) => Ok(value),
-        Some(Err(err)) => Err(decode_error(column, format!("failed to decode value: {err}"))),
+        Some(Err(err)) => Err(decode_error(
+            column,
+            format!("failed to decode value: {err}"),
+        )),
         None => Err(decode_error(column, format!("missing column: {column}"))),
     }
 }

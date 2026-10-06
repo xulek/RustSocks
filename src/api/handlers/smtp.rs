@@ -3,11 +3,11 @@ use axum::{extract::State, http::StatusCode, Json};
 use tracing::{error, info};
 
 use crate::api::handlers::sessions::ApiState;
+#[cfg(feature = "database")]
+use crate::api::types::SmtpConfigResponse;
 use crate::api::types::{
     SmtpConfigUpdateRequest, SmtpModeOption, SmtpModesResponse, SmtpTestRequest, SmtpTestResponse,
 };
-#[cfg(feature = "database")]
-use crate::api::types::SmtpConfigResponse;
 use crate::smtp::SmtpMode;
 #[cfg(feature = "database")]
 use crate::smtp::{SmtpClient, SmtpConfig, SmtpRepository};
@@ -43,6 +43,7 @@ pub async fn get_smtp_modes() -> (StatusCode, Json<SmtpModesResponse>) {
 }
 
 /// GET /api/smtp/config - Get current SMTP configuration
+#[cfg_attr(not(feature = "database"), allow(clippy::needless_return))]
 pub async fn get_smtp_config(
     State(_state): State<ApiState>,
 ) -> (StatusCode, Json<serde_json::Value>) {
@@ -111,6 +112,7 @@ pub async fn get_smtp_config(
 }
 
 /// PUT /api/smtp/config - Update SMTP configuration
+#[cfg_attr(not(feature = "database"), allow(clippy::needless_return))]
 pub async fn update_smtp_config(
     State(_state): State<ApiState>,
     Json(_request): Json<SmtpConfigUpdateRequest>,
@@ -173,7 +175,10 @@ pub async fn update_smtp_config(
             notify_connection_percent_threshold: _request.notify_connection_percent_threshold,
         };
 
-        match repo.save_config(&config, _request.password.as_deref()).await {
+        match repo
+            .save_config(&config, _request.password.as_deref())
+            .await
+        {
             Ok(()) => {
                 info!("SMTP configuration updated");
                 (
@@ -196,6 +201,7 @@ pub async fn update_smtp_config(
 }
 
 /// POST /api/smtp/test - Send test email
+#[cfg_attr(not(feature = "database"), allow(clippy::needless_return))]
 pub async fn test_smtp(
     State(_state): State<ApiState>,
     Json(_request): Json<SmtpTestRequest>,

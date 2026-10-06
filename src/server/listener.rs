@@ -650,9 +650,8 @@ impl SocksServer {
 
                     let ctx = handler_ctx.clone();
                     let tls_acceptor = tls_acceptor.clone();
-                    let tls_handshake_timeout = Duration::from_millis(
-                        self.config.server.tls.handshake_timeout_ms,
-                    );
+                    let tls_handshake_timeout =
+                        Duration::from_millis(self.config.server.tls.handshake_timeout_ms);
 
                     tokio::spawn(async move {
                         let _permit = permit;

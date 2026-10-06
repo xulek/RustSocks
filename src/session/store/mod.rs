@@ -90,17 +90,11 @@ impl SessionStore {
     pub async fn health_check(&self) -> Result<(), sqlx::Error> {
         match &self.backend {
             StoreBackend::Sqlite(pool) => {
-                let _: i64 = sqlx::query_scalar("SELECT 1")
-                    .fetch_one(pool)
-                    .await?;
+                let _: i64 = sqlx::query_scalar("SELECT 1").fetch_one(pool).await?;
                 Ok(())
             }
             StoreBackend::MySql(mysql) => {
-                let mut conn = mysql
-                    .pool
-                    .get_conn()
-                    .await
-                    .map_err(mysql_error_to_sqlx)?;
+                let mut conn = mysql.pool.get_conn().await.map_err(mysql_error_to_sqlx)?;
                 conn.query_drop("SELECT 1")
                     .await
                     .map_err(mysql_error_to_sqlx)?;
@@ -883,7 +877,10 @@ impl SessionStore {
         Ok(affected)
     }
 
-    pub async fn load_smtp_config(&self, encryption_key: Option<&str>) -> Result<SmtpConfig, String> {
+    pub async fn load_smtp_config(
+        &self,
+        encryption_key: Option<&str>,
+    ) -> Result<SmtpConfig, String> {
         let row = match &self.backend {
             StoreBackend::Sqlite(pool) => sqlx::query_as::<_, SmtpConfigRow>(
                 "SELECT enabled, mode, host, port, from_address, from_name, username, password_encrypted, notify_recipients, notify_critical, notify_security, notify_config_changes, notify_service_status, notify_resource_pressure, notify_connection_pressure, notify_cooldown_seconds, notify_cpu_threshold, notify_ram_threshold, notify_disk_threshold, notify_connection_percent_threshold FROM smtp_config WHERE id = 1",
