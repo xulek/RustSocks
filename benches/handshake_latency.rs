@@ -88,7 +88,12 @@ fn bench_vectored_write_single_flush(c: &mut Criterion) {
                     IoSlice::new(&ip),
                     IoSlice::new(&port),
                 ];
-                writer.write_vectored(&slices).unwrap();
+                let written = writer.write_vectored(&slices).unwrap();
+                let expected: usize = slices.iter().map(|slice| slice.len()).sum();
+                assert_eq!(
+                    written, expected,
+                    "BufWriter must accept the whole handshake"
+                );
                 writer.flush().unwrap();
             }
 

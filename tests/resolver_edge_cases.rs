@@ -327,12 +327,11 @@ async fn test_resolve_empty_results_handling() {
     let addr = Address::Domain("".to_string());
     let result = resolve_address(&addr, 80).await;
 
-    match result {
-        Ok(addresses) => assert!(
+    if let Ok(addresses) = result {
+        assert!(
             !addresses.is_empty(),
             "resolver must not return an empty successful result"
-        ),
-        Err(_) => {}
+        );
     }
 }
 

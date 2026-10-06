@@ -3,8 +3,9 @@
 /// Compares Mutex<Option<Arc<T>>> vs OnceLock<Arc<T>> for read-heavy workloads.
 /// This simulates the session manager accessing batch writer on every session creation.
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Barrier, Mutex, OnceLock};
 use std::thread;
+use std::time::{Duration, Instant};
 
 // Mock BatchWriter for benchmarking
 #[derive(Clone)]
@@ -77,32 +78,34 @@ fn bench_oncelock_single_thread(c: &mut Criterion) {
     });
 }
 
-fn bench_mutex_contention(c: &mut Criterion) {
+/// Contended reads: threads are spawned once per measurement and released by a
+/// barrier, so only the read loop is timed rather than thread creation.
+fn bench_contention(c: &mut Criterion) {
+    const READS_PER_THREAD: usize = 10_000;
     let mut group = c.benchmark_group("contention");
 
-    for thread_count in [2, 4, 8, 16].iter() {
+    for thread_count in [2usize, 4, 8].iter().copied() {
         group.bench_with_input(
             BenchmarkId::new("mutex", thread_count),
-            thread_count,
-            |b, &thread_count| {
-                b.iter(|| {
-                    let accessor = Arc::new(MutexBasedAccess::new());
-                    let mut handles = vec![];
-
-                    for _ in 0..thread_count {
-                        let accessor = accessor.clone();
-                        let handle = thread::spawn(move || {
-                            for _ in 0..100 {
-                                let writer = accessor.get_writer();
-                                black_box(writer);
-                            }
-                        });
-                        handles.push(handle);
-                    }
-
-                    for handle in handles {
-                        handle.join().unwrap();
-                    }
+            &thread_count,
+            |b, &threads| {
+                let accessor = Arc::new(MutexBasedAccess::new());
+                b.iter_custom(|iters| {
+                    timed_contention(threads, iters, READS_PER_THREAD, &accessor, |a| {
+                        a.get_writer()
+                    })
+                });
+            },
+        );
+        group.bench_with_input(
+            BenchmarkId::new("oncelock", thread_count),
+            &thread_count,
+            |b, &threads| {
+                let accessor = Arc::new(OnceLockBasedAccess::new());
+                b.iter_custom(|iters| {
+                    timed_contention(threads, iters, READS_PER_THREAD, &accessor, |a| {
+                        a.get_writer()
+                    })
                 });
             },
         );
@@ -111,44 +114,45 @@ fn bench_mutex_contention(c: &mut Criterion) {
     group.finish();
 }
 
-fn bench_oncelock_contention(c: &mut Criterion) {
-    let mut group = c.benchmark_group("contention");
-
-    for thread_count in [2, 4, 8, 16].iter() {
-        group.bench_with_input(
-            BenchmarkId::new("oncelock", thread_count),
-            thread_count,
-            |b, &thread_count| {
-                b.iter(|| {
-                    // Share OnceLockBasedAccess across threads via Arc
-                    let accessor = Arc::new(OnceLockBasedAccess::new());
-                    let mut handles = vec![];
-
-                    for _ in 0..thread_count {
-                        let accessor = accessor.clone();
-                        let handle = thread::spawn(move || {
-                            for _ in 0..100 {
-                                let writer = accessor.get_writer();
-                                black_box(writer);
-                            }
-                        });
-                        handles.push(handle);
+fn timed_contention<T, F>(
+    threads: usize,
+    iters: u64,
+    reads: usize,
+    accessor: &Arc<T>,
+    read: F,
+) -> Duration
+where
+    T: Send + Sync + 'static,
+    F: Fn(&T) -> Option<Arc<MockBatchWriter>> + Copy + Send + 'static,
+{
+    let barrier = Arc::new(Barrier::new(threads + 1));
+    let handles: Vec<_> = (0..threads)
+        .map(|_| {
+            let accessor = Arc::clone(accessor);
+            let barrier = Arc::clone(&barrier);
+            thread::spawn(move || {
+                barrier.wait();
+                for _ in 0..iters {
+                    for _ in 0..reads {
+                        black_box(read(&accessor));
                     }
+                }
+            })
+        })
+        .collect();
 
-                    for handle in handles {
-                        handle.join().unwrap();
-                    }
-                });
-            },
-        );
+    barrier.wait();
+    let start = Instant::now();
+    for handle in handles {
+        handle.join().unwrap();
     }
-
-    group.finish();
+    start.elapsed()
 }
 
 criterion_group!(
     benches,
     bench_mutex_single_thread,
-    bench_oncelock_single_thread
+    bench_oncelock_single_thread,
+    bench_contention
 );
 criterion_main!(benches);

@@ -114,6 +114,10 @@ harness = false
 name = "udp_serialization"
 harness = false
 
+[[bench]]
+name = "policy_evaluation"
+harness = false
+
 [profile.dev]
 debug = 0
 incremental = false

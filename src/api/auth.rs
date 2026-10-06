@@ -887,13 +887,15 @@ mod tests {
 
     #[tokio::test]
     async fn login_handler_uses_same_error_for_missing_altcha_and_bad_password() {
-        let mut settings = DashboardAuthSettings::default();
-        settings.altcha_enabled = true;
-        settings.session_secret = "test-secret".to_string();
-        settings.users = vec![crate::config::User {
-            username: "alice".to_string(),
-            password: "secret123".to_string(),
-        }];
+        let settings = DashboardAuthSettings {
+            altcha_enabled: true,
+            session_secret: "test-secret".to_string(),
+            users: vec![crate::config::User {
+                username: "alice".to_string(),
+                password: "secret123".to_string(),
+            }],
+            ..Default::default()
+        };
         let state = test_auth_state(settings.clone());
         let remote_addr: SocketAddr = "203.0.113.15:4242".parse().unwrap();
 
