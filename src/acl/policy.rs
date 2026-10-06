@@ -515,11 +515,11 @@ impl PolicyUsageTracker {
         drop(users);
         self.prune(now);
 
-        Ok(PolicyAdmissionGuard {
-            tracker: Arc::clone(self),
-            user_key: key,
-            released: false,
-        })
+        Ok(PolicyAdmissionGuard::new(
+            Arc::clone(self) as Arc<dyn ReleaseHandle>,
+            key,
+            0,
+        ))
     }
 
     pub fn record_transfer(&self, user: &str, bytes: u64, now: DateTime<Utc>) {
@@ -571,17 +571,52 @@ impl PolicyUsageTracker {
     }
 }
 
+/// Releases the capacity held by an admission reservation.
+///
+/// Implemented by every usage backend so [`PolicyAdmissionGuard`] does not depend on
+/// where the counters live (in memory or in a store shared by several instances).
+/// `release_reservation` is called from `Drop` and therefore must not block.
+pub trait ReleaseHandle: Send + Sync + std::fmt::Debug {
+    fn release_reservation(&self, user_key: &str, reservation_id: u64);
+}
+
+impl ReleaseHandle for PolicyUsageTracker {
+    fn release_reservation(&self, user_key: &str, _reservation_id: u64) {
+        self.release(user_key);
+    }
+}
+
+/// Holds one admitted connection against a user's policy limits until dropped.
 #[derive(Debug)]
 pub struct PolicyAdmissionGuard {
-    tracker: Arc<PolicyUsageTracker>,
+    releaser: Arc<dyn ReleaseHandle>,
     user_key: String,
+    reservation_id: u64,
     released: bool,
 }
 
 impl PolicyAdmissionGuard {
+    pub(crate) fn new(
+        releaser: Arc<dyn ReleaseHandle>,
+        user_key: String,
+        reservation_id: u64,
+    ) -> Self {
+        Self {
+            releaser,
+            user_key,
+            reservation_id,
+            released: false,
+        }
+    }
+
     pub fn release(mut self) {
+        self.release_inner();
+    }
+
+    fn release_inner(&mut self) {
         if !self.released {
-            self.tracker.release(&self.user_key);
+            self.releaser
+                .release_reservation(&self.user_key, self.reservation_id);
             self.released = true;
         }
     }
@@ -589,10 +624,7 @@ impl PolicyAdmissionGuard {
 
 impl Drop for PolicyAdmissionGuard {
     fn drop(&mut self) {
-        if !self.released {
-            self.tracker.release(&self.user_key);
-            self.released = true;
-        }
+        self.release_inner();
     }
 }
 

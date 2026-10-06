@@ -9,8 +9,8 @@ use super::types::{
     UserSessionStat,
 };
 use crate::acl::{
-    AclDecision, AclEngine, PolicyAdmissionGuard, PolicyAdmissionLimits, PolicyUsageSnapshot,
-    PolicyUsageTracker, Protocol as AclProtocol,
+    AclDecision, AclEngine, PolicyAdmissionGuard, PolicyAdmissionLimits, PolicyUsage,
+    PolicyUsageSnapshot, Protocol as AclProtocol,
 };
 use crate::protocol::Address;
 use chrono::{Duration as ChronoDuration, Utc};
@@ -46,7 +46,7 @@ pub struct SessionManager {
     batch_writer: Arc<OnceLock<Arc<BatchWriter>>>,
     traffic_tx: mpsc::Sender<TrafficMessage>,
     pending_traffic: Arc<DashMap<Uuid, TrafficUpdate>>,
-    policy_usage: Arc<PolicyUsageTracker>,
+    policy_usage: PolicyUsage,
 }
 
 #[derive(Debug, Clone)]
@@ -97,6 +97,22 @@ impl SessionManager {
         history_retention: Option<Duration>,
         history_max_entries: usize,
     ) -> Self {
+        Self::new_with_policy_usage(
+            capacity,
+            history_retention,
+            history_max_entries,
+            PolicyUsage::local(),
+        )
+    }
+
+    /// Like [`Self::new_with_limits`], using the given policy usage backend (for example
+    /// a store shared between instances).
+    pub fn new_with_policy_usage(
+        capacity: usize,
+        history_retention: Option<Duration>,
+        history_max_entries: usize,
+        policy_usage: PolicyUsage,
+    ) -> Self {
         let (traffic_tx, traffic_rx) = mpsc::channel(capacity.max(1));
         let manager = Self {
             active_sessions: Arc::new(DashMap::new()),
@@ -112,7 +128,7 @@ impl SessionManager {
             batch_writer: Arc::new(OnceLock::new()),
             traffic_tx,
             pending_traffic: Arc::new(DashMap::new()),
-            policy_usage: Arc::new(PolicyUsageTracker::default()),
+            policy_usage,
         };
 
         manager.start_traffic_worker(traffic_rx);
@@ -122,7 +138,7 @@ impl SessionManager {
     fn start_traffic_worker(&self, mut rx: mpsc::Receiver<TrafficMessage>) {
         let active_sessions = Arc::clone(&self.active_sessions);
         let pending_traffic = Arc::clone(&self.pending_traffic);
-        let policy_usage = Arc::clone(&self.policy_usage);
+        let policy_usage = self.policy_usage.clone();
 
         tokio::spawn(async move {
             while let Some(message) = rx.recv().await {
@@ -429,17 +445,17 @@ impl SessionManager {
     }
 
     /// Snapshot policy quota/rate state for a user.
-    pub fn policy_usage_snapshot(&self, user: &str) -> PolicyUsageSnapshot {
-        self.policy_usage.snapshot(user, Utc::now())
+    pub async fn policy_usage_snapshot(&self, user: &str) -> PolicyUsageSnapshot {
+        self.policy_usage.snapshot(user, Utc::now()).await
     }
 
     /// Atomically reserve admission capacity for a policy-controlled session.
-    pub fn reserve_policy_admission(
+    pub async fn reserve_policy_admission(
         &self,
         user: &str,
         limits: &PolicyAdmissionLimits,
     ) -> Result<PolicyAdmissionGuard, String> {
-        self.policy_usage.reserve(user, limits, Utc::now())
+        self.policy_usage.reserve(user, limits, Utc::now()).await
     }
 
     /// Count currently active sessions.
@@ -695,7 +711,7 @@ impl SessionManager {
 
     async fn apply_traffic_update(
         active_sessions: &DashMap<Uuid, Arc<RwLock<Session>>>,
-        policy_usage: &PolicyUsageTracker,
+        policy_usage: &PolicyUsage,
         update: TrafficUpdate,
     ) {
         if let Some(entry) = active_sessions.get(&update.session_id) {

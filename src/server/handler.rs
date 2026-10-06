@@ -213,7 +213,10 @@ where
                 Command::UdpAssociate => Protocol::Udp,
                 _ => Protocol::Tcp,
             };
-            let usage = ctx.session_manager.policy_usage_snapshot(acl_user.as_ref());
+            let usage = ctx
+                .session_manager
+                .policy_usage_snapshot(acl_user.as_ref())
+                .await;
             let outcome = engine
                 .evaluate_policy_with_context(PolicyEvaluationContext {
                     user: acl_user.as_ref(),
@@ -253,6 +256,7 @@ where
                     match ctx
                         .session_manager
                         .reserve_policy_admission(acl_user.as_ref(), &outcome.admission_limits)
+                        .await
                     {
                         Ok(guard) => policy_guard = Some(guard),
                         Err(reason) => {
@@ -486,7 +490,10 @@ where
         let auth_method = ctx.auth_manager.socks_method_name().to_string();
 
         if let Some(engine) = ctx.acl_engine.as_ref() {
-            let usage = ctx.session_manager.policy_usage_snapshot(acl_user.as_ref());
+            let usage = ctx
+                .session_manager
+                .policy_usage_snapshot(acl_user.as_ref())
+                .await;
             let outcome = engine
                 .evaluate_policy_with_context(PolicyEvaluationContext {
                     user: acl_user.as_ref(),
@@ -520,6 +527,7 @@ where
                     match ctx
                         .session_manager
                         .reserve_policy_admission(acl_user.as_ref(), &outcome.admission_limits)
+                        .await
                     {
                         Ok(guard) => policy_guard = Some(guard),
                         Err(reason) => {
@@ -740,7 +748,8 @@ where
         let mut allowed = Vec::with_capacity(candidates.len());
         let mut usage = connect_ctx
             .session_manager
-            .policy_usage_snapshot(session_ctx.user.as_ref());
+            .policy_usage_snapshot(session_ctx.user.as_ref())
+            .await;
         usage.active_connections = usage.active_connections.saturating_sub(1);
         usage.connections_last_minute = usage.connections_last_minute.saturating_sub(1);
         for candidate in candidates {

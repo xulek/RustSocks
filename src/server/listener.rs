@@ -1,4 +1,4 @@
-use crate::acl::{load_acl_config_sync, AclEngine, AclStats, AclWatcher};
+use crate::acl::{load_acl_config_sync, AclEngine, AclStats, AclWatcher, PolicyUsage};
 use crate::api::start_api_server;
 use crate::api::types::ApiConfig;
 use crate::auth::AuthManager;
@@ -373,12 +373,19 @@ impl SocksServer {
             None
         };
 
-        let session_manager_inner = SessionManager::new_with_limits(
+        let policy_usage = PolicyUsage::connect(&config.policy_state).await?;
+        info!(
+            backend = policy_usage.backend_name(),
+            "Policy usage state backend ready"
+        );
+
+        let session_manager_inner = SessionManager::new_with_policy_usage(
             config.sessions.traffic_queue_capacity,
             Some(Duration::from_secs(
                 config.sessions.retention_days.saturating_mul(24 * 3600),
             )),
             config.sessions.history_max_entries,
+            policy_usage,
         );
 
         #[cfg(feature = "database")]

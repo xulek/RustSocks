@@ -692,10 +692,15 @@ pub async fn test_acl_decision(
             port: request.port,
             protocol: &protocol,
             now: request.now.unwrap_or_else(chrono::Utc::now),
-            usage: request
-                .usage
-                .clone()
-                .unwrap_or_else(|| state.session_manager.policy_usage_snapshot(&request.user)),
+            usage: match request.usage.clone() {
+                Some(usage) => usage,
+                None => {
+                    state
+                        .session_manager
+                        .policy_usage_snapshot(&request.user)
+                        .await
+                }
+            },
         })
         .await;
 

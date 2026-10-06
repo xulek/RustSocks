@@ -148,7 +148,9 @@ where
                     IpAddr::V4(ip) => Address::IPv4(ip.octets()),
                     IpAddr::V6(ip) => Address::IPv6(ip.octets()),
                 };
-                let mut usage = session_manager.policy_usage_snapshot(bind_ctx.user.as_ref());
+                let mut usage = session_manager
+                    .policy_usage_snapshot(bind_ctx.user.as_ref())
+                    .await;
                 usage.active_connections = usage.active_connections.saturating_sub(1);
                 usage.connections_last_minute = usage.connections_last_minute.saturating_sub(1);
                 if let Some(rule) = engine

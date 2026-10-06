@@ -10,6 +10,8 @@ mod enabled {
     use super::*;
 
     /// Decision source label values.
+    pub(crate) const USAGE_STORE_OPS: [&str; 5] =
+        ["reserve", "snapshot", "release", "heartbeat", "flush"];
     pub(crate) const SOURCES: [&str; 4] = ["legacy_acl", "policy", "default", "post_dns"];
     /// Admission limit reasons recorded by the usage tracker.
     const ADMISSION_REASONS: [&str; 4] = [
@@ -80,6 +82,12 @@ mod enabled {
             &["method"]
         )
         .expect("register rustsocks_socks_auth_failures_total counter vec");
+        pub static ref USAGE_STORE_ERRORS: IntCounterVec = register_int_counter_vec!(
+            "rustsocks_policy_usage_store_errors_total",
+            "Failed operations against the shared policy usage store, by operation",
+            &["op"]
+        )
+        .expect("register rustsocks_policy_usage_store_errors_total counter vec");
         pub static ref POLICY_EVALUATION: Histogram = register_histogram!(HistogramOpts::new(
             "rustsocks_policy_evaluation_seconds",
             "Time spent evaluating ACL rules and dynamic policies for one request"
@@ -130,6 +138,11 @@ mod enabled {
         }
 
         #[inline]
+        pub fn record_usage_store_error(op: &'static str) {
+            USAGE_STORE_ERRORS.with_label_values(&[op]).inc();
+        }
+
+        #[inline]
         pub fn record_auth_failure(method: &str) {
             // Only known method names become label values.
             let method = AUTH_METHODS
@@ -149,6 +162,10 @@ mod enabled {
         lazy_static::initialize(&POLICY_ADMISSION_DENIED);
         lazy_static::initialize(&AUTH_FAILURES);
         lazy_static::initialize(&POLICY_EVALUATION);
+        lazy_static::initialize(&USAGE_STORE_ERRORS);
+        for op in USAGE_STORE_OPS {
+            USAGE_STORE_ERRORS.with_label_values(&[op]).inc_by(0);
+        }
 
         for source in SOURCES {
             for decision in ["allow", "block"] {
@@ -191,6 +208,9 @@ mod disabled {
 
         #[inline]
         pub fn record_admission_denied(_reason: &'static str) {}
+
+        #[inline]
+        pub fn record_usage_store_error(_op: &'static str) {}
 
         #[inline]
         pub fn record_auth_failure(_method: &str) {}
@@ -304,6 +324,7 @@ mod tests {
             "rustsocks_policy_admission_denied_total{reason=\"daily_quota\"}",
             "rustsocks_socks_auth_failures_total{method=\"userpass\"}",
             "rustsocks_policy_evaluation_seconds",
+            "rustsocks_policy_usage_store_errors_total{op=\"reserve\"}",
         ] {
             assert!(output.contains(needle), "missing series: {needle}");
         }

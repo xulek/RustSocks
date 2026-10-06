@@ -22,6 +22,72 @@ pub struct Config {
     pub telemetry: TelemetrySettings,
     #[serde(default)]
     pub qos: crate::qos::QosConfig,
+    #[serde(default)]
+    pub policy_state: PolicyStateSettings,
+}
+
+/// Where dynamic-policy usage counters (active connections, connection rate and
+/// transfer quotas) are kept.
+///
+/// `memory` keeps them in the process: simple, but quotas reset on restart and each
+/// instance enforces its own limits. `redis` shares them between instances so limits
+/// apply to the whole deployment (requires building with the `redis` feature).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PolicyStateSettings {
+    /// `memory` or `redis`.
+    #[serde(default = "default_policy_state_backend")]
+    pub backend: String,
+    /// Redis connection URL (supports `${ENV}` expansion), e.g. `redis://127.0.0.1:6379/0`.
+    #[serde(default)]
+    pub redis_url: Option<String>,
+    /// Prefix for every Redis key, so several deployments can share one Redis.
+    #[serde(default = "default_policy_state_key_prefix")]
+    pub key_prefix: String,
+    /// Behaviour when Redis is unreachable for a policy that has limits:
+    /// `fail_closed` denies the connection, `fail_open` falls back to this
+    /// instance's local counters.
+    #[serde(default = "default_policy_state_failure_mode")]
+    pub failure_mode: String,
+    /// Lifetime of an active-connection lease. A crashed instance's connections stop
+    /// counting once their lease expires; live instances renew it periodically.
+    #[serde(default = "default_policy_state_lease_secs")]
+    pub lease_secs: u64,
+    /// Upper bound for one Redis operation on the connection path.
+    #[serde(default = "default_policy_state_operation_timeout_ms")]
+    pub operation_timeout_ms: u64,
+}
+
+fn default_policy_state_backend() -> String {
+    "memory".to_string()
+}
+
+fn default_policy_state_key_prefix() -> String {
+    "rustsocks".to_string()
+}
+
+fn default_policy_state_failure_mode() -> String {
+    "fail_closed".to_string()
+}
+
+fn default_policy_state_lease_secs() -> u64 {
+    60
+}
+
+fn default_policy_state_operation_timeout_ms() -> u64 {
+    250
+}
+
+impl Default for PolicyStateSettings {
+    fn default() -> Self {
+        Self {
+            backend: default_policy_state_backend(),
+            redis_url: None,
+            key_prefix: default_policy_state_key_prefix(),
+            failure_mode: default_policy_state_failure_mode(),
+            lease_secs: default_policy_state_lease_secs(),
+            operation_timeout_ms: default_policy_state_operation_timeout_ms(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -731,6 +797,7 @@ impl Config {
 
         expand_opt(&mut self.sessions.database_url);
         expand_opt(&mut self.sessions.api_token);
+        expand_opt(&mut self.policy_state.redis_url);
         expand_opt(&mut self.sessions.smtp_encryption_key);
         expand(&mut self.sessions.dashboard_auth.session_secret);
         for user in &mut self.sessions.dashboard_auth.users {
@@ -857,6 +924,69 @@ impl Config {
     }
 
     /// Validate the configuration (public wrapper used by APIs)
+    fn validate_policy_state(&self) -> Result<()> {
+        let state = &self.policy_state;
+        match state.backend.as_str() {
+            "memory" => {}
+            "redis" => {
+                if !cfg!(feature = "redis") {
+                    return Err(RustSocksError::Config(
+                        "policy_state.backend = \"redis\" requires building with the `redis` feature"
+                            .to_string(),
+                    ));
+                }
+                let url = state.redis_url.as_deref().unwrap_or("").trim();
+                if url.is_empty() {
+                    return Err(RustSocksError::Config(
+                        "policy_state.redis_url must be set when policy_state.backend is \"redis\""
+                            .to_string(),
+                    ));
+                }
+                if !(url.starts_with("redis://")
+                    || url.starts_with("rediss://")
+                    || url.starts_with("redis+unix://")
+                    || url.starts_with("unix://"))
+                {
+                    return Err(RustSocksError::Config(
+                        "policy_state.redis_url must start with redis://, rediss:// or unix://"
+                            .to_string(),
+                    ));
+                }
+            }
+            other => {
+                return Err(RustSocksError::Config(format!(
+                    "policy_state.backend must be \"memory\" or \"redis\", got \"{other}\""
+                )));
+            }
+        }
+        if !matches!(state.failure_mode.as_str(), "fail_open" | "fail_closed") {
+            return Err(RustSocksError::Config(
+                "policy_state.failure_mode must be \"fail_open\" or \"fail_closed\"".to_string(),
+            ));
+        }
+        if state.key_prefix.trim().is_empty()
+            || state
+                .key_prefix
+                .contains(|c: char| c.is_whitespace() || c == '{' || c == '}')
+        {
+            return Err(RustSocksError::Config(
+                "policy_state.key_prefix must be non-empty and contain no whitespace or braces"
+                    .to_string(),
+            ));
+        }
+        if !(5..=3600).contains(&state.lease_secs) {
+            return Err(RustSocksError::Config(
+                "policy_state.lease_secs must be between 5 and 3600".to_string(),
+            ));
+        }
+        if !(10..=10_000).contains(&state.operation_timeout_ms) {
+            return Err(RustSocksError::Config(
+                "policy_state.operation_timeout_ms must be between 10 and 10000".to_string(),
+            ));
+        }
+        Ok(())
+    }
+
     pub fn validate_effective(&self) -> Result<()> {
         self.validate()
     }
@@ -921,6 +1051,10 @@ impl Config {
                 self.sessions.database_url.as_deref(),
             ),
             ("sessions.api_token", self.sessions.api_token.as_deref()),
+            (
+                "policy_state.redis_url",
+                self.policy_state.redis_url.as_deref(),
+            ),
             (
                 "sessions.smtp_encryption_key",
                 self.sessions.smtp_encryption_key.as_deref(),
@@ -1164,6 +1298,8 @@ impl Config {
                 "Refusing to expose an unauthenticated SOCKS proxy on a non-loopback address. Configure authentication, bind to loopback, or explicitly set server.allow_unsafe_public_proxy = true.".to_string(),
             ));
         }
+
+        self.validate_policy_state()?;
 
         if self.server.max_connections_per_ip > self.server.max_connections {
             return Err(RustSocksError::Config(

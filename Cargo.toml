@@ -70,6 +70,7 @@ lazy_static = { version = "1.4", optional = true }
 # Performance: Fast allocator (5-15% faster than system allocator)
 mimalloc = { version = "0.1", optional = true }
 smallvec = "1.13"  # Stack-allocated vectors for small buffers (protocol parsing optimization)
+redis = { version = "1.7.1", features = ["tokio-comp", "connection-manager", "script"], optional = true }
 
 [features]
 default = ["metrics", "fast-allocator"]
@@ -79,6 +80,7 @@ database-sqlite = ["sqlx-core", "sqlx-sqlite"]
 database-mysql = ["mysql_async"]
 fast-allocator = ["mimalloc"]
 gssapi = ["libgssapi"]
+redis = ["dep:redis"]
 
 [dev-dependencies]
 tokio-test = "0.4"
