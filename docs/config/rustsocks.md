@@ -42,6 +42,16 @@ For a full example, see `docs/examples/rustsocks.example.toml`.
 | `bind_port` | integer | `1080` | Port to bind the SOCKS5 listener. |
 | `max_connections` | integer | `1000` | Maximum concurrent connections. |
 | `handshake_timeout_ms` | integer | `10000` | Timeout for SOCKS5 handshake. |
+| `allow_unsafe_public_proxy` | bool | `false` | Allow a no-auth SOCKS listener on a non-loopback address. Startup fails closed unless this is set explicitly. |
+
+### [server.resolver]
+
+| Key | Type | Default | Description |
+| --- | --- | --- | --- |
+| `timeout_ms` | integer | `5000` | DNS lookup timeout (1-60000). |
+| `cache_ttl_secs` | integer | `30` | Positive-result cache TTL (1-86400). |
+| `cache_max_entries` | integer | `4096` | Maximum cached entries (1-1000000). |
+| `max_concurrent_lookups` | integer | `128` | Concurrent lookup limit (1-4096). |
 
 ### [server.tls]
 
@@ -137,7 +147,10 @@ Used only when `socks_method = "userpass"`.
 | `stats_api_enabled` | bool | `false` | Enable API + dashboard server. |
 | `stats_api_bind_address` | string | `127.0.0.1` | API bind address. |
 | `stats_api_port` | integer | `9090` | API port. |
-| `api_token` | string | none | Optional token for `/api/*`; also required to encrypt SMTP passwords stored in the database. |
+| `api_token` | string | none | Optional token for `/api/*`. |
+| `smtp_encryption_key` | string | none | Dedicated key used to encrypt SMTP passwords stored in the database; independent of `api_token`. |
+| `batch_queue_capacity` | integer | `10000` | Hard bound on queued session batches; writes apply backpressure instead of growing during database outages. |
+| `history_max_entries` | integer | `100000` | Maximum closed/rejected sessions kept in memory, in addition to time-based retention. |
 | `swagger_enabled` | bool | `true` | Enable Swagger UI at `/swagger-ui/`. |
 | `dashboard_enabled` | bool | `false` | Serve dashboard UI. |
 | `base_path` | string | `/` | URL prefix for all routes. |
@@ -204,6 +217,10 @@ Used only when `socks_method = "userpass"`.
 | --- | --- | --- | --- |
 | `max_connections_per_user` | integer | `20` | Per-user connection limit. |
 | `max_connections_global` | integer | `10000` | Global connection limit. |
+
+## Restart behavior
+
+The dashboard "restart" action saves the configuration and exits with code `75`. Run RustSocks under a supervisor (systemd, Docker Compose, Kubernetes) configured to restart the process.
 
 ## CLI Overrides
 

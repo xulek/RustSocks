@@ -1,12 +1,12 @@
 # SMTP Configuration
 
-RustSocks supports SMTP settings stored in the database and managed through the web dashboard. Passwords are encrypted at rest using AES-256-GCM with your `sessions.api_token` as the encryption key.
+RustSocks supports SMTP settings stored in the database and managed through the web dashboard. Passwords are encrypted at rest using AES-256-GCM with the dedicated `sessions.smtp_encryption_key`. It is independent of `sessions.api_token`, so rotating the API token does not make stored SMTP passwords unreadable.
 
 ## Requirements
 
 - Build with the `database` feature (or `--all-features`).
 - Enable session storage with a database URL.
-- Set `sessions.api_token` so SMTP passwords can be encrypted.
+- Set `sessions.smtp_encryption_key` so SMTP passwords can be encrypted. Keep it stable; changing it makes previously stored passwords undecryptable.
 
 Example snippet:
 
@@ -17,7 +17,8 @@ storage = "sqlite"
 database_url = "sqlite://sessions.db"
 stats_api_enabled = true
 dashboard_enabled = true
-api_token = "change-me" # Required for SMTP password encryption
+api_token = "change-me"
+smtp_encryption_key = "change-me-too" # Required for SMTP password encryption
 ```
 
 ## Dashboard Workflow
@@ -64,5 +65,5 @@ Resource checks run periodically (every ~30 seconds) and respect the cooldown pe
 ## Notes
 
 - SMTP settings are stored as a singleton row in the database.
-- Passwords are only decrypted when `sessions.api_token` is configured.
+- Passwords are only decrypted when `sessions.smtp_encryption_key` is configured.
 - If the database feature is disabled, SMTP endpoints return an error.
