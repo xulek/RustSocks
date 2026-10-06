@@ -1804,6 +1804,12 @@ fn required_api_role(method: &Method, path: &str) -> DashboardRole {
         return DashboardRole::Operator;
     }
 
+    // Fail closed: any state-changing route that is not explicitly granted a lower
+    // role above (for example one added later) requires an administrator.
+    if is_state_changing(method) {
+        return DashboardRole::Admin;
+    }
+
     DashboardRole::Viewer
 }
 
@@ -2111,6 +2117,27 @@ mod tests {
         assert!(audit_lines[0].contains("path=/api/acl/rules"));
         assert!(audit_lines[1].contains("outcome=\"unauthenticated\""));
         assert!(!logs.contains("secret-token"), "token must never be logged");
+    }
+
+    #[test]
+    fn unlisted_state_changing_routes_require_admin() {
+        // A route nobody has classified yet must not be reachable by a viewer.
+        for method in [Method::POST, Method::PUT, Method::PATCH, Method::DELETE] {
+            assert_eq!(
+                required_api_role(&method, "/api/some/new/feature"),
+                DashboardRole::Admin,
+                "{method} must default to admin"
+            );
+        }
+        assert_eq!(
+            required_api_role(&Method::GET, "/api/some/new/feature"),
+            DashboardRole::Viewer
+        );
+        // Explicit lower roles still apply.
+        assert_eq!(
+            required_api_role(&Method::DELETE, "/api/sessions/123"),
+            DashboardRole::Operator
+        );
     }
 
     #[tokio::test]
