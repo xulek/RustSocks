@@ -6,14 +6,34 @@ on:
       - master
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   coverage:
     runs-on: ubuntu-latest
+    services:
+      # Real Redis so the shared policy-usage backend tests run (and count) instead of skipping.
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      REDIS_URL: redis://127.0.0.1:6379/0
+      # Fail the job if line coverage drops below this floor. It is a regression guard, not a
+      # target: measured coverage was about 59% locally (Windows, all features), and Linux also
+      # compiles Unix-only code that is covered less. Raise it as coverage improves.
+      MIN_LINE_COVERAGE: "50"
     steps:
       - uses: actions/checkout@v4
 
       - name: Install system dependencies
-        run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config llvm clang libpam0g-dev libkrb5-dev
+        run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config clang libpam0g-dev libkrb5-dev
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -21,14 +41,32 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      - name: Install cargo-tarpaulin
-        run: cargo install cargo-tarpaulin --locked
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov@0.9.1
 
-      - name: Run coverage
-        run: cargo tarpaulin --locked --features database --engine llvm --lib --bins --tests --out Xml --output-dir coverage
+      - name: Run tests with coverage
+        run: >-
+          cargo llvm-cov --locked --all-features --lib --bins --tests
+          --ignore-filename-regex '(tests|benches)[/\\]'
+          --lcov --output-path lcov.info
+          --fail-under-lines "$MIN_LINE_COVERAGE"
+
+      - name: Summarize coverage
+        if: always()
+        run: |
+          {
+            echo '### Coverage'
+            echo '```'
+            cargo llvm-cov report --summary-only --ignore-filename-regex '(tests|benches)[/\\]'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload coverage report
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: tarpaulin-report
-          path: coverage
+          name: coverage-lcov
+          path: lcov.info
+          if-no-files-found: ignore
