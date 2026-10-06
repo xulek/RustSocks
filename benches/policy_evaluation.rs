@@ -82,6 +82,7 @@ fn bench_evaluation(c: &mut Criterion) {
     let rt = Runtime::new().unwrap();
     let now = Utc.with_ymd_and_hms(2026, 9, 8, 10, 0, 0).unwrap();
     let source_ip = "10.1.2.3".parse().unwrap();
+    let usage = PolicyUsageSnapshot::default();
     let mut group = c.benchmark_group("policy_evaluation");
 
     for count in RULE_COUNTS {
@@ -95,25 +96,31 @@ fn bench_evaluation(c: &mut Criterion) {
             let engine = AclEngine::new(config(rules, policies, conditions)).unwrap();
             // Destination matches the lowest-priority entry: worst-case walk.
             let destination = Address::Domain(format!("host{}.example.com", count - 1));
-            let usage = PolicyUsageSnapshot::default();
+            let ctx = || PolicyEvaluationContext {
+                user: "alice",
+                groups: &[],
+                source_ip,
+                auth_method: "userpass",
+                destination: &destination,
+                port: 443,
+                protocol: &Protocol::Tcp,
+                now,
+                usage: usage.clone(),
+            };
 
+            // Per-connection path (no explanation trace).
             group.bench_with_input(BenchmarkId::new(label, count), &count, |b, _| {
-                b.iter(|| {
-                    rt.block_on(
-                        engine.evaluate_policy_with_context(PolicyEvaluationContext {
-                            user: "alice",
-                            groups: &[],
-                            source_ip,
-                            auth_method: "userpass",
-                            destination: &destination,
-                            port: 443,
-                            protocol: &Protocol::Tcp,
-                            now,
-                            usage: usage.clone(),
-                        }),
-                    )
-                });
+                b.iter(|| rt.block_on(engine.evaluate_policy_for_traffic(ctx())));
             });
+
+            // Explain/Simulator path (builds the full trace) for comparison.
+            group.bench_with_input(
+                BenchmarkId::new(format!("{label}_explain"), count),
+                &count,
+                |b, _| {
+                    b.iter(|| rt.block_on(engine.evaluate_policy_with_context(ctx())));
+                },
+            );
         }
     }
 
