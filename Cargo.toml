@@ -18,7 +18,7 @@ base64 = "0.21"
 futures = "0.3"
 axum = { version = "0.8", features = ["json"] }
 tower = { version = "0.5", features = ["util"] }
-tower-http = { version = "0.6", features = ["fs", "trace", "normalize-path"] }
+tower-http = { version = "0.7", features = ["fs", "trace", "normalize-path"] }
 rustls = { version = "0.23", features = ["ring"] }
 socket2 = "0.5"  # Low-level socket configuration (SO_REUSEADDR, buffers)
 
