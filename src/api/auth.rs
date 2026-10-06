@@ -14,15 +14,15 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tracing::{debug, info, warn};
 
 // HMAC for Altcha signature
-use hmac::{Hmac, Mac};
-use rand::RngCore;
+use hmac::{Hmac, KeyInit, Mac};
 type HmacSha256 = Hmac<Sha256>;
 
 use crate::auth::verify_password;
 use crate::config::DashboardAuthSettings;
 #[cfg(feature = "database")]
 use crate::smtp::notifications::{notify_with_store, NotificationDecision, NotificationKind};
-use argon2::password_hash::{rand_core::OsRng as ArgonOsRng, PasswordHasher, SaltString};
+use crate::utils::crypto::{random_bytes, to_hex};
+use argon2::password_hash::PasswordHasher;
 use argon2::Argon2;
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -309,9 +309,8 @@ fn login_attempt_key(username: &str, source_ip: IpAddr) -> String {
 fn dummy_password_hash() -> &'static str {
     static DUMMY_HASH: OnceLock<String> = OnceLock::new();
     DUMMY_HASH.get_or_init(|| {
-        let salt = SaltString::generate(&mut ArgonOsRng);
         Argon2::default()
-            .hash_password(b"rustsocks-dashboard-dummy", &salt)
+            .hash_password(b"rustsocks-dashboard-dummy")
             .map(|hash| hash.to_string())
             .unwrap_or_else(|_| "rustsocks-dashboard-dummy".to_string())
     })
@@ -333,7 +332,7 @@ fn derive_altcha_key(session_secret: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(b"rustsocks-altcha-v1:");
     hasher.update(session_secret.as_bytes());
-    format!("{:x}", hasher.finalize())
+    to_hex(&hasher.finalize())
 }
 
 fn generate_session_token(username: &str, timestamp: u64, secret: &str) -> String {
@@ -342,13 +341,11 @@ fn generate_session_token(username: &str, timestamp: u64, secret: &str) -> Strin
     hasher.update(timestamp.to_string().as_bytes());
     hasher.update(secret.as_bytes());
     hasher.update(rand_bytes(32).as_slice());
-    format!("{:x}", hasher.finalize())
+    to_hex(&hasher.finalize())
 }
 
 fn rand_bytes(len: usize) -> Vec<u8> {
-    let mut bytes = vec![0u8; len];
-    rand::rngs::OsRng.fill_bytes(&mut bytes);
-    bytes
+    random_bytes(len)
 }
 
 // Request/Response types
@@ -568,7 +565,7 @@ fn verify_altcha(payload_str: &str, secret_key: &str) -> Result<(), String> {
     let mut mac =
         HmacSha256::new_from_slice(secret_key.as_bytes()).expect("HMAC can take key of any size");
     mac.update(signature_payload.as_bytes());
-    let expected_signature = format!("{:x}", mac.finalize().into_bytes());
+    let expected_signature = to_hex(&mac.finalize().into_bytes());
 
     if payload.signature.len() != expected_signature.len()
         || subtle::ConstantTimeEq::ct_eq(
@@ -585,7 +582,7 @@ fn verify_altcha(payload_str: &str, secret_key: &str) -> Result<(), String> {
     let challenge_input = format!("{}{}", payload.salt, payload.number);
     let mut hasher = Sha256::new();
     hasher.update(challenge_input.as_bytes());
-    let computed_challenge = format!("{:x}", hasher.finalize());
+    let computed_challenge = to_hex(&hasher.finalize());
 
     if payload.challenge != computed_challenge {
         return Err("Invalid proof-of-work solution".to_string());
@@ -712,7 +709,7 @@ pub async fn altcha_challenge_handler(
     let mut hasher = Sha256::new();
     hasher.update(challenge_input.as_bytes());
     let challenge_hash = hasher.finalize();
-    let challenge = format!("{:x}", challenge_hash);
+    let challenge = to_hex(&challenge_hash);
 
     // Generate HMAC-SHA256 signature
     // Signature = HMAC-SHA256(salt + "?" + challenge, secret_key)
@@ -723,7 +720,7 @@ pub async fn altcha_challenge_handler(
         HmacSha256::new_from_slice(altcha_key.as_bytes()).expect("HMAC can take key of any size");
     mac.update(signature_payload.as_bytes());
     let signature_bytes = mac.finalize().into_bytes();
-    let signature = format!("{:x}", signature_bytes);
+    let signature = to_hex(&signature_bytes);
 
     let response = AltchaChallengeResponse {
         algorithm: "SHA-256".to_string(),
@@ -739,8 +736,7 @@ pub async fn altcha_challenge_handler(
 fn generate_random_string(len: usize) -> String {
     const CHARSET: &[u8] = b"0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
-    let mut bytes = vec![0u8; len];
-    rand::rngs::OsRng.fill_bytes(&mut bytes);
+    let bytes = random_bytes(len);
 
     let mut result = String::with_capacity(len);
     for byte in bytes {
@@ -790,13 +786,13 @@ mod tests {
         let challenge_input = format!("{}{}", salt, number);
         let mut hasher = Sha256::new();
         hasher.update(challenge_input.as_bytes());
-        let challenge = format!("{:x}", hasher.finalize());
+        let challenge = to_hex(&hasher.finalize());
 
         let signature_payload = format!("{}?{}", salt, challenge);
         let mut mac = HmacSha256::new_from_slice(derive_altcha_key(secret).as_bytes())
             .expect("HMAC can take key of any size");
         mac.update(signature_payload.as_bytes());
-        let signature = format!("{:x}", mac.finalize().into_bytes());
+        let signature = to_hex(&mac.finalize().into_bytes());
 
         let payload = serde_json::json!({
             "algorithm": "SHA-256",

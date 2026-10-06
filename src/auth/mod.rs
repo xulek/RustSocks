@@ -12,11 +12,10 @@ use crate::acl::AclMetrics;
 use crate::config::AuthConfig;
 use crate::protocol::{parse_userpass_auth, send_auth_response, AuthMethod};
 use crate::utils::error::{Result, RustSocksError};
-use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
+use argon2::password_hash::{phc::PasswordHash, PasswordHasher, PasswordVerifier};
 use argon2::Argon2;
 use dashmap::DashMap;
 pub use groups::get_user_groups;
-use rand::rngs::OsRng as RandOsRng;
 use std::collections::HashMap;
 use std::net::IpAddr;
 use std::sync::{Arc, OnceLock};
@@ -448,9 +447,8 @@ fn new_auth_throttle() -> AuthThrottle {
 fn dummy_password_hash() -> &'static str {
     static DUMMY_HASH: OnceLock<String> = OnceLock::new();
     DUMMY_HASH.get_or_init(|| {
-        let salt = SaltString::generate(&mut RandOsRng);
         Argon2::default()
-            .hash_password(b"rustsocks-userpass-dummy", &salt)
+            .hash_password(b"rustsocks-userpass-dummy")
             .map(|hash| hash.to_string())
             .unwrap_or_else(|_| "rustsocks-userpass-dummy".to_string())
     })
@@ -509,8 +507,7 @@ fn map_gssapi_runtime_error(err: GssApiAuthError) -> RustSocksError {
 mod tests {
     use super::*;
     use crate::config::{AuthConfig, PamSettings, User};
-    use argon2::password_hash::{PasswordHasher, SaltString};
-    use rand::rngs::OsRng;
+    use argon2::password_hash::PasswordHasher;
 
     fn userpass_config() -> AuthConfig {
         AuthConfig {
@@ -550,13 +547,45 @@ mod tests {
     #[test]
     fn verify_password_argon2() {
         let password = "s3cur3!";
-        let salt = SaltString::generate(&mut OsRng);
         let hash = Argon2::default()
-            .hash_password(password.as_bytes(), &salt)
+            .hash_password(password.as_bytes())
             .unwrap()
             .to_string();
 
+        assert!(hash.starts_with("$argon2id$v=19$m=19456,t=2,p=1$"));
         assert!(verify_password(&hash, password));
         assert!(!verify_password(&hash, "nope"));
+    }
+
+    // Created with argon2 0.5 / password-hash 0.5 before the dependency upgrade. Hashes already
+    // stored in users' configuration files must keep verifying, and the new version must produce
+    // the exact same bytes for the same password, salt and parameters.
+    const LEGACY_ARGON2: &str = "$argon2id$v=19$m=19456,t=2,p=1$c29tZXNhbHRzb21lc2FsdA$ISO7kkvFzh19GM8qB7patN3C3Y9HHsjlVTfEZ9T600Y";
+    const LEGACY_ARGON2_PASSWORD: &str = "correct horse battery staple";
+
+    #[test]
+    fn hashes_made_by_the_previous_argon2_version_still_verify() {
+        assert!(verify_password(LEGACY_ARGON2, LEGACY_ARGON2_PASSWORD));
+        assert!(!verify_password(
+            LEGACY_ARGON2,
+            "correct horse battery stapl"
+        ));
+        assert!(!verify_password(LEGACY_ARGON2, ""));
+    }
+
+    #[test]
+    fn argon2_output_is_byte_identical_to_the_previous_version() {
+        // The legacy salt is the Base64 text "c29tZXNhbHRzb21lc2FsdA" = "somesaltsomesalt".
+        let hash = Argon2::default()
+            .hash_password_with_salt(LEGACY_ARGON2_PASSWORD.as_bytes(), b"somesaltsomesalt")
+            .unwrap()
+            .to_string();
+        assert_eq!(hash, LEGACY_ARGON2);
+    }
+
+    #[test]
+    fn malformed_argon2_hashes_never_verify() {
+        assert!(!verify_password("$argon2id$v=19$garbage", "anything"));
+        assert!(!verify_password("$argon2", "anything"));
     }
 }

@@ -514,10 +514,9 @@ fn default_dashboard_cookie_secure() -> bool {
 fn default_session_secret() -> String {
     use base64::engine::general_purpose;
     use base64::Engine;
-    use rand::RngCore;
 
     let mut bytes = [0u8; 32];
-    rand::rngs::OsRng.fill_bytes(&mut bytes);
+    crate::utils::crypto::fill_random(&mut bytes);
     general_purpose::URL_SAFE_NO_PAD.encode(bytes)
 }
 

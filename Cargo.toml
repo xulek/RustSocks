@@ -49,13 +49,13 @@ uuid = { version = "1.11", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 regex = "1.11"          # For wildcard domain matching
 sysinfo = "0.38"        # System and process resource monitoring
-sha2 = "0.10"           # SHA-256 for session tokens
-hmac = "0.12"           # HMAC for Altcha signatures
-rand = "0.8"            # CSPRNG for session secrets/tokens
-argon2 = "0.5"          # Password hashing (dashboard + userpass)
+sha2 = "0.11"           # SHA-256 for session tokens
+hmac = "0.13"           # HMAC for Altcha signatures
+rand = "0.10"            # CSPRNG for session secrets/tokens
+argon2 = "0.6"          # Password hashing (dashboard + userpass)
 subtle = "2.6"          # Constant-time comparisons
 lettre = { version = "0.11", default-features = false, features = ["tokio1", "tokio1-rustls-tls", "ring", "builder", "smtp-transport"] }  # SMTP email notifications (using ring crypto backend)
-aes-gcm = "0.10"        # AES-GCM encryption for SMTP passwords
+aes-gcm = "0.11"        # AES-GCM encryption for SMTP passwords
 
 # Database
 sqlx-core = { version = "0.8", default-features = false, features = ["_rt-tokio", "chrono", "uuid", "migrate"], optional = true }
