@@ -1,4 +1,4 @@
-use crate::acl::{AclDecision, AclEngine, AclStats, PolicyEvaluationContext, Protocol};
+use crate::acl::{AclDecision, AclEngine, AclMetrics, AclStats, PolicyEvaluationContext, Protocol};
 use crate::auth::AuthManager;
 use crate::protocol::*;
 use crate::qos::{ConnectionLimits, QosEngine};
@@ -227,6 +227,7 @@ where
                     usage,
                 })
                 .await;
+            AclMetrics::record_outcome(&outcome);
 
             match outcome.decision {
                 AclDecision::Block => {
@@ -499,6 +500,7 @@ where
                     usage,
                 })
                 .await;
+            AclMetrics::record_outcome(&outcome);
 
             match outcome.decision {
                 AclDecision::Block => {

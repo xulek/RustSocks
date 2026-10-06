@@ -26,6 +26,7 @@ nav:
       - LDAP Groups: guides/ldap-groups.md
       - Active Directory: guides/active-directory.md
       - Testing: guides/testing.md
+      - Metrics & Audit Log: guides/metrics-and-audit.md
   - References:
       - Project README: references/project-readme.md
       - Developer Guide: references/claude.md

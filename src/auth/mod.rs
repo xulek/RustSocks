@@ -6,6 +6,7 @@ mod pam;
 #[cfg(feature = "gssapi")]
 use self::gssapi::{GssApiAuthError, GssApiAuthenticator};
 use self::pam::{PamAuthError, PamAuthenticator, PamMethod};
+use crate::acl::AclMetrics;
 use crate::config::AuthConfig;
 use crate::protocol::{parse_userpass_auth, send_auth_response, AuthMethod};
 use crate::utils::error::{Result, RustSocksError};
@@ -232,6 +233,14 @@ impl AuthManager {
 
     /// Perform client-level authentication (before SOCKS negotiation)
     pub async fn authenticate_client(&self, client_ip: IpAddr) -> Result<()> {
+        let result = self.authenticate_client_inner(client_ip).await;
+        if matches!(result, Err(RustSocksError::AuthFailed(_))) {
+            AclMetrics::record_auth_failure("pam.address");
+        }
+        result
+    }
+
+    async fn authenticate_client_inner(&self, client_ip: IpAddr) -> Result<()> {
         match &self.client_backend {
             AuthBackend::None => Ok(()),
             AuthBackend::PamAddress(pam) => pam
@@ -259,6 +268,22 @@ impl AuthManager {
     /// - `Ok(None)` for no-auth methods
     /// - `Ok(Some((username, groups)))` for authenticated users with their LDAP groups
     pub async fn authenticate<S>(
+        &self,
+        stream: &mut S,
+        method: AuthMethod,
+        client_ip: IpAddr,
+    ) -> Result<Option<(String, Vec<String>)>>
+    where
+        S: AsyncRead + AsyncWrite + Unpin + Send,
+    {
+        let result = self.authenticate_inner(stream, method, client_ip).await;
+        if matches!(result, Err(RustSocksError::AuthFailed(_))) {
+            AclMetrics::record_auth_failure(self.socks_method_name());
+        }
+        result
+    }
+
+    async fn authenticate_inner<S>(
         &self,
         stream: &mut S,
         method: AuthMethod,

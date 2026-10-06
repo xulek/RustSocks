@@ -1,4 +1,5 @@
 use super::matcher::CompiledAclRule;
+use super::metrics::AclMetrics;
 use super::types::{
     AccessPolicy, AclDecision, Action, PolicyConditions, PolicyMode, PolicySchedule, Protocol,
 };
@@ -473,6 +474,7 @@ impl PolicyUsageTracker {
 
         if let Some(limit) = limits.max_active_connections {
             if entry.active_connections >= limit {
+                AclMetrics::record_admission_denied("active_connections");
                 return Err(format!(
                     "active connection limit reached ({}/{})",
                     entry.active_connections, limit
@@ -481,6 +483,7 @@ impl PolicyUsageTracker {
         }
         if let Some(limit) = limits.max_connections_per_minute {
             if entry.connection_times.len() >= limit as usize {
+                AclMetrics::record_admission_denied("connection_rate");
                 return Err(format!(
                     "connection rate limit reached ({}/{}/min)",
                     entry.connection_times.len(),
@@ -490,6 +493,7 @@ impl PolicyUsageTracker {
         }
         if let Some(limit) = limits.daily_transfer_limit_bytes {
             if entry.bytes_today >= limit {
+                AclMetrics::record_admission_denied("daily_quota");
                 return Err(format!(
                     "daily transfer quota reached ({}/{})",
                     entry.bytes_today, limit
@@ -498,6 +502,7 @@ impl PolicyUsageTracker {
         }
         if let Some(limit) = limits.monthly_transfer_limit_bytes {
             if entry.bytes_this_month >= limit {
+                AclMetrics::record_admission_denied("monthly_quota");
                 return Err(format!(
                     "monthly transfer quota reached ({}/{})",
                     entry.bytes_this_month, limit

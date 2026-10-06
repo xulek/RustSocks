@@ -727,6 +727,7 @@ pub async fn get_metrics(State(state): State<ApiState>) -> (StatusCode, String) 
         let _ = state;
         crate::session::SessionMetrics::ensure_registered();
         crate::qos::ensure_metrics_registered();
+        crate::acl::ensure_metrics_registered();
         let encoder = TextEncoder::new();
         let metric_families = prometheus::gather();
         let mut buffer = Vec::new();

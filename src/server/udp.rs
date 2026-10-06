@@ -1,5 +1,6 @@
 use crate::acl::{
-    AclDecision, AclEngine, AclStats, PolicyEvaluationContext, PolicyUsageSnapshot, Protocol,
+    AclDecision, AclEngine, AclMetrics, AclStats, PolicyEvaluationContext, PolicyUsageSnapshot,
+    Protocol,
 };
 use crate::protocol::{parse_udp_packet, serialize_udp_packet, Address, UdpHeader, UdpPacket};
 use crate::qos::QosEngine;
@@ -292,6 +293,7 @@ async fn handle_client_packet(
                 usage: PolicyUsageSnapshot::default(),
             })
             .await;
+        AclMetrics::record_outcome(&outcome);
 
         match outcome.decision {
             AclDecision::Block => {

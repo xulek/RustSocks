@@ -1,4 +1,5 @@
 use super::matcher::CompiledAclRule;
+use super::metrics::AclMetrics;
 use super::policy::{
     CompiledAccessPolicy, PolicyAdmissionLimits, PolicyEvaluationContext, PolicyEvaluationOutcome,
     PolicyTraceEntry,
@@ -260,6 +261,16 @@ impl AclEngine {
         &self,
         ctx: PolicyEvaluationContext<'_>,
     ) -> PolicyEvaluationOutcome {
+        let started = std::time::Instant::now();
+        let outcome = self.evaluate_policy_uninstrumented(ctx).await;
+        AclMetrics::observe_evaluation(started.elapsed().as_secs_f64());
+        outcome
+    }
+
+    async fn evaluate_policy_uninstrumented(
+        &self,
+        ctx: PolicyEvaluationContext<'_>,
+    ) -> PolicyEvaluationOutcome {
         let (mut candidates, default_policy, effective_groups) = {
             let config = self.config.read().await;
             let effective_groups = self.effective_groups(&config, ctx.user, ctx.groups);
@@ -438,6 +449,7 @@ impl AclEngine {
         if outcome.decision == AclDecision::Block
             && outcome.trace.last().is_some_and(|entry| entry.effective)
         {
+            AclMetrics::record_post_dns_block();
             outcome.matched_rule
         } else {
             None

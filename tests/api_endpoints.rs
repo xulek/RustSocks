@@ -112,6 +112,12 @@ async fn test_metrics_endpoint() {
         assert!(metrics.contains("rustsocks_bytes_sent_total"));
         assert!(metrics.contains("rustsocks_bytes_received_total"));
         assert!(metrics.contains("rustsocks_qos_active_users"));
+        assert!(metrics
+            .contains("rustsocks_acl_decisions_total{decision=\"block\",source=\"default\"}"));
+        assert!(metrics.contains("rustsocks_policy_monitor_matches_total"));
+        assert!(metrics.contains("rustsocks_policy_admission_denied_total{reason=\"daily_quota\"}"));
+        assert!(metrics.contains("rustsocks_socks_auth_failures_total{method=\"userpass\"}"));
+        assert!(metrics.contains("rustsocks_policy_evaluation_seconds"));
         assert!(
             metrics.contains("rustsocks_qos_bandwidth_allocated_bytes_total{direction=\"upload\"}")
         );

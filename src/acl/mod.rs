@@ -2,6 +2,7 @@ pub mod crud;
 pub mod engine;
 pub mod loader;
 pub mod matcher;
+pub mod metrics;
 pub mod persistence;
 pub mod policy;
 pub mod stats;
@@ -11,6 +12,7 @@ pub mod watcher;
 pub use crud::{RuleIdentifier, RuleSearchCriteria, RuleSearchResult};
 pub use engine::AclEngine;
 pub use loader::{create_example_acl_config, load_acl_config, load_acl_config_sync};
+pub use metrics::AclMetrics;
 pub use persistence::{load_config, save_config};
 pub use policy::{
     PolicyAdmissionGuard, PolicyAdmissionLimits, PolicyEvaluationContext, PolicyEvaluationOutcome,
@@ -22,3 +24,9 @@ pub use types::{
     Protocol,
 };
 pub use watcher::AclWatcher;
+
+/// Ensure all ACL/policy Prometheus collectors are registered before a scrape.
+#[inline]
+pub fn ensure_metrics_registered() {
+    metrics::init();
+}

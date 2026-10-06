@@ -1680,13 +1680,15 @@ async fn api_auth_middleware(
             .unwrap();
     }
 
-    let session_role = if auth_state.settings.enabled {
+    let session_user = if auth_state.settings.enabled {
         extract_session_from_headers(request.headers())
             .and_then(|token| auth_state.validate_session(&token))
-            .map(|username| auth_state.role_for(&username))
     } else {
         None
     };
+    let session_role = session_user
+        .as_ref()
+        .map(|username| auth_state.role_for(username));
 
     let has_token = match auth_state.api_token.as_deref() {
         Some(expected) => extract_api_token(request.headers())
@@ -1701,22 +1703,79 @@ async fn api_auth_middleware(
         session_role
     };
 
+    let audited = is_state_changing(request.method());
+    let remote = request
+        .extensions()
+        .get::<axum::extract::ConnectInfo<std::net::SocketAddr>>()
+        .map(|info| info.0.ip().to_string())
+        .unwrap_or_else(|| "unknown".to_string());
+    let method = request.method().clone();
+    let audit_path = path.to_string();
+
     let Some(granted_role) = granted_role else {
+        if audited {
+            tracing::warn!(
+                target: "audit",
+                outcome = "unauthenticated",
+                method = %method,
+                path = %audit_path,
+                remote = %remote,
+                "API state-changing request rejected"
+            );
+        }
         return Response::builder()
             .status(StatusCode::UNAUTHORIZED)
             .body(Body::empty())
             .unwrap();
     };
 
+    let actor = if has_token {
+        "api-token".to_string()
+    } else {
+        session_user.unwrap_or_else(|| "unknown".to_string())
+    };
+
     let required_role = required_api_role(request.method(), path);
     if granted_role < required_role {
+        if audited {
+            tracing::warn!(
+                target: "audit",
+                outcome = "forbidden",
+                actor = %actor,
+                role = ?granted_role,
+                required_role = ?required_role,
+                method = %method,
+                path = %audit_path,
+                remote = %remote,
+                "API state-changing request denied by RBAC"
+            );
+        }
         return Response::builder()
             .status(StatusCode::FORBIDDEN)
             .body(Body::empty())
             .unwrap();
     }
 
-    next.run(request).await
+    let response = next.run(request).await;
+    if audited {
+        tracing::info!(
+            target: "audit",
+            outcome = "completed",
+            actor = %actor,
+            role = ?granted_role,
+            method = %method,
+            path = %audit_path,
+            status = response.status().as_u16(),
+            remote = %remote,
+            "API state-changing request"
+        );
+    }
+    response
+}
+
+/// Whether a request method changes server state and must be audit-logged.
+fn is_state_changing(method: &Method) -> bool {
+    !matches!(*method, Method::GET | Method::HEAD | Method::OPTIONS)
 }
 
 fn required_api_role(method: &Method, path: &str) -> DashboardRole {
@@ -1945,6 +2004,113 @@ mod tests {
             required_api_role(&Method::POST, "/api/diagnostics/connectivity"),
             DashboardRole::Admin
         );
+    }
+
+    #[derive(Clone, Default)]
+    struct LogBuffer(Arc<std::sync::Mutex<Vec<u8>>>);
+
+    impl std::io::Write for LogBuffer {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(buf);
+            Ok(buf.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for LogBuffer {
+        type Writer = LogBuffer;
+        fn make_writer(&'a self) -> Self::Writer {
+            self.clone()
+        }
+    }
+
+    #[test]
+    fn only_state_changing_methods_are_audited() {
+        assert!(!is_state_changing(&Method::GET));
+        assert!(!is_state_changing(&Method::HEAD));
+        assert!(!is_state_changing(&Method::OPTIONS));
+        assert!(is_state_changing(&Method::POST));
+        assert!(is_state_changing(&Method::PUT));
+        assert!(is_state_changing(&Method::DELETE));
+    }
+
+    #[tokio::test]
+    async fn state_changing_requests_are_audit_logged() {
+        let buffer = LogBuffer::default();
+        let subscriber = tracing_subscriber::fmt()
+            .with_writer(buffer.clone())
+            .with_ansi(false)
+            .with_max_level(tracing::Level::INFO)
+            .finish();
+        let _guard = tracing::subscriber::set_default(subscriber);
+
+        let app = Router::new()
+            .route(
+                "/api/acl/rules",
+                get(|| async { "ok" }).post(|| async { "ok" }),
+            )
+            .layer(middleware::from_fn_with_state(
+                auth_state_with(false, Some("secret-token".to_string()), "/"),
+                api_auth_middleware,
+            ));
+
+        // Authorized POST is audited with actor and outcome.
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/acl/rules")
+                    .header("authorization", "Bearer secret-token")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        // Unauthenticated POST is audited as rejected.
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/acl/rules")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+
+        // Reads are not audited.
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/acl/rules")
+                    .header("authorization", "Bearer secret-token")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let logs = String::from_utf8(buffer.0.lock().unwrap().clone()).unwrap();
+        let audit_lines: Vec<&str> = logs.lines().filter(|l| l.contains("audit")).collect();
+        assert_eq!(audit_lines.len(), 2, "unexpected audit output: {logs}");
+        assert!(
+            audit_lines[0].contains("actor=api-token"),
+            "{}",
+            audit_lines[0]
+        );
+        assert!(audit_lines[0].contains("outcome=\"completed\""));
+        assert!(audit_lines[0].contains("status=200"));
+        assert!(audit_lines[0].contains("path=/api/acl/rules"));
+        assert!(audit_lines[1].contains("outcome=\"unauthenticated\""));
+        assert!(!logs.contains("secret-token"), "token must never be logged");
     }
 
     #[tokio::test]
