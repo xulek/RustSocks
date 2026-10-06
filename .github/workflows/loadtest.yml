@@ -1,0 +1,77 @@
+name: Load test
+
+# Manual end-to-end load test: a release build of the proxy, a local echo server and the
+# example load generator, all on one runner. It measures the proxy overhead and relayed
+# bandwidth on loopback, not real network throughput: use it to compare revisions.
+on:
+  workflow_dispatch:
+    inputs:
+      duration:
+        description: "Seconds per sustained scenario"
+        default: "15"
+      scenarios:
+        description: "Space-separated scenarios (see examples/loadtest.rs)"
+        default: "minimal-pipeline data-transfer large-transfer concurrent-1000 concurrent-5000"
+
+permissions:
+  contents: read
+
+jobs:
+  loadtest:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install native dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libpam0g-dev libkrb5-dev pkg-config
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build release binaries
+        run: cargo build --release --locked --bin rustsocks --example loadtest --example echo_server
+
+      - name: Run scenarios
+        env:
+          DURATION: ${{ inputs.duration }}
+          SCENARIOS: ${{ inputs.scenarios }}
+        run: |
+          set -u
+          ulimit -n 65536
+          mkdir -p results
+          ./target/release/examples/echo_server --port 9999 > results/echo.log 2>&1 &
+          ./target/release/rustsocks --config config/rustsocks_minimal.toml > results/proxy.log 2>&1 &
+          sleep 3
+          for scenario in ${SCENARIOS}; do
+            echo "::group::${scenario}"
+            ./target/release/examples/loadtest --scenario "${scenario}" --duration "${DURATION}" \
+              2>&1 | tee "results/${scenario}.txt"
+            echo "::endgroup::"
+          done
+          {
+            echo "### Load test results (${GITHUB_SHA::8})"
+            echo
+            echo "Loopback, one runner. Use for comparing revisions, not as absolute numbers."
+            for scenario in ${SCENARIOS}; do
+              echo
+              echo "**${scenario}**"
+              echo '```'
+              sed 's/\x1b\[[0-9;]*m//g' "results/${scenario}.txt" | grep -E "Total Connections|Failed|Throughput|Average|Maximum|Aggregate Bandwidth" || true
+              echo '```'
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Stop servers
+        if: always()
+        run: pkill -f "target/release/rustsocks" || true; pkill -f echo_server || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: loadtest-results
+          path: results
+          if-no-files-found: ignore
