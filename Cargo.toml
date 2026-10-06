@@ -86,6 +86,7 @@ tempfile = "3.23"
 serde_json = "1.0"
 rcgen = "0.14"
 criterion = { version = "0.5", features = ["async_tokio", "html_reports"] }
+proptest = "1"
 
 [target.'cfg(unix)'.dependencies]
 pam-sys = "0.5"
