@@ -46,6 +46,7 @@ fn create_test_acl_config() -> AclConfig {
             },
         ],
         users: vec![], // No per-user configs initially
+        policies: vec![],
     }
 }
 

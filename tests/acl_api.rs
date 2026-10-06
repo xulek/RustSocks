@@ -17,6 +17,7 @@ fn create_test_config() -> AclConfig {
             rules: vec![],
         }],
         users: vec![],
+        policies: vec![],
     }
 }
 

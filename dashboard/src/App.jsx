@@ -10,13 +10,15 @@ import {
   Stethoscope,
   SignalHigh,
   LogOut,
-  Mail
+  Mail,
+  SlidersHorizontal
 } from 'lucide-react'
 
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import Dashboard from './pages/Dashboard'
 import Sessions from './pages/Sessions'
 import AclRules from './pages/AclRules'
+import AccessPolicies from './pages/AccessPolicies'
 import UserManagement from './pages/UserManagement'
 import Statistics from './pages/Statistics'
 import Configuration from './pages/Configuration'
@@ -79,6 +81,10 @@ function DashboardLayout() {
             <Shield />
             <span>ACL Rules</span>
           </NavLink>
+          <NavLink to="/policies" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+            <SlidersHorizontal />
+            <span>Access Policies</span>
+          </NavLink>
           <NavLink to="/users" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
             <Users />
             <span>Users</span>
@@ -118,6 +124,7 @@ function DashboardLayout() {
           <Route path="/" element={<Dashboard />} />
           <Route path="/sessions" element={<Sessions />} />
           <Route path="/acl" element={<AclRules />} />
+          <Route path="/policies" element={<AccessPolicies />} />
           <Route path="/users" element={<UserManagement />} />
           <Route path="/statistics" element={<Statistics />} />
           <Route path="/diagnostics" element={<Diagnostics />} />

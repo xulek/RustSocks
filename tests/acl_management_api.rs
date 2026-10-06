@@ -42,6 +42,7 @@ fn base_config() -> AclConfig {
             groups: vec![],
             rules: vec![],
         }],
+        policies: vec![],
     }
 }
 
@@ -427,6 +428,7 @@ async fn test_search_rules_returns_matches() {
                 priority: 200,
             }],
         }],
+        policies: vec![],
     };
 
     let (state, _temp_dir, _config_path) = setup_state_with_config(config).await;

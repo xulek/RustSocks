@@ -1241,6 +1241,7 @@ mod group_inheritance_tests {
                     priority: 100,
                 }],
             }],
+            policies: vec![],
         };
 
         let engine = AclEngine::new(config).unwrap();
@@ -1278,6 +1279,7 @@ mod group_inheritance_tests {
                     priority: 100,
                 }],
             }],
+            policies: vec![],
         };
 
         let engine = AclEngine::new(config).unwrap();
@@ -1324,6 +1326,7 @@ mod group_inheritance_tests {
                     priority: 100,
                 }],
             }],
+            policies: vec![],
         };
 
         let engine = AclEngine::new(config).unwrap();
@@ -1386,6 +1389,7 @@ mod group_inheritance_tests {
                     }],
                 },
             ],
+            policies: vec![],
         };
 
         let engine = AclEngine::new(config).unwrap();
@@ -1433,6 +1437,7 @@ mod default_policy_tests {
                 rules: vec![],
             }],
             groups: vec![],
+            policies: vec![],
         };
 
         let engine = AclEngine::new(config).unwrap();
@@ -1462,6 +1467,7 @@ mod default_policy_tests {
                 rules: vec![],
             }],
             groups: vec![],
+            policies: vec![],
         };
 
         let engine = AclEngine::new(config).unwrap();
@@ -1498,6 +1504,7 @@ mod default_policy_tests {
                 }],
             }],
             groups: vec![],
+            policies: vec![],
         };
 
         let engine = AclEngine::new(config).unwrap();
@@ -1534,6 +1541,7 @@ mod default_policy_tests {
                 }],
             }],
             groups: vec![],
+            policies: vec![],
         };
 
         let engine = AclEngine::new(config).unwrap();
@@ -1748,6 +1756,7 @@ mod complex_scenarios {
                     }],
                 },
             ],
+            policies: vec![],
         };
 
         let engine = AclEngine::new(config).unwrap();
@@ -2595,5 +2604,6 @@ fn create_test_config_with_policy(
             rules,
         }],
         groups: vec![],
+        policies: vec![],
     }
 }

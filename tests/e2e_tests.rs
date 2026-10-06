@@ -388,6 +388,7 @@ async fn e2e_acl_allow() {
         },
         users: vec![],
         groups: vec![],
+        policies: vec![],
     };
 
     let (ctx, _) = create_basic_server_context(auth_config, Some(acl_config)).await;
@@ -435,6 +436,7 @@ async fn e2e_acl_block() {
             }],
         }],
         groups: vec![],
+        policies: vec![],
     };
 
     let (ctx, session_manager) = create_basic_server_context(auth_config, Some(acl_config)).await;
@@ -673,6 +675,7 @@ async fn e2e_complete_flow() {
             }],
         }],
         groups: vec![],
+        policies: vec![],
     };
 
     let (ctx, session_manager) = create_basic_server_context(auth_config, Some(acl_config)).await;

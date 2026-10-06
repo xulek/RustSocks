@@ -12,8 +12,8 @@ use crate::utils::error::{Result, RustSocksError};
 use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
 use argon2::Argon2;
 use dashmap::DashMap;
-use rand::rngs::OsRng as RandOsRng;
 pub use groups::get_user_groups;
+use rand::rngs::OsRng as RandOsRng;
 use std::collections::HashMap;
 use std::net::IpAddr;
 use std::sync::{Arc, OnceLock};
@@ -84,7 +84,12 @@ pub(crate) async fn resolve_user_groups(username: &str) -> Vec<String> {
         group_cache().remove(&cache_key);
     }
 
-    let permit = match timeout(GROUP_LOOKUP_TIMEOUT, group_lookup_semaphore().acquire_owned()).await {
+    let permit = match timeout(
+        GROUP_LOOKUP_TIMEOUT,
+        group_lookup_semaphore().acquire_owned(),
+    )
+    .await
+    {
         Ok(Ok(permit)) => permit,
         Ok(Err(_)) => {
             warn!(user = %username, "Group lookup semaphore closed");
@@ -196,6 +201,18 @@ impl AuthManager {
             AuthBackend::UserPass(_) | AuthBackend::PamUsername(_) => AuthMethod::UserPass,
             #[cfg(feature = "gssapi")]
             AuthBackend::Gssapi(_) => AuthMethod::Gssapi,
+        }
+    }
+
+    /// Effective configured SOCKS authentication backend name used by policy conditions.
+    pub fn socks_method_name(&self) -> &'static str {
+        match self.socks_backend {
+            AuthBackend::None => "none",
+            AuthBackend::UserPass(_) => "userpass",
+            AuthBackend::PamAddress(_) => "pam.address",
+            AuthBackend::PamUsername(_) => "pam.username",
+            #[cfg(feature = "gssapi")]
+            AuthBackend::Gssapi(_) => "gssapi",
         }
     }
 
@@ -400,12 +417,18 @@ impl UserPassAuthenticator {
             .entry(client_ip)
             .and_modify(|state| {
                 if now.duration_since(state.first_failure) >= USERPASS_LOCKOUT {
-                    *state = LoginAttemptState { failures: 1, first_failure: now };
+                    *state = LoginAttemptState {
+                        failures: 1,
+                        first_failure: now,
+                    };
                 } else {
                     state.failures = state.failures.saturating_add(1);
                 }
             })
-            .or_insert(LoginAttemptState { failures: 1, first_failure: now });
+            .or_insert(LoginAttemptState {
+                failures: 1,
+                first_failure: now,
+            });
     }
 
     fn clear_failures(&self, client_ip: IpAddr) {

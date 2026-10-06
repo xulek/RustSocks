@@ -1,4 +1,4 @@
-use crate::acl::{AclDecision, AclEngine, AclStats, Protocol};
+use crate::acl::{AclDecision, AclEngine, AclStats, PolicyEvaluationContext, Protocol};
 use crate::auth::AuthManager;
 use crate::protocol::*;
 use crate::qos::{ConnectionLimits, QosEngine};
@@ -9,6 +9,7 @@ use crate::server::resolver::resolve_address;
 use crate::server::udp::{handle_udp_associate as handle_udp_relay, UdpRelayContext};
 use crate::session::{ConnectionInfo, SessionManager, SessionProtocol, SessionStatus};
 use crate::utils::error::{Result, RustSocksError};
+use chrono::Utc;
 use std::io::ErrorKind;
 use std::net::IpAddr;
 use std::sync::Arc;
@@ -203,26 +204,31 @@ where
 
         let mut acl_rule_match: Option<String> = None;
         let mut acl_decision = "allow".to_string();
+        let mut policy_guard = None;
+        let auth_method = ctx.auth_manager.socks_method_name().to_string();
 
-        // Step 3b: ACL enforcement (if enabled)
+        // Step 3b: ACL + dynamic policy enforcement (if enabled)
         if let Some(engine) = ctx.acl_engine.as_ref() {
             let protocol = match request.command {
                 Command::UdpAssociate => Protocol::Udp,
                 _ => Protocol::Tcp,
             };
-
-            // Use evaluate_with_groups() for dynamic LDAP group matching
-            let (decision, matched_rule) = engine
-                .evaluate_with_groups(
-                    acl_user.as_ref(),
-                    &user_groups,
-                    &request.address,
-                    request.port,
-                    &protocol,
-                )
+            let usage = ctx.session_manager.policy_usage_snapshot(acl_user.as_ref());
+            let outcome = engine
+                .evaluate_policy_with_context(PolicyEvaluationContext {
+                    user: acl_user.as_ref(),
+                    groups: &user_groups,
+                    source_ip: client_addr.ip(),
+                    auth_method: &auth_method,
+                    destination: &request.address,
+                    port: request.port,
+                    protocol: &protocol,
+                    now: Utc::now(),
+                    usage,
+                })
                 .await;
 
-            match decision {
+            match outcome.decision {
                 AclDecision::Block => {
                     let dest_string = request.address.to_string();
                     let block_ctx = AclBlockContext {
@@ -231,7 +237,7 @@ where
                         port: request.port,
                         client_addr,
                         session_protocol,
-                        matched_rule: matched_rule.clone(),
+                        matched_rule: outcome.matched_rule.clone(),
                     };
                     handle_acl_block(
                         buffered_stream.get_mut(),
@@ -240,29 +246,37 @@ where
                         block_ctx,
                     )
                     .await?;
-
                     return Ok(None);
                 }
                 AclDecision::Allow => {
-                    ctx.acl_stats.record_allow(acl_user.as_ref());
-                    acl_rule_match = matched_rule.clone();
-                    acl_decision = "allow".to_string();
-
-                    match matched_rule.as_deref() {
-                        Some(rule) => debug!(
-                            user = %acl_user.as_ref(),
-                            dest = %request.address,
-                            port = request.port,
-                            rule,
-                            "ACL allowed connection"
-                        ),
-                        None => debug!(
-                            user = %acl_user.as_ref(),
-                            dest = %request.address,
-                            port = request.port,
-                            "ACL allowed connection (default policy)"
-                        ),
+                    match ctx
+                        .session_manager
+                        .reserve_policy_admission(acl_user.as_ref(), &outcome.admission_limits)
+                    {
+                        Ok(guard) => policy_guard = Some(guard),
+                        Err(reason) => {
+                            let dest_string = request.address.to_string();
+                            let block_ctx = AclBlockContext {
+                                user: &acl_user,
+                                dest_string: &dest_string,
+                                port: request.port,
+                                client_addr,
+                                session_protocol,
+                                matched_rule: Some(format!("Policy admission denied: {}", reason)),
+                            };
+                            handle_acl_block(
+                                buffered_stream.get_mut(),
+                                SocksProtocol::V5,
+                                &ctx,
+                                block_ctx,
+                            )
+                            .await?;
+                            return Ok(None);
+                        }
                     }
+                    ctx.acl_stats.record_allow(acl_user.as_ref());
+                    acl_rule_match = outcome.matched_rule.clone();
+                    acl_decision = "allow".to_string();
                 }
             }
         }
@@ -275,7 +289,9 @@ where
             acl_rule_match,
             session_protocol,
             connection_guard,
+            policy_guard,
             user_groups,
+            auth_method,
         )))
     })
     .await;
@@ -288,7 +304,9 @@ where
         acl_rule_match,
         session_protocol,
         _connection_guard,
+        _policy_guard,
         user_groups,
+        auth_method,
     ) = match handshake {
         Ok(Ok(Some(values))) => values,
         Ok(Ok(None)) => return Ok(()),
@@ -325,6 +343,8 @@ where
                 connection_pool: ctx.connection_pool.clone(),
                 acl_engine: ctx.acl_engine.clone(),
                 user_groups: user_groups.clone(),
+                source_ip: client_addr.ip(),
+                auth_method: auth_method.clone(),
             };
             handle_connect(
                 client_stream,
@@ -345,6 +365,8 @@ where
                 connection_pool: ctx.connection_pool.clone(),
                 acl_engine: ctx.acl_engine.clone(),
                 user_groups: user_groups.clone(),
+                source_ip: client_addr.ip(),
+                auth_method: auth_method.clone(),
             };
 
             handle_bind_relay(
@@ -371,6 +393,8 @@ where
                 acl_engine: ctx.acl_engine.clone(),
                 acl_stats: ctx.acl_stats.clone(),
                 qos_engine: ctx.qos_engine.clone(),
+                source_ip: client_addr.ip(),
+                auth_method: auth_method.clone(),
             };
             handle_udp_associate(
                 client_stream,
@@ -457,20 +481,26 @@ where
         let session_protocol = SessionProtocol::Tcp;
         let mut acl_rule_match: Option<String> = None;
         let mut acl_decision = "allow".to_string();
+        let mut policy_guard = None;
+        let auth_method = ctx.auth_manager.socks_method_name().to_string();
 
         if let Some(engine) = ctx.acl_engine.as_ref() {
-            // Use evaluate_with_groups() for dynamic LDAP group matching
-            let (decision, matched_rule) = engine
-                .evaluate_with_groups(
-                    acl_user.as_ref(),
-                    &user_groups,
-                    &request.address,
-                    request.port,
-                    &Protocol::Tcp,
-                )
+            let usage = ctx.session_manager.policy_usage_snapshot(acl_user.as_ref());
+            let outcome = engine
+                .evaluate_policy_with_context(PolicyEvaluationContext {
+                    user: acl_user.as_ref(),
+                    groups: &user_groups,
+                    source_ip: client_addr.ip(),
+                    auth_method: &auth_method,
+                    destination: &request.address,
+                    port: request.port,
+                    protocol: &Protocol::Tcp,
+                    now: Utc::now(),
+                    usage,
+                })
                 .await;
 
-            match decision {
+            match outcome.decision {
                 AclDecision::Block => {
                     let block_ctx = AclBlockContext {
                         user: &acl_user,
@@ -478,16 +508,39 @@ where
                         port: request.port,
                         client_addr,
                         session_protocol,
-                        matched_rule: matched_rule.clone(),
+                        matched_rule: outcome.matched_rule.clone(),
                     };
                     handle_acl_block(&mut client_stream, SocksProtocol::V4, &ctx, block_ctx)
                         .await?;
-
                     return Ok(None);
                 }
                 AclDecision::Allow => {
+                    match ctx
+                        .session_manager
+                        .reserve_policy_admission(acl_user.as_ref(), &outcome.admission_limits)
+                    {
+                        Ok(guard) => policy_guard = Some(guard),
+                        Err(reason) => {
+                            let block_ctx = AclBlockContext {
+                                user: &acl_user,
+                                dest_string: &dest_string,
+                                port: request.port,
+                                client_addr,
+                                session_protocol,
+                                matched_rule: Some(format!("Policy admission denied: {}", reason)),
+                            };
+                            handle_acl_block(
+                                &mut client_stream,
+                                SocksProtocol::V4,
+                                &ctx,
+                                block_ctx,
+                            )
+                            .await?;
+                            return Ok(None);
+                        }
+                    }
                     ctx.acl_stats.record_allow(acl_user.as_ref());
-                    acl_rule_match = matched_rule.clone();
+                    acl_rule_match = outcome.matched_rule.clone();
                     acl_decision = "allow".to_string();
                 }
             }
@@ -501,7 +554,9 @@ where
             acl_rule_match,
             session_protocol,
             connection_guard,
+            policy_guard,
             user_groups,
+            auth_method,
         )))
     })
     .await;
@@ -514,7 +569,9 @@ where
         acl_rule_match,
         session_protocol,
         _connection_guard,
+        _policy_guard,
         user_groups,
+        auth_method,
     ) = match handshake {
         Ok(Ok(Some(values))) => values,
         Ok(Ok(None)) => return Ok(()),
@@ -549,6 +606,8 @@ where
                 connection_pool: ctx.connection_pool.clone(),
                 acl_engine: ctx.acl_engine.clone(),
                 user_groups: user_groups.clone(),
+                source_ip: client_addr.ip(),
+                auth_method: auth_method.clone(),
             };
             handle_connect(
                 client_stream,
@@ -608,6 +667,8 @@ struct ConnectHandlerContext {
     connection_pool: Arc<ConnectionPool>,
     acl_engine: Option<Arc<AclEngine>>,
     user_groups: Vec<String>,
+    source_ip: IpAddr,
+    auth_method: String,
 }
 
 #[instrument(
@@ -675,19 +736,28 @@ where
 
     if let Some(engine) = connect_ctx.acl_engine.as_ref() {
         let mut allowed = Vec::with_capacity(candidates.len());
+        let mut usage = connect_ctx
+            .session_manager
+            .policy_usage_snapshot(session_ctx.user.as_ref());
+        usage.active_connections = usage.active_connections.saturating_sub(1);
+        usage.connections_last_minute = usage.connections_last_minute.saturating_sub(1);
         for candidate in candidates {
             let resolved = match candidate.ip() {
                 IpAddr::V4(ip) => Address::IPv4(ip.octets()),
                 IpAddr::V6(ip) => Address::IPv6(ip.octets()),
             };
             if let Some(rule) = engine
-                .is_explicitly_blocked_with_groups(
-                    session_ctx.user.as_ref(),
-                    &connect_ctx.user_groups,
-                    &resolved,
-                    dest_port,
-                    &Protocol::Tcp,
-                )
+                .is_explicitly_blocked_with_policy_context(PolicyEvaluationContext {
+                    user: session_ctx.user.as_ref(),
+                    groups: &connect_ctx.user_groups,
+                    source_ip: connect_ctx.source_ip,
+                    auth_method: &connect_ctx.auth_method,
+                    destination: &resolved,
+                    port: dest_port,
+                    protocol: &Protocol::Tcp,
+                    now: Utc::now(),
+                    usage: usage.clone(),
+                })
                 .await
             {
                 warn!(

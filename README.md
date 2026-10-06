@@ -781,3 +781,7 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 - Built with [Tokio](https://tokio.rs/) async runtime
 - Powered by Rust 🦀
+
+## Dynamic Access Policy Engine
+
+See `docs/config/policy-engine.md` and `config/examples/acl-policies.toml`.

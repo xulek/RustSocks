@@ -76,6 +76,8 @@ pub struct AclTestResponse {
     pub protocol: String,
     pub decision: String,
     pub matched_rule: Option<String>,
+    pub matched_policy_id: Option<String>,
+    pub trace: Vec<crate::acl::PolicyTraceEntry>,
 }
 
 /// ACL rule info for API response
@@ -133,9 +135,41 @@ fn default_page_size() -> u32 {
 #[derive(Debug, Deserialize)]
 pub struct AclTestRequest {
     pub user: String,
+    #[serde(default)]
+    pub groups: Vec<String>,
     pub destination: String,
     pub port: u16,
     pub protocol: String,
+    #[serde(default = "default_policy_source_ip")]
+    pub source_ip: String,
+    #[serde(default = "default_policy_auth_method")]
+    pub auth_method: String,
+    #[serde(default)]
+    pub now: Option<chrono::DateTime<chrono::Utc>>,
+    #[serde(default)]
+    pub usage: Option<crate::acl::PolicyUsageSnapshot>,
+}
+
+fn default_policy_source_ip() -> String {
+    "127.0.0.1".to_string()
+}
+fn default_policy_auth_method() -> String {
+    "none".to_string()
+}
+
+/// Dynamic policy list response.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PolicyListResponse {
+    pub policies: Vec<crate::acl::AccessPolicy>,
+}
+
+/// Dynamic policy mutation response.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PolicyOperationResponse {
+    pub success: bool,
+    pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub policy: Option<crate::acl::AccessPolicy>,
 }
 
 /// Connectivity test request payload

@@ -4,7 +4,7 @@
 /// including adding, updating, and deleting rules for groups and users.
 use crate::acl::crud::{self, RuleIdentifier, RuleSearchCriteria};
 use crate::acl::persistence;
-use crate::acl::types::{AclRule, Action, Protocol};
+use crate::acl::types::{AccessPolicy, AclRule, Action, Protocol};
 use crate::api::handlers::sessions::ApiState;
 use crate::api::types::*;
 use crate::utils::error::ApiError;
@@ -166,6 +166,205 @@ async fn save_and_reload(
     }
 
     Ok(())
+}
+
+// ============================================================================
+// Dynamic Access Policy Endpoints
+// ============================================================================
+
+fn policy_error_response(
+    status: StatusCode,
+    message: impl Into<String>,
+) -> (StatusCode, Json<PolicyOperationResponse>) {
+    (
+        status,
+        Json(PolicyOperationResponse {
+            success: false,
+            message: message.into(),
+            policy: None,
+        }),
+    )
+}
+
+/// GET /api/acl/policies - List dynamic access policies.
+pub async fn list_policies(
+    State(state): State<ApiState>,
+) -> (StatusCode, Json<PolicyListResponse>) {
+    match load_current_config(&state).await {
+        Ok(config) => (
+            StatusCode::OK,
+            Json(PolicyListResponse {
+                policies: config.policies,
+            }),
+        ),
+        Err(err) => {
+            error!(error = %err, "Failed to load policy configuration");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(PolicyListResponse { policies: vec![] }),
+            )
+        }
+    }
+}
+
+/// GET /api/acl/policies/{id} - Get a dynamic access policy by stable ID.
+pub async fn get_policy(
+    State(state): State<ApiState>,
+    Path(policy_id): Path<String>,
+) -> (StatusCode, Json<PolicyOperationResponse>) {
+    let config = match load_current_config(&state).await {
+        Ok(config) => config,
+        Err(err) => return policy_error_response(StatusCode::INTERNAL_SERVER_ERROR, err),
+    };
+    match config
+        .policies
+        .into_iter()
+        .find(|policy| policy.id.eq_ignore_ascii_case(&policy_id))
+    {
+        Some(policy) => (
+            StatusCode::OK,
+            Json(PolicyOperationResponse {
+                success: true,
+                message: "Policy loaded".to_string(),
+                policy: Some(policy),
+            }),
+        ),
+        None => policy_error_response(
+            StatusCode::NOT_FOUND,
+            format!("Policy '{}' not found", policy_id),
+        ),
+    }
+}
+
+/// POST /api/acl/policies - Create a dynamic access policy.
+pub async fn create_policy(
+    State(state): State<ApiState>,
+    Json(policy): Json<AccessPolicy>,
+) -> (StatusCode, Json<PolicyOperationResponse>) {
+    if let Err(err) = require_acl(&state) {
+        return policy_error_response(err.status_code(), err.to_string());
+    }
+    if let Err(err) = crate::acl::policy::validate_policy(&policy) {
+        return policy_error_response(StatusCode::BAD_REQUEST, err);
+    }
+    let mut config = match load_current_config(&state).await {
+        Ok(config) => config,
+        Err(err) => return policy_error_response(StatusCode::INTERNAL_SERVER_ERROR, err),
+    };
+    if config
+        .policies
+        .iter()
+        .any(|existing| existing.id.eq_ignore_ascii_case(&policy.id))
+    {
+        return policy_error_response(
+            StatusCode::CONFLICT,
+            format!("Policy '{}' already exists", policy.id),
+        );
+    }
+    config.policies.push(policy.clone());
+    if let Err(err) = config.validate() {
+        return policy_error_response(StatusCode::BAD_REQUEST, err);
+    }
+    if let Err(err) = save_config_or_err(&state, config).await {
+        return policy_error_response(err.status_code(), err.to_string());
+    }
+    info!(policy_id = %policy.id, "Created dynamic access policy");
+    (
+        StatusCode::CREATED,
+        Json(PolicyOperationResponse {
+            success: true,
+            message: format!("Policy '{}' created", policy.id),
+            policy: Some(policy),
+        }),
+    )
+}
+
+/// PUT /api/acl/policies/{id} - Replace a policy while preserving its stable ID.
+pub async fn update_policy(
+    State(state): State<ApiState>,
+    Path(policy_id): Path<String>,
+    Json(mut policy): Json<AccessPolicy>,
+) -> (StatusCode, Json<PolicyOperationResponse>) {
+    if let Err(err) = require_acl(&state) {
+        return policy_error_response(err.status_code(), err.to_string());
+    }
+    if !policy.id.eq_ignore_ascii_case(&policy_id) {
+        return policy_error_response(
+            StatusCode::BAD_REQUEST,
+            "Policy id in the request body must match the path and cannot be changed",
+        );
+    }
+    let mut config = match load_current_config(&state).await {
+        Ok(config) => config,
+        Err(err) => return policy_error_response(StatusCode::INTERNAL_SERVER_ERROR, err),
+    };
+    let Some(index) = config
+        .policies
+        .iter()
+        .position(|existing| existing.id.eq_ignore_ascii_case(&policy_id))
+    else {
+        return policy_error_response(
+            StatusCode::NOT_FOUND,
+            format!("Policy '{}' not found", policy_id),
+        );
+    };
+    policy.id = config.policies[index].id.clone();
+    if let Err(err) = crate::acl::policy::validate_policy(&policy) {
+        return policy_error_response(StatusCode::BAD_REQUEST, err);
+    }
+    config.policies[index] = policy.clone();
+    if let Err(err) = config.validate() {
+        return policy_error_response(StatusCode::BAD_REQUEST, err);
+    }
+    if let Err(err) = save_config_or_err(&state, config).await {
+        return policy_error_response(err.status_code(), err.to_string());
+    }
+    info!(policy_id = %policy.id, "Updated dynamic access policy");
+    (
+        StatusCode::OK,
+        Json(PolicyOperationResponse {
+            success: true,
+            message: format!("Policy '{}' updated", policy.id),
+            policy: Some(policy),
+        }),
+    )
+}
+
+/// DELETE /api/acl/policies/{id} - Delete a dynamic access policy.
+pub async fn delete_policy(
+    State(state): State<ApiState>,
+    Path(policy_id): Path<String>,
+) -> (StatusCode, Json<PolicyOperationResponse>) {
+    if let Err(err) = require_acl(&state) {
+        return policy_error_response(err.status_code(), err.to_string());
+    }
+    let mut config = match load_current_config(&state).await {
+        Ok(config) => config,
+        Err(err) => return policy_error_response(StatusCode::INTERNAL_SERVER_ERROR, err),
+    };
+    let Some(index) = config
+        .policies
+        .iter()
+        .position(|policy| policy.id.eq_ignore_ascii_case(&policy_id))
+    else {
+        return policy_error_response(
+            StatusCode::NOT_FOUND,
+            format!("Policy '{}' not found", policy_id),
+        );
+    };
+    let removed = config.policies.remove(index);
+    if let Err(err) = save_config_or_err(&state, config).await {
+        return policy_error_response(err.status_code(), err.to_string());
+    }
+    info!(policy_id = %removed.id, "Deleted dynamic access policy");
+    (
+        StatusCode::OK,
+        Json(PolicyOperationResponse {
+            success: true,
+            message: format!("Policy '{}' deleted", removed.id),
+            policy: Some(removed),
+        }),
+    )
 }
 
 // ============================================================================

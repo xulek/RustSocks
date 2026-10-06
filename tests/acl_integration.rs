@@ -31,6 +31,7 @@ fn blocking_acl_config() -> AclConfig {
             }],
         }],
         groups: vec![],
+        policies: vec![],
     }
 }
 
@@ -41,6 +42,7 @@ fn allowing_acl_config() -> AclConfig {
         },
         users: vec![],
         groups: vec![],
+        policies: vec![],
     }
 }
 

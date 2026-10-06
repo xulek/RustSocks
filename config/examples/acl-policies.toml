@@ -1,0 +1,75 @@
+# RustSocks Dynamic Access Policy example
+#
+# Dynamic policies share the priority space with legacy ACL rules. Higher
+# priority is evaluated first. For equal priority, BLOCK is evaluated before
+# ALLOW. mode="monitor" records an Explain trace match but does not affect
+# traffic. enforce_conditions=true turns an ALLOW policy into a gate: when its
+# subject/target matches but a dynamic condition fails, the request is blocked
+# instead of falling through to a lower-priority rule.
+
+[global]
+default_policy = "block"
+
+[[policies]]
+id = "developers-github"
+enabled = true
+mode = "enforce"
+description = "Developers may use GitHub during business hours"
+groups = ["developers"]
+action = "allow"
+destinations = ["github.com", "*.github.com", "*.githubusercontent.com"]
+ports = ["443"]
+protocols = ["tcp"]
+priority = 1500
+enforce_conditions = true
+owner = "network-team"
+ticket = "CHG-2026-184"
+tags = ["production", "developers"]
+
+[policies.conditions]
+source_ips = ["10.0.0.0/8", "192.168.0.0/16"]
+auth_methods = ["userpass", "gssapi"]
+max_active_connections = 20
+max_connections_per_minute = 60
+daily_transfer_limit_bytes = 10737418240
+monthly_transfer_limit_bytes = 107374182400
+
+[policies.conditions.schedule]
+days = ["mon", "tue", "wed", "thu", "fri"]
+start = "07:00"
+end = "20:00"
+utc_offset_minutes = 120
+
+[[policies]]
+id = "temporary-vendor-access"
+enabled = true
+mode = "monitor"
+description = "Observe a temporary vendor rule before enforcing it"
+users = ["vendor01"]
+action = "allow"
+destinations = ["api.example.com"]
+ports = ["443"]
+protocols = ["tcp"]
+priority = 2000
+enforce_conditions = true
+owner = "security-team"
+ticket = "INC-4812"
+tags = ["temporary", "vendor"]
+
+[policies.conditions]
+source_ips = ["203.0.113.40/32"]
+auth_methods = ["userpass"]
+not_before = "2026-09-08T08:00:00Z"
+expires_at = "2026-09-10T18:00:00Z"
+
+[[policies]]
+id = "block-private-destination"
+enabled = true
+mode = "enforce"
+description = "Explicitly block private destination space"
+action = "block"
+destinations = ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "127.0.0.0/8"]
+ports = ["*"]
+protocols = ["both"]
+priority = 3000
+enforce_conditions = false

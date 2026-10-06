@@ -23,10 +23,11 @@ use crate::api::auth::{
 use crate::api::handlers::sessions::ApiState;
 use crate::api::handlers::{
     acl_management::{
-        add_group_rule, add_user_rule, add_user_to_group, create_group, create_user, delete_group,
-        delete_group_rule, delete_user, delete_user_rule, get_global_settings, get_group_detail,
-        get_user_detail, list_groups, list_users, remove_user_from_group, search_rules,
-        update_global_settings, update_group_rule, update_user_rule,
+        add_group_rule, add_user_rule, add_user_to_group, create_group, create_policy, create_user,
+        delete_group, delete_group_rule, delete_policy, delete_user, delete_user_rule,
+        get_global_settings, get_group_detail, get_policy, get_user_detail, list_groups,
+        list_policies, list_users, remove_user_from_group, search_rules, update_global_settings,
+        update_group_rule, update_policy, update_user_rule,
     },
     get_pool_stats, get_system_resources,
     management::{
@@ -1416,6 +1417,14 @@ pub async fn start_api_server(
         .route("/api/admin/config-file", put(update_config_file))
         .route("/api/acl/rules", get(get_acl_rules))
         .route("/api/acl/test", post(test_acl_decision))
+        .route("/api/acl/policies", get(list_policies))
+        .route("/api/acl/policies", post(create_policy))
+        .route("/api/acl/policies/{id}", get(get_policy))
+        .route("/api/acl/policies/{id}", put(update_policy))
+        .route(
+            "/api/acl/policies/{id}",
+            axum::routing::delete(delete_policy),
+        )
         // ACL Management endpoints - Groups
         .route("/api/acl/groups", get(list_groups))
         .route("/api/acl/groups", post(create_group))
@@ -1738,7 +1747,6 @@ fn required_api_role(method: &Method, path: &str) -> DashboardRole {
 
     DashboardRole::Viewer
 }
-
 
 fn extract_api_token(headers: &axum::http::HeaderMap) -> Option<&str> {
     if let Some(value) = headers.get(header::AUTHORIZATION) {

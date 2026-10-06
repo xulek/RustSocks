@@ -1,5 +1,9 @@
 use super::matcher::CompiledAclRule;
-use super::types::{AclConfig, AclDecision, Action, GlobalAclConfig, Protocol};
+use super::policy::{
+    CompiledAccessPolicy, PolicyAdmissionLimits, PolicyEvaluationContext, PolicyEvaluationOutcome,
+    PolicyTraceEntry,
+};
+use super::types::{AclConfig, AclDecision, Action, GlobalAclConfig, PolicyMode, Protocol};
 use crate::protocol::Address;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -18,6 +22,7 @@ struct CompiledAclConfig {
     groups: std::collections::HashMap<String, CompiledGroupAcl>,
     // Lowercase index for O(1) case-insensitive group lookup (critical optimization for LDAP)
     groups_by_lowercase: std::collections::HashMap<String, CompiledGroupAcl>,
+    policies: Vec<Arc<CompiledAccessPolicy>>,
 }
 
 #[derive(Debug, Clone)]
@@ -37,12 +42,45 @@ struct CompiledGroupAcl {
     rules: Vec<Arc<CompiledAclRule>>,
 }
 
+#[derive(Debug, Clone)]
+enum EvaluationCandidate {
+    Legacy(Arc<CompiledAclRule>),
+    Policy(Arc<CompiledAccessPolicy>),
+}
+
+impl EvaluationCandidate {
+    fn priority(&self) -> u32 {
+        match self {
+            Self::Legacy(r) => r.priority,
+            Self::Policy(p) => p.policy.priority,
+        }
+    }
+    fn action(&self) -> &Action {
+        match self {
+            Self::Legacy(r) => &r.action,
+            Self::Policy(p) => &p.policy.action,
+        }
+    }
+}
+
+fn compare_candidates(a: &EvaluationCandidate, b: &EvaluationCandidate) -> std::cmp::Ordering {
+    b.priority()
+        .cmp(&a.priority())
+        .then_with(|| match (a.action(), b.action()) {
+            (Action::Block, Action::Allow) => std::cmp::Ordering::Less,
+            (Action::Allow, Action::Block) => std::cmp::Ordering::Greater,
+            _ => std::cmp::Ordering::Equal,
+        })
+}
+
 fn compare_rules(a: &Arc<CompiledAclRule>, b: &Arc<CompiledAclRule>) -> std::cmp::Ordering {
-    b.priority.cmp(&a.priority).then_with(|| match (&a.action, &b.action) {
-        (Action::Block, Action::Allow) => std::cmp::Ordering::Less,
-        (Action::Allow, Action::Block) => std::cmp::Ordering::Greater,
-        _ => std::cmp::Ordering::Equal,
-    })
+    b.priority
+        .cmp(&a.priority)
+        .then_with(|| match (&a.action, &b.action) {
+            (Action::Block, Action::Allow) => std::cmp::Ordering::Less,
+            (Action::Allow, Action::Block) => std::cmp::Ordering::Greater,
+            _ => std::cmp::Ordering::Equal,
+        })
 }
 
 impl AclEngine {
@@ -103,11 +141,19 @@ impl AclEngine {
             groups_by_lowercase.insert(group_acl.name.to_lowercase(), compiled_group);
         }
 
+        let policies = config
+            .policies
+            .iter()
+            .filter(|policy| policy.enabled)
+            .map(|policy| CompiledAccessPolicy::compile(policy).map(Arc::new))
+            .collect::<Result<Vec<_>, _>>()?;
+
         Ok(CompiledAclConfig {
             global: config.global.clone(),
             users,
             groups,
             groups_by_lowercase,
+            policies,
         })
     }
 
@@ -209,6 +255,195 @@ impl AclEngine {
         )
     }
 
+    /// Evaluate legacy ACL rules and dynamic policies in one shared priority space.
+    pub async fn evaluate_policy_with_context(
+        &self,
+        ctx: PolicyEvaluationContext<'_>,
+    ) -> PolicyEvaluationOutcome {
+        let (mut candidates, default_policy, effective_groups) = {
+            let config = self.config.read().await;
+            let effective_groups = self.effective_groups(&config, ctx.user, ctx.groups);
+            let mut candidates: Vec<EvaluationCandidate> = self
+                .collect_rules_from_groups(&config, ctx.user, ctx.groups)
+                .into_iter()
+                .map(EvaluationCandidate::Legacy)
+                .collect();
+            candidates.extend(
+                config
+                    .policies
+                    .iter()
+                    .filter(|policy| policy.subject_matches(ctx.user, &effective_groups))
+                    .cloned()
+                    .map(EvaluationCandidate::Policy),
+            );
+            (
+                candidates,
+                config.global.default_policy.clone(),
+                effective_groups,
+            )
+        };
+
+        candidates.sort_unstable_by(compare_candidates);
+        let mut trace = Vec::new();
+        let policy_ctx = PolicyEvaluationContext {
+            groups: &effective_groups,
+            ..ctx
+        };
+
+        for candidate in candidates {
+            match candidate {
+                EvaluationCandidate::Legacy(rule) => {
+                    let matched =
+                        rule.matches(policy_ctx.destination, policy_ctx.port, policy_ctx.protocol);
+                    trace.push(PolicyTraceEntry {
+                        source: "legacy_acl".into(),
+                        id: None,
+                        description: rule.description.clone(),
+                        priority: rule.priority,
+                        action: rule.action.clone(),
+                        mode: None,
+                        target_matched: matched,
+                        conditions_matched: None,
+                        effective: matched,
+                        reason: if matched {
+                            "legacy ACL rule matched".into()
+                        } else {
+                            "destination, port, or protocol did not match".into()
+                        },
+                    });
+                    if matched {
+                        return PolicyEvaluationOutcome {
+                            decision: AclDecision::from(&rule.action),
+                            matched_rule: Some(rule.description.clone()),
+                            matched_policy_id: None,
+                            admission_limits: PolicyAdmissionLimits::default(),
+                            trace,
+                        };
+                    }
+                }
+                EvaluationCandidate::Policy(policy) => {
+                    let target_matched = policy.target_matches(
+                        policy_ctx.destination,
+                        policy_ctx.port,
+                        policy_ctx.protocol,
+                    );
+                    if !target_matched {
+                        trace.push(PolicyTraceEntry {
+                            source: "policy".into(),
+                            id: Some(policy.policy.id.clone()),
+                            description: policy.policy.description.clone(),
+                            priority: policy.policy.priority,
+                            action: policy.policy.action.clone(),
+                            mode: Some(policy.policy.mode.clone()),
+                            target_matched: false,
+                            conditions_matched: None,
+                            effective: false,
+                            reason: "destination, port, or protocol did not match".into(),
+                        });
+                        continue;
+                    }
+                    let (conditions_matched, condition_reason) =
+                        policy.conditions_match(&policy_ctx);
+                    if policy.policy.mode == PolicyMode::Monitor {
+                        trace.push(PolicyTraceEntry {
+                            source: "policy".into(),
+                            id: Some(policy.policy.id.clone()),
+                            description: policy.policy.description.clone(),
+                            priority: policy.policy.priority,
+                            action: policy.policy.action.clone(),
+                            mode: Some(policy.policy.mode.clone()),
+                            target_matched: true,
+                            conditions_matched: Some(conditions_matched),
+                            effective: false,
+                            reason: format!("monitor mode: {}", condition_reason),
+                        });
+                        continue;
+                    }
+                    if !conditions_matched {
+                        let gate_block = policy.policy.enforce_conditions;
+                        trace.push(PolicyTraceEntry {
+                            source: "policy".into(),
+                            id: Some(policy.policy.id.clone()),
+                            description: policy.policy.description.clone(),
+                            priority: policy.policy.priority,
+                            action: policy.policy.action.clone(),
+                            mode: Some(policy.policy.mode.clone()),
+                            target_matched: true,
+                            conditions_matched: Some(false),
+                            effective: gate_block,
+                            reason: if gate_block {
+                                format!("gate condition failed: {}", condition_reason)
+                            } else {
+                                condition_reason
+                            },
+                        });
+                        if gate_block {
+                            return PolicyEvaluationOutcome {
+                                decision: AclDecision::Block,
+                                matched_rule: Some(format!(
+                                    "Policy '{}' gate: {}",
+                                    policy.policy.id, policy.policy.description
+                                )),
+                                matched_policy_id: Some(policy.policy.id.clone()),
+                                admission_limits: PolicyAdmissionLimits::default(),
+                                trace,
+                            };
+                        }
+                        continue;
+                    }
+                    trace.push(PolicyTraceEntry {
+                        source: "policy".into(),
+                        id: Some(policy.policy.id.clone()),
+                        description: policy.policy.description.clone(),
+                        priority: policy.policy.priority,
+                        action: policy.policy.action.clone(),
+                        mode: Some(policy.policy.mode.clone()),
+                        target_matched: true,
+                        conditions_matched: Some(true),
+                        effective: true,
+                        reason: condition_reason,
+                    });
+                    let admission_limits = if policy.policy.action == Action::Allow {
+                        policy.admission_limits()
+                    } else {
+                        PolicyAdmissionLimits::default()
+                    };
+                    return PolicyEvaluationOutcome {
+                        decision: AclDecision::from(&policy.policy.action),
+                        matched_rule: Some(format!(
+                            "Policy '{}': {}",
+                            policy.policy.id, policy.policy.description
+                        )),
+                        matched_policy_id: Some(policy.policy.id.clone()),
+                        admission_limits,
+                        trace,
+                    };
+                }
+            }
+        }
+        PolicyEvaluationOutcome {
+            decision: AclDecision::from(&default_policy),
+            matched_rule: Some("Default policy".into()),
+            matched_policy_id: None,
+            admission_limits: PolicyAdmissionLimits::default(),
+            trace,
+        }
+    }
+
+    pub async fn is_explicitly_blocked_with_policy_context(
+        &self,
+        ctx: PolicyEvaluationContext<'_>,
+    ) -> Option<String> {
+        let outcome = self.evaluate_policy_with_context(ctx).await;
+        if outcome.decision == AclDecision::Block
+            && outcome.trace.last().is_some_and(|entry| entry.effective)
+        {
+            outcome.matched_rule
+        } else {
+            None
+        }
+    }
+
     /// Re-evaluate explicit rules against an already-resolved destination.
     /// This is used after DNS resolution so domain allow rules cannot bypass
     /// higher-priority CIDR/IP denies while preserving normal rule precedence.
@@ -239,6 +474,31 @@ impl AclEngine {
             };
         }
         None
+    }
+
+    fn effective_groups(
+        &self,
+        config: &CompiledAclConfig,
+        user: &str,
+        dynamic_groups: &[String],
+    ) -> Vec<String> {
+        let mut groups = Vec::new();
+        let mut seen = std::collections::HashSet::new();
+        if let Some(user_acl) = config.users.get(user) {
+            for group in &user_acl.groups {
+                let key = group.to_ascii_lowercase();
+                if seen.insert(key) {
+                    groups.push(group.clone());
+                }
+            }
+        }
+        for group in dynamic_groups {
+            let key = group.to_ascii_lowercase();
+            if seen.insert(key) {
+                groups.push(group.clone());
+            }
+        }
+        groups
     }
 
     /// Collect all rules for a user (user rules + group rules)
@@ -384,6 +644,11 @@ impl AclEngine {
         let config = self.config.read().await;
         config.groups.len()
     }
+
+    pub async fn get_policy_count(&self) -> usize {
+        let config = self.config.read().await;
+        config.policies.len()
+    }
 }
 
 impl AclConfig {
@@ -415,6 +680,15 @@ impl AclConfig {
                     ));
                 }
             }
+        }
+
+        let mut seen_policy_ids = std::collections::HashSet::new();
+        for policy in &self.policies {
+            let key = policy.id.to_ascii_lowercase();
+            if !seen_policy_ids.insert(key) {
+                return Err(format!("Duplicate policy id: {}", policy.id));
+            }
+            super::policy::validate_policy(policy)?;
         }
 
         // Validate that rules have at least one matcher
@@ -476,6 +750,7 @@ mod tests {
                     priority: 50,
                 }],
             }],
+            policies: vec![],
         }
     }
 

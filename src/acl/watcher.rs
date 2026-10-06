@@ -309,6 +309,7 @@ mod tests {
                 }],
             }],
             groups: vec![],
+            policies: vec![],
         }
     }
 
@@ -330,6 +331,7 @@ mod tests {
                 }],
             }],
             groups: vec![],
+            policies: vec![],
         }
     }
 

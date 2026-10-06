@@ -613,7 +613,7 @@ pub async fn get_acl_rules(State(state): State<ApiState>) -> (StatusCode, Json<A
     (StatusCode::OK, Json(response))
 }
 
-/// POST /api/acl/test - Test ACL decision for a connection
+/// POST /api/acl/test - Explain ACL/policy decision for a connection.
 pub async fn test_acl_decision(
     State(state): State<ApiState>,
     Json(request): Json<AclTestRequest>,
@@ -628,11 +628,12 @@ pub async fn test_acl_decision(
                 protocol: request.protocol,
                 decision: "error".to_string(),
                 matched_rule: Some("ACL is not enabled".to_string()),
+                matched_policy_id: None,
+                trace: vec![],
             }),
         );
     };
 
-    // Parse protocol
     let protocol = match request.protocol.to_lowercase().as_str() {
         "tcp" => crate::acl::Protocol::Tcp,
         "udp" => crate::acl::Protocol::Udp,
@@ -647,12 +648,32 @@ pub async fn test_acl_decision(
                     protocol: request.protocol,
                     decision: "error".to_string(),
                     matched_rule: Some("Invalid protocol (use: tcp, udp, or both)".to_string()),
+                    matched_policy_id: None,
+                    trace: vec![],
                 }),
             );
         }
     };
 
-    // Parse destination as Address (IP or domain)
+    let source_ip = match request.source_ip.parse::<std::net::IpAddr>() {
+        Ok(ip) => ip,
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(AclTestResponse {
+                    user: request.user,
+                    destination: request.destination,
+                    port: request.port,
+                    protocol: request.protocol,
+                    decision: "error".to_string(),
+                    matched_rule: Some("Invalid source_ip".to_string()),
+                    matched_policy_id: None,
+                    trace: vec![],
+                }),
+            );
+        }
+    };
+
     let address = match request.destination.parse::<std::net::IpAddr>() {
         Ok(ip) => match ip {
             std::net::IpAddr::V4(ipv4) => crate::protocol::Address::IPv4(ipv4.octets()),
@@ -661,27 +682,41 @@ pub async fn test_acl_decision(
         Err(_) => crate::protocol::Address::Domain(request.destination.clone()),
     };
 
-    // Evaluate ACL
-    let (decision, matched_rule) = acl_engine
-        .evaluate(&request.user, &address, request.port, &protocol)
+    let outcome = acl_engine
+        .evaluate_policy_with_context(crate::acl::PolicyEvaluationContext {
+            user: &request.user,
+            groups: &request.groups,
+            source_ip,
+            auth_method: &request.auth_method,
+            destination: &address,
+            port: request.port,
+            protocol: &protocol,
+            now: request.now.unwrap_or_else(chrono::Utc::now),
+            usage: request
+                .usage
+                .clone()
+                .unwrap_or_else(|| state.session_manager.policy_usage_snapshot(&request.user)),
+        })
         .await;
 
-    // Convert decision to string
-    let decision_str = match decision {
+    let decision = match outcome.decision {
         crate::acl::AclDecision::Allow => "allow",
         crate::acl::AclDecision::Block => "block",
     };
 
-    let response = AclTestResponse {
-        user: request.user,
-        destination: request.destination,
-        port: request.port,
-        protocol: request.protocol,
-        decision: decision_str.to_string(),
-        matched_rule,
-    };
-
-    (StatusCode::OK, Json(response))
+    (
+        StatusCode::OK,
+        Json(AclTestResponse {
+            user: request.user,
+            destination: request.destination,
+            port: request.port,
+            protocol: request.protocol,
+            decision: decision.to_string(),
+            matched_rule: outcome.matched_rule,
+            matched_policy_id: outcome.matched_policy_id,
+            trace: outcome.trace,
+        }),
+    )
 }
 
 /// GET /metrics - Prometheus metrics endpoint

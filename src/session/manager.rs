@@ -8,7 +8,10 @@ use super::types::{
     AclDecisionStats, ConnectionInfo, DestinationStat, Session, SessionStats, SessionStatus,
     UserSessionStat,
 };
-use crate::acl::{AclDecision, AclEngine, Protocol as AclProtocol};
+use crate::acl::{
+    AclDecision, AclEngine, PolicyAdmissionGuard, PolicyAdmissionLimits, PolicyUsageSnapshot,
+    PolicyUsageTracker, Protocol as AclProtocol,
+};
 use crate::protocol::Address;
 use chrono::{Duration as ChronoDuration, Utc};
 use dashmap::DashMap;
@@ -43,6 +46,7 @@ pub struct SessionManager {
     batch_writer: Arc<OnceLock<Arc<BatchWriter>>>,
     traffic_tx: mpsc::Sender<TrafficMessage>,
     pending_traffic: Arc<DashMap<Uuid, TrafficUpdate>>,
+    policy_usage: Arc<PolicyUsageTracker>,
 }
 
 #[derive(Debug, Clone)]
@@ -108,6 +112,7 @@ impl SessionManager {
             batch_writer: Arc::new(OnceLock::new()),
             traffic_tx,
             pending_traffic: Arc::new(DashMap::new()),
+            policy_usage: Arc::new(PolicyUsageTracker::default()),
         };
 
         manager.start_traffic_worker(traffic_rx);
@@ -117,22 +122,31 @@ impl SessionManager {
     fn start_traffic_worker(&self, mut rx: mpsc::Receiver<TrafficMessage>) {
         let active_sessions = Arc::clone(&self.active_sessions);
         let pending_traffic = Arc::clone(&self.pending_traffic);
+        let policy_usage = Arc::clone(&self.policy_usage);
 
         tokio::spawn(async move {
             while let Some(message) = rx.recv().await {
                 match message {
                     TrafficMessage::Update(update) => {
-                        SessionManager::apply_traffic_update(&active_sessions, update).await;
+                        SessionManager::apply_traffic_update(
+                            &active_sessions,
+                            &policy_usage,
+                            update,
+                        )
+                        .await;
 
                         // Drain coalesced overflow updates. The map has at most one entry
                         // per active session, so overload cannot create unbounded tasks.
-                        let pending_ids: Vec<Uuid> = pending_traffic
-                            .iter()
-                            .map(|entry| *entry.key())
-                            .collect();
+                        let pending_ids: Vec<Uuid> =
+                            pending_traffic.iter().map(|entry| *entry.key()).collect();
                         for id in pending_ids {
                             if let Some((_, pending)) = pending_traffic.remove(&id) {
-                                SessionManager::apply_traffic_update(&active_sessions, pending).await;
+                                SessionManager::apply_traffic_update(
+                                    &active_sessions,
+                                    &policy_usage,
+                                    pending,
+                                )
+                                .await;
                             }
                         }
                     }
@@ -141,7 +155,12 @@ impl SessionManager {
                         // the channel before session closure. Apply any coalesced overflow
                         // for this session as part of the same barrier.
                         if let Some((_, pending)) = pending_traffic.remove(&session_id) {
-                            SessionManager::apply_traffic_update(&active_sessions, pending).await;
+                            SessionManager::apply_traffic_update(
+                                &active_sessions,
+                                &policy_usage,
+                                pending,
+                            )
+                            .await;
                         }
                         let _ = done.send(());
                     }
@@ -409,6 +428,20 @@ impl SessionManager {
         Self::enforce_history_limit(&mut rejected, self.history_max_entries);
     }
 
+    /// Snapshot policy quota/rate state for a user.
+    pub fn policy_usage_snapshot(&self, user: &str) -> PolicyUsageSnapshot {
+        self.policy_usage.snapshot(user, Utc::now())
+    }
+
+    /// Atomically reserve admission capacity for a policy-controlled session.
+    pub fn reserve_policy_admission(
+        &self,
+        user: &str,
+        limits: &PolicyAdmissionLimits,
+    ) -> Result<PolicyAdmissionGuard, String> {
+        self.policy_usage.reserve(user, limits, Utc::now())
+    }
+
     /// Count currently active sessions.
     pub fn active_session_count(&self) -> usize {
         self.active_sessions.len()
@@ -553,6 +586,7 @@ impl SessionManager {
     ) {
         Self::apply_traffic_update(
             &self.active_sessions,
+            &self.policy_usage,
             TrafficUpdate {
                 session_id: *session_id,
                 bytes_sent,
@@ -587,10 +621,15 @@ impl SessionManager {
                     self.pending_traffic
                         .entry(update.session_id)
                         .and_modify(|pending| {
-                            pending.bytes_sent = pending.bytes_sent.saturating_add(update.bytes_sent);
-                            pending.bytes_received = pending.bytes_received.saturating_add(update.bytes_received);
-                            pending.packets_sent = pending.packets_sent.saturating_add(update.packets_sent);
-                            pending.packets_received = pending.packets_received.saturating_add(update.packets_received);
+                            pending.bytes_sent =
+                                pending.bytes_sent.saturating_add(update.bytes_sent);
+                            pending.bytes_received =
+                                pending.bytes_received.saturating_add(update.bytes_received);
+                            pending.packets_sent =
+                                pending.packets_sent.saturating_add(update.packets_sent);
+                            pending.packets_received = pending
+                                .packets_received
+                                .saturating_add(update.packets_received);
                         })
                         .or_insert(update);
                 }
@@ -638,6 +677,12 @@ impl SessionManager {
         #[cfg(feature = "metrics")]
         SessionMetrics::record_traffic(&user_label, update.bytes_sent, update.bytes_received);
 
+        self.policy_usage.record_transfer(
+            &session_guard.user,
+            update.bytes_sent.saturating_add(update.bytes_received),
+            Utc::now(),
+        );
+
         drop(session_guard);
 
         Ok(())
@@ -650,6 +695,7 @@ impl SessionManager {
 
     async fn apply_traffic_update(
         active_sessions: &DashMap<Uuid, Arc<RwLock<Session>>>,
+        policy_usage: &PolicyUsageTracker,
         update: TrafficUpdate,
     ) {
         if let Some(entry) = active_sessions.get(&update.session_id) {
@@ -672,6 +718,12 @@ impl SessionManager {
 
             #[cfg(feature = "metrics")]
             SessionMetrics::record_traffic(&user_label, update.bytes_sent, update.bytes_received);
+
+            policy_usage.record_transfer(
+                &session_guard.user,
+                update.bytes_sent.saturating_add(update.bytes_received),
+                Utc::now(),
+            );
         }
     }
 
@@ -694,7 +746,7 @@ impl SessionManager {
         // If the channel is closed, or an overflow update raced with the barrier,
         // apply the final coalesced value directly before removing the session.
         if let Some((_, pending)) = self.pending_traffic.remove(&session_id) {
-            Self::apply_traffic_update(&self.active_sessions, pending).await;
+            Self::apply_traffic_update(&self.active_sessions, &self.policy_usage, pending).await;
         }
     }
 
@@ -908,8 +960,7 @@ mod tests {
 
     #[cfg(feature = "metrics")]
     use crate::session::metrics::{
-        REJECTED_SESSIONS, SESSION_DURATION, TOTAL_BYTES_RECEIVED, TOTAL_BYTES_SENT,
-        TOTAL_SESSIONS,
+        REJECTED_SESSIONS, SESSION_DURATION, TOTAL_BYTES_RECEIVED, TOTAL_BYTES_SENT, TOTAL_SESSIONS,
     };
     #[cfg(feature = "metrics")]
     use lazy_static::lazy_static;
@@ -1093,6 +1144,7 @@ mod tests {
                 }],
             }],
             groups: vec![],
+            policies: vec![],
         };
 
         let engine = Arc::new(AclEngine::new(initial_config).expect("engine"));
@@ -1120,6 +1172,7 @@ mod tests {
                 }],
             }],
             groups: vec![],
+            policies: vec![],
         };
 
         engine.reload(block_config).await.expect("reload");

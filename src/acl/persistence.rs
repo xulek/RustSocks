@@ -205,6 +205,7 @@ mod tests {
             },
             users: vec![],
             groups: vec![],
+            policies: vec![],
         }
     }
 

@@ -1,10 +1,13 @@
-use crate::acl::{AclDecision, AclEngine, AclStats, Protocol};
+use crate::acl::{
+    AclDecision, AclEngine, AclStats, PolicyEvaluationContext, PolicyUsageSnapshot, Protocol,
+};
 use crate::protocol::{parse_udp_packet, serialize_udp_packet, Address, UdpHeader, UdpPacket};
 use crate::qos::QosEngine;
 use crate::server::resolver::resolve_address;
 use crate::session::{SessionManager, SessionStatus};
 use crate::utils::error::{Result, RustSocksError};
 use bytes::{Bytes, BytesMut};
+use chrono::Utc;
 use dashmap::DashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -30,6 +33,8 @@ pub struct UdpRelayContext {
     pub acl_engine: Option<Arc<AclEngine>>,
     pub acl_stats: Arc<AclStats>,
     pub qos_engine: QosEngine,
+    pub source_ip: std::net::IpAddr,
+    pub auth_method: String,
 }
 
 impl UdpSessionMap {
@@ -73,7 +78,11 @@ pub async fn handle_udp_associate(
     udp_ctx: UdpRelayContext,
 ) -> Result<SocketAddr> {
     // Bind the relay in the same address family as the TCP control connection.
-    let bind_target = if client_addr.is_ipv6() { "[::]:0" } else { "0.0.0.0:0" };
+    let bind_target = if client_addr.is_ipv6() {
+        "[::]:0"
+    } else {
+        "0.0.0.0:0"
+    };
     let udp_socket = UdpSocket::bind(bind_target).await?;
     let local_addr = udp_socket.local_addr()?;
 
@@ -138,8 +147,8 @@ async fn run_udp_relay(
     let socket = Arc::new(socket);
     let session_map = Arc::new(UdpSessionMap::new());
     let udp_ctx = Arc::new(udp_ctx);
-    let mut client_udp_addr = expected_client_port
-        .map(|port| SocketAddr::new(client_addr.ip(), port));
+    let mut client_udp_addr =
+        expected_client_port.map(|port| SocketAddr::new(client_addr.ip(), port));
 
     const MAX_DATAGRAM: usize = 65_535;
     let mut buf = BytesMut::with_capacity(MAX_DATAGRAM);
@@ -269,32 +278,35 @@ async fn handle_client_packet(
     );
 
     if let Some(engine) = udp_ctx.acl_engine.as_ref() {
-        let (decision, matched_rule) = engine
-            .evaluate_with_groups(
-                udp_ctx.user.as_ref(),
-                udp_ctx.user_groups.as_ref(),
-                &packet.header.address,
-                packet.header.port,
-                &Protocol::Udp,
-            )
+        let outcome = engine
+            .evaluate_policy_with_context(PolicyEvaluationContext {
+                user: udp_ctx.user.as_ref(),
+                groups: udp_ctx.user_groups.as_ref(),
+                source_ip: udp_ctx.source_ip,
+                auth_method: &udp_ctx.auth_method,
+                destination: &packet.header.address,
+                port: packet.header.port,
+                protocol: &Protocol::Udp,
+                now: Utc::now(),
+                // Admission limits are evaluated when UDP ASSOCIATE is opened.
+                usage: PolicyUsageSnapshot::default(),
+            })
             .await;
 
-        match decision {
+        match outcome.decision {
             AclDecision::Block => {
                 udp_ctx.acl_stats.record_block(udp_ctx.user.as_ref());
-                let rule = matched_rule.as_deref().unwrap_or("unknown rule");
+                let rule = outcome.matched_rule.as_deref().unwrap_or("unknown rule");
                 warn!(
                     user = %udp_ctx.user.as_ref(),
                     dest = %packet.header.address,
                     port = packet.header.port,
                     rule,
-                    "ACL blocked UDP packet"
+                    "Policy engine blocked UDP packet"
                 );
                 return Ok(());
             }
-            AclDecision::Allow => {
-                udp_ctx.acl_stats.record_allow(udp_ctx.user.as_ref());
-            }
+            AclDecision::Allow => udp_ctx.acl_stats.record_allow(udp_ctx.user.as_ref()),
         }
     }
 
@@ -322,13 +334,17 @@ async fn handle_client_packet(
         };
         if let Some(engine) = udp_ctx.acl_engine.as_ref() {
             if let Some(rule) = engine
-                .is_explicitly_blocked_with_groups(
-                    udp_ctx.user.as_ref(),
-                    udp_ctx.user_groups.as_ref(),
-                    &resolved,
-                    packet.header.port,
-                    &Protocol::Udp,
-                )
+                .is_explicitly_blocked_with_policy_context(PolicyEvaluationContext {
+                    user: udp_ctx.user.as_ref(),
+                    groups: udp_ctx.user_groups.as_ref(),
+                    source_ip: udp_ctx.source_ip,
+                    auth_method: &udp_ctx.auth_method,
+                    destination: &resolved,
+                    port: packet.header.port,
+                    protocol: &Protocol::Udp,
+                    now: Utc::now(),
+                    usage: PolicyUsageSnapshot::default(),
+                })
                 .await
             {
                 warn!(

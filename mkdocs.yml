@@ -17,6 +17,7 @@ nav:
   - Configuration:
       - rustsocks.toml: config/rustsocks.md
       - acl.toml: config/acl.md
+      - Dynamic Policy Engine: config/policy-engine.md
   - Usage & Examples:
       - Common Scenarios: usage/examples.md
   - Guides:

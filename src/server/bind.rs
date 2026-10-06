@@ -1,12 +1,13 @@
-use crate::acl::{AclEngine, Protocol};
+use crate::acl::{AclEngine, PolicyEvaluationContext, Protocol};
 use crate::protocol::{Address, ReplyCode};
 use crate::qos::QosEngine;
 use crate::server::handler::IoStream;
 use crate::server::pool::ConnectionPool;
-use crate::server::resolver::resolve_address;
 use crate::server::proxy::{proxy_data, ProxyContext, TrafficUpdateConfig};
+use crate::server::resolver::resolve_address;
 use crate::session::{ConnectionInfo, SessionManager, SessionProtocol, SessionStatus};
 use crate::utils::error::{Result, RustSocksError};
+use chrono::Utc;
 use std::collections::HashSet;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
@@ -28,6 +29,8 @@ pub struct BindContext {
     pub connection_pool: Arc<ConnectionPool>,
     pub acl_engine: Option<Arc<AclEngine>>,
     pub user_groups: Vec<String>,
+    pub source_ip: IpAddr,
+    pub auth_method: String,
 }
 
 /// Handle BIND command
@@ -60,7 +63,11 @@ where
     };
 
     // Preserve the control connection address family.
-    let bind_target = if client_addr.is_ipv6() { "[::]:0" } else { "0.0.0.0:0" };
+    let bind_target = if client_addr.is_ipv6() {
+        "[::]:0"
+    } else {
+        "0.0.0.0:0"
+    };
     let bind_listener = TcpListener::bind(bind_target).await?;
     let bind_addr = bind_listener.local_addr()?;
     let advertised_bind_addr = if bind_addr.ip().is_unspecified() {
@@ -131,7 +138,8 @@ where
             );
             drop(stream);
         }
-    }).await;
+    })
+    .await;
 
     match incoming_result {
         Ok(Ok((incoming_stream, peer_addr))) => {
@@ -140,14 +148,21 @@ where
                     IpAddr::V4(ip) => Address::IPv4(ip.octets()),
                     IpAddr::V6(ip) => Address::IPv6(ip.octets()),
                 };
+                let mut usage = session_manager.policy_usage_snapshot(bind_ctx.user.as_ref());
+                usage.active_connections = usage.active_connections.saturating_sub(1);
+                usage.connections_last_minute = usage.connections_last_minute.saturating_sub(1);
                 if let Some(rule) = engine
-                    .is_explicitly_blocked_with_groups(
-                        bind_ctx.user.as_ref(),
-                        &bind_ctx.user_groups,
-                        &peer_address,
-                        peer_addr.port(),
-                        &Protocol::Tcp,
-                    )
+                    .is_explicitly_blocked_with_policy_context(PolicyEvaluationContext {
+                        user: bind_ctx.user.as_ref(),
+                        groups: &bind_ctx.user_groups,
+                        source_ip: bind_ctx.source_ip,
+                        auth_method: &bind_ctx.auth_method,
+                        destination: &peer_address,
+                        port: peer_addr.port(),
+                        protocol: &Protocol::Tcp,
+                        now: Utc::now(),
+                        usage,
+                    })
                     .await
                 {
                     warn!(peer = %peer_addr, rule = %rule, "BIND peer blocked by ACL");

@@ -177,6 +177,88 @@ fn default_priority() -> u32 {
     100
 }
 
+/// Dynamic policy execution mode.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum PolicyMode {
+    #[default]
+    Enforce,
+    Monitor,
+}
+
+/// Optional schedule for a dynamic access policy.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PolicySchedule {
+    #[serde(default)]
+    pub days: Vec<String>,
+    pub start: String,
+    pub end: String,
+    #[serde(default)]
+    pub utc_offset_minutes: i32,
+}
+
+/// Dynamic conditions attached to an access policy.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct PolicyConditions {
+    #[serde(default)]
+    pub source_ips: Vec<String>,
+    #[serde(default)]
+    pub auth_methods: Vec<String>,
+    #[serde(default)]
+    pub schedule: Option<PolicySchedule>,
+    #[serde(default)]
+    pub not_before: Option<chrono::DateTime<chrono::Utc>>,
+    #[serde(default)]
+    pub expires_at: Option<chrono::DateTime<chrono::Utc>>,
+    #[serde(default)]
+    pub max_active_connections: Option<u32>,
+    #[serde(default)]
+    pub max_connections_per_minute: Option<u32>,
+    #[serde(default)]
+    pub daily_transfer_limit_bytes: Option<u64>,
+    #[serde(default)]
+    pub monthly_transfer_limit_bytes: Option<u64>,
+}
+
+/// Dynamic access policy evaluated together with legacy ACL rules.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AccessPolicy {
+    pub id: String,
+    #[serde(default = "default_policy_enabled")]
+    pub enabled: bool,
+    #[serde(default)]
+    pub mode: PolicyMode,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub users: Vec<String>,
+    #[serde(default)]
+    pub groups: Vec<String>,
+    pub action: Action,
+    #[serde(default)]
+    pub destinations: Vec<String>,
+    #[serde(default)]
+    pub ports: Vec<String>,
+    #[serde(default = "default_protocols")]
+    pub protocols: Vec<Protocol>,
+    #[serde(default = "default_priority")]
+    pub priority: u32,
+    #[serde(default)]
+    pub enforce_conditions: bool,
+    #[serde(default)]
+    pub conditions: PolicyConditions,
+    #[serde(default)]
+    pub owner: Option<String>,
+    #[serde(default)]
+    pub ticket: Option<String>,
+    #[serde(default)]
+    pub tags: Vec<String>,
+}
+
+fn default_policy_enabled() -> bool {
+    true
+}
+
 /// Per-user ACL configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserAcl {
@@ -229,6 +311,9 @@ pub struct AclConfig {
 
     #[serde(default)]
     pub groups: Vec<GroupAcl>,
+
+    #[serde(default)]
+    pub policies: Vec<AccessPolicy>,
 }
 
 /// ACL Decision result
