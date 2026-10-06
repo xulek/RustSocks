@@ -12,13 +12,18 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::{sleep, Instant};
 
-const COVERAGE_SLOWDOWN_MS: u64 = 40;
+const COVERAGE_SLOWDOWN_MS: u64 = 100;
 const WINDOWS_SCHEDULER_SLOWDOWN_MS: u64 = 15;
 
+/// Instrumented builds are slower and shared CI runners add scheduling jitter, so timing budgets
+/// are widened under a coverage tool. Both cargo-llvm-cov (the tool CI uses) and tarpaulin are
+/// recognised; cargo-llvm-cov sets `CARGO_LLVM_COV` and `LLVM_PROFILE_FILE` for the test run.
 fn running_under_coverage() -> bool {
     cfg!(tarpaulin)
         || std::env::var_os("CARGO_TARPAULIN").is_some()
         || std::env::var_os("TARPAULIN").is_some()
+        || std::env::var_os("CARGO_LLVM_COV").is_some()
+        || std::env::var_os("LLVM_PROFILE_FILE").is_some()
 }
 
 fn coverage_scale(default: usize, reduced: usize) -> usize {

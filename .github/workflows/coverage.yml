@@ -47,11 +47,19 @@ jobs:
           tool: cargo-llvm-cov@0.9.1
 
       - name: Run tests with coverage
-        run: >-
-          cargo llvm-cov --locked --all-features --lib --bins --tests
-          --ignore-filename-regex '(tests|benches)[/\\]'
-          --lcov --output-path lcov.info
-          --fail-under-lines "$MIN_LINE_COVERAGE"
+        run: |
+          set -o pipefail
+          cargo llvm-cov --locked --all-features --lib --bins --tests --no-fail-fast \
+            --ignore-filename-regex '(tests|benches)[/\\]' \
+            --lcov --output-path lcov.info \
+            --fail-under-lines "$MIN_LINE_COVERAGE" 2>&1 | tee coverage-test.log
+
+      # Job logs need a login to read, so surface what failed as annotations.
+      - name: Report failing tests
+        if: failure()
+        run: |
+          grep -E "^test .* FAILED|panicked at|^error(\[|:)|threshold|Test failed" coverage-test.log \
+            | sort -u | head -40 | while read -r line; do echo "::error::${line}"; done
 
       - name: Summarize coverage
         if: always()
