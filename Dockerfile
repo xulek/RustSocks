@@ -1,7 +1,7 @@
 # ==============================================================================
 # Stage 1: Dashboard Builder (Node.js + Vite)
 # ==============================================================================
-FROM node:20-alpine AS dashboard-builder
+FROM node:22-alpine AS dashboard-builder
 WORKDIR /build/dashboard
 COPY dashboard/package*.json ./
 RUN npm ci
